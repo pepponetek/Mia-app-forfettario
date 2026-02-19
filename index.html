@@ -471,6 +471,39 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   color:var(--t1);padding:10px 13px;font-family:inherit;font-size:14px;outline:none;margin-bottom:12px}
 .adm-search:focus{border-color:var(--ac)}
 
+
+/* ── WIZARD STORICO ──────────────────────────────────────────── */
+.wiz-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;
+  display:none;align-items:center;justify-content:center;padding:16px}
+.wiz-overlay.open{display:flex}
+.wiz-box{background:var(--s1);border:1px solid var(--bd2);border-radius:16px;
+  width:100%;max-width:480px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)}
+.wiz-head{padding:20px 22px 14px;border-bottom:1px solid var(--bd);background:var(--s2)}
+.wiz-head h2{font-size:18px;font-weight:800;margin-bottom:4px}
+.wiz-head p{font-size:12px;color:var(--t2);line-height:1.5}
+.wiz-steps{display:flex;gap:6px;padding:14px 22px 0}
+.wiz-step-dot{flex:1;height:4px;border-radius:2px;background:var(--bd2);transition:background .3s}
+.wiz-step-dot.done{background:var(--gr)}
+.wiz-step-dot.active{background:var(--ac)}
+.wiz-body{padding:18px 22px}
+.wiz-year-badge{display:inline-flex;align-items:center;gap:7px;
+  background:rgba(31,111,235,.12);border:1px solid rgba(31,111,235,.3);
+  color:var(--ac);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;margin-bottom:14px}
+.wiz-preview{background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+  padding:11px 13px;margin:12px 0;font-size:12px}
+.wiz-preview .wp-row{display:flex;justify-content:space-between;align-items:center;
+  padding:3px 0;border-bottom:1px solid var(--bd)}
+.wiz-preview .wp-row:last-child{border-bottom:none;font-weight:700;color:var(--re)}
+.wiz-preview .wp-lbl{color:var(--t2)}
+.wiz-preview .wp-val{font-family:monospace;font-weight:700;color:var(--t1)}
+.wiz-foot{display:flex;gap:8px;padding:0 22px 18px;flex-wrap:wrap}
+.wiz-skip{background:none;border:1px solid var(--bd2);color:var(--t3);
+  font-size:12px;padding:8px 14px;border-radius:7px;cursor:pointer;
+  transition:color .15s,border-color .15s}
+.wiz-skip:hover{color:var(--t2);border-color:var(--t2)}
+.wiz-info{background:var(--pu-d);border:1px solid var(--pu-b);border-radius:8px;
+  padding:10px 13px;margin-bottom:12px;font-size:11px;color:var(--pu);line-height:1.6}
+
 </style>
 </head>
 <body>
@@ -762,6 +795,53 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user');document.getElementById('imp-file').click()">⬆ Importa backup JSON</button>
       <button class="btn btn-re btn-sm btn-full" onclick="doLogout()">🚪 Disconnetti</button>
       <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user')" style="color:var(--t3)">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- WIZARD STORICO ANNI PRECEDENTI -->
+<div class="wiz-overlay" id="wiz-overlay">
+  <div class="wiz-box">
+    <div class="wiz-head">
+      <h2>📅 Inserisci gli anni precedenti</h2>
+      <p>Prima di salvare il tuo primo anno, inserisci i dati degli anni fiscali precedenti.<br>
+         Saranno salvati automaticamente come <strong>Definitivi</strong> per costruire lo storico.</p>
+    </div>
+    <div class="wiz-steps" id="wiz-steps-bar"></div>
+    <div class="wiz-body">
+      <div class="wiz-info" id="wiz-info"></div>
+      <div class="wiz-year-badge" id="wiz-year-label">Anno —</div>
+      <div class="fg">
+        <label>Fatturato imponibile <span id="wiz-year-lbl2"></span> (€)</label>
+        <div class="iw">
+          <span class="ipre">€</span>
+          <input type="number" id="wiz-fatt" placeholder="0.00" min="0" step="0.01"
+                 inputmode="decimal" oninput="wizPreview()">
+        </div>
+      </div>
+      <div class="fg" style="margin-top:10px">
+        <label>Note (opzionale)</label>
+        <input type="text" id="wiz-note" placeholder="Es: dati da 730, dichiarazione...">
+      </div>
+      <!-- Anteprima calcolo in tempo reale -->
+      <div class="wiz-preview" id="wiz-preview" style="display:none">
+        <div class="wp-row"><span class="wp-lbl">Reddito forfettario</span><span class="wp-val" id="wp-redd">—</span></div>
+        <div class="wp-row"><span class="wp-lbl">Contributi INPS</span><span class="wp-val" id="wp-inps">—</span></div>
+        <div class="wp-row"><span class="wp-lbl">Imposta sostitutiva</span><span class="wp-val" id="wp-imp">—</span></div>
+        <div class="wp-row"><span class="wp-lbl">Netto disponibile</span><span class="wp-val" id="wp-netto" style="color:var(--gr)">—</span></div>
+        <div class="wp-row"><span class="wp-lbl">Totale oneri</span><span class="wp-val" id="wp-tot">—</span></div>
+      </div>
+    </div>
+    <div class="wiz-foot">
+      <button class="btn btn-gr" id="wiz-btn-next" onclick="wizNext()" style="flex:1">
+        Salva e continua →
+      </button>
+      <button class="wiz-skip" onclick="wizSkipStep()" id="wiz-btn-skip">
+        Salta questo anno
+      </button>
+      <button class="wiz-skip" onclick="wizAbort()" style="width:100%;text-align:center;margin-top:4px">
+        Sono al primo anno di attività — salta tutto
+      </button>
     </div>
   </div>
 </div>
@@ -1481,6 +1561,17 @@ function rowF(col, lbl, formula, val) {
    ============================================================ */
 async function salvaAnno() {
   if (!_last) { toast('Esegui prima il calcolo', 'err'); return; }
+
+  // ── Controllo wizard storico ─────────────────────────────
+  // Se l'utente non ha ancora NESSUN anno salvato e sta cercando
+  // di salvare l'anno corrente o uno futuro → apri wizard
+  const annoNow = new Date().getFullYear();
+  const anniEsistenti = Object.keys(_anni).length;
+  if (anniEsistenti === 0 && _last.anno >= annoNow) {
+    wizOpen(_last.anno);
+    return; // salvaAnno verrà richiamato da wizComplete()
+  }
+
   const stato = g('f-stato').value;
   const note  = g('f-note').value.trim();
   const btn   = g('btn-salva');
@@ -2632,6 +2723,240 @@ function renderF24Precedenti() {
         </div>
       </div>`;
     }).join('')}`;
+}
+
+
+/* ============================================================
+   WIZARD — INSERIMENTO ANNI PRECEDENTI (primo accesso)
+   ============================================================ */
+
+let _wiz = {
+  steps: [],       // array di anni da inserire, es [2024, 2023]
+  stepIdx: 0,      // indice corrente
+  skipped: [],     // anni saltati dall'utente
+  annoTarget: null // anno che l'utente vuole davvero salvare
+};
+
+function wizOpen(annoTarget) {
+  const annoNow = new Date().getFullYear();
+  _wiz.annoTarget = annoTarget;
+  _wiz.stepIdx    = 0;
+  _wiz.skipped    = [];
+
+  // Calcola gli anni mancanti precedenti all'annoTarget
+  // Usa i 2 anni immediatamente precedenti non ancora salvati
+  const stepsArr = [];
+  for (let a = annoTarget - 1; a >= annoTarget - 2; a--) {
+    if (a < 2015) break;
+    if (!_anni[a]) stepsArr.push(a); // solo se non già salvato
+  }
+  _wiz.steps = stepsArr; // ordine: anno più recente prima
+
+  if (!_wiz.steps.length) {
+    // Nessun anno da inserire (es: target è 2020 e non si va oltre)
+    wizComplete();
+    return;
+  }
+
+  // Barra step
+  const bar = g('wiz-steps-bar');
+  bar.innerHTML = _wiz.steps.map((a, i) =>
+    `<div class="wiz-step-dot ${i === 0 ? 'active' : ''}" id="wiz-dot-${i}"></div>`
+  ).join('');
+
+  g('wiz-overlay').classList.add('open');
+  wizRenderStep();
+}
+
+function wizRenderStep() {
+  const idx  = _wiz.stepIdx;
+  const anno = _wiz.steps[idx];
+  const tot  = _wiz.steps.length;
+
+  // Aggiorna barra step
+  _wiz.steps.forEach((_, i) => {
+    const dot = g('wiz-dot-' + i);
+    if (!dot) return;
+    dot.className = 'wiz-step-dot ' +
+      (i < idx ? 'done' : i === idx ? 'active' : '');
+  });
+
+  // Testi
+  g('wiz-year-label').textContent = 'Anno ' + anno;
+  g('wiz-year-lbl2').textContent  = anno;
+  g('wiz-info').innerHTML =
+    `Passo <strong>${idx + 1} di ${tot}</strong> — ` +
+    `Anno <strong>${anno}</strong>. Inserisci il fatturato imponibile. ` +
+    `Gruppo, ATECO, aliquota e INPS vengono ereditati dal calcolo corrente. ` +
+    `L'anno sarà salvato come <strong style="color:var(--gr)">Definitivo</strong>.`;
+
+  // Reset input
+  g('wiz-fatt').value = '';
+  g('wiz-note').value = '';
+  g('wiz-preview').style.display = 'none';
+  g('wiz-btn-next').textContent  = idx < tot - 1 ? 'Salva e continua →' : 'Salva e chiudi ✓';
+  g('wiz-fatt').focus();
+}
+
+function wizPreview() {
+  const fatt = parseFloat(g('wiz-fatt').value) || 0;
+  if (fatt <= 0) { g('wiz-preview').style.display = 'none'; return; }
+
+  // Eredita i parametri dal calcolo corrente (_last)
+  const gr     = GRUPPI[_last.gruppo_idx];
+  const coeff  = gr.coeff;
+  const aliq   = _last.aliquota;
+  const tipo   = _last.inps_tipo;
+  const deduci = _last.deduci_inps;
+
+  const r_forf = fatt * coeff;
+  let c_inps = 0;
+  if (tipo === 'gs' || tipo === 'gs-pen') {
+    c_inps = r_forf * INPS_INFO[tipo].a;
+  } else if (tipo === 'art' || tipo === 'com') {
+    const info = INPS_INFO[tipo];
+    c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+  } else if (tipo === 'cassa') {
+    const pct = (parseFloat(g('f-cassa')?.value) || 14.5) / 100;
+    c_inps = r_forf * pct;
+  }
+  const r_imp    = deduci ? Math.max(0, r_forf - c_inps) : r_forf;
+  const imp_sost = r_imp * aliq;
+  const tot_on   = imp_sost + c_inps;
+  const netto    = fatt - tot_on;
+
+  g('wp-redd').textContent  = fmt(r_forf);
+  g('wp-inps').textContent  = fmt(c_inps);
+  g('wp-imp').textContent   = fmt(imp_sost);
+  g('wp-netto').textContent = fmt(netto);
+  g('wp-tot').textContent   = fmt(tot_on);
+  g('wiz-preview').style.display = 'block';
+}
+
+async function wizNext() {
+  const fatt = parseFloat(g('wiz-fatt').value);
+  if (!fatt || fatt <= 0)  { toast('Inserisci il fatturato per questo anno', 'err'); return; }
+  if (fatt > 9999999)      { toast('Fatturato non valido', 'err'); return; }
+
+  const anno  = _wiz.steps[_wiz.stepIdx];
+  const note  = g('wiz-note').value.trim();
+
+  // Ricalcola con parametri ereditati
+  const gr    = GRUPPI[_last.gruppo_idx];
+  const coeff = gr.coeff;
+  const aliq  = _last.aliquota;
+  const tipo  = _last.inps_tipo;
+  const deduci= _last.deduci_inps;
+
+  const r_forf = fatt * coeff;
+  let c_inps = 0, inps_desc = _last.inps_desc;
+  if (tipo === 'gs' || tipo === 'gs-pen') {
+    c_inps = r_forf * INPS_INFO[tipo].a;
+  } else if (tipo === 'art' || tipo === 'com') {
+    const info = INPS_INFO[tipo];
+    c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+  } else if (tipo === 'cassa') {
+    const pct = (parseFloat(g('f-cassa')?.value) || 14.5) / 100;
+    c_inps = r_forf * pct;
+  }
+  const r_imp    = deduci ? Math.max(0, r_forf - c_inps) : r_forf;
+  const imp_sost = r_imp * aliq;
+  const tot_on   = imp_sost + c_inps;
+
+  // Acconti per l'anno successivo
+  let acc1 = 0, acc2 = 0, acc_tot = 0, acc_note = 'Dati storici definitivi';
+  if (imp_sost > S_ACC) {
+    acc_tot = imp_sost;
+    if (acc_tot > S_DUE) { acc1 = acc_tot * .4; acc2 = acc_tot * .6; }
+    else { acc2 = acc_tot; }
+  }
+
+  const record = {
+    user_id:         _user.id,
+    anno,
+    stato:           'definitivo',   // ← sempre definitivo
+    ateco:           _last.ateco,
+    gruppo_idx:      _last.gruppo_idx,
+    gruppo_nome:     gr.name,
+    coefficiente:    coeff,
+    aliquota:        aliq,
+    inps_tipo:       tipo,
+    inps_desc,
+    deduci_inps:     deduci,
+    mese_rif:        12,             // anno completo
+    note:            note || '',
+    fatturato:       fatt,
+    reddito_forf:    r_forf,
+    contributi_inps: c_inps,
+    reddito_imp:     r_imp,
+    imposta_sost:    imp_sost,
+    totale_oneri:    tot_on,
+    acconto_1:       acc1,
+    acconto_2:       acc2,
+    acconto_tot:     acc_tot,
+    acconto_note:    acc_note,
+    salvato_il:      new Date().toISOString(),
+    updated_at:      new Date().toISOString()
+  };
+
+  const btn = g('wiz-btn-next');
+  btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
+
+  const { data, error } = await sb
+    .from('anni_fiscali')
+    .upsert(record, { onConflict: 'user_id,anno' })
+    .select().single();
+
+  btn.disabled = false;
+
+  if (error) {
+    toast('Errore salvataggio anno ' + anno + ': ' + error.message, 'err');
+    btn.textContent = 'Riprova';
+    return;
+  }
+
+  _anni[anno] = data;
+  toast(`✅ Anno ${anno} salvato come Definitivo`, 'ok');
+
+  // Avanza al prossimo step o chiudi
+  _wiz.stepIdx++;
+  if (_wiz.stepIdx >= _wiz.steps.length) {
+    wizComplete();
+  } else {
+    wizRenderStep();
+  }
+}
+
+function wizSkipStep() {
+  const anno = _wiz.steps[_wiz.stepIdx];
+  _wiz.skipped.push(anno);
+  _wiz.stepIdx++;
+  if (_wiz.stepIdx >= _wiz.steps.length) {
+    wizComplete();
+  } else {
+    wizRenderStep();
+  }
+}
+
+function wizAbort() {
+  // Utente dichiara primo anno: chiude wizard e salva direttamente
+  g('wiz-overlay').classList.remove('open');
+  renderSidebar();
+  onAnnoChange();
+  salvaAnno(); // riprende il salvataggio originale
+}
+
+async function wizComplete() {
+  g('wiz-overlay').classList.remove('open');
+  renderSidebar();
+  fillConfSelectors();
+  onAnnoChange();
+
+  if (_wiz.skipped.length > 0) {
+    toast(`Anni ${_wiz.skipped.join(', ')} saltati. Potrai inserirli in seguito dall'archivio.`, 'info', 5000);
+  }
+  // Ora salva l'anno originale che l'utente voleva salvare
+  await salvaAnno();
 }
 
 /* ============================================================
