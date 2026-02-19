@@ -331,16 +331,7 @@ table.admin .mo{font-family:monospace;font-size:12px}
 .fnote{text-align:center;font-size:11px;color:var(--t3);margin-top:24px;line-height:1.7;padding:0 10px}
 code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4px;font-size:12px}
 
-@media print{
-  .sidebar,.bot-nav,.mob-hdr,.btn-row,#toasts{display:none!important}
-  #app.show{display:block!important}
-  .content{margin-left:0!important;padding:0!important}
-  body{background:#fff!important;color:#000!important}
-  .card,.bdt,.sc,.mini-stat{background:#fff!important;border:1px solid #ccc!important;break-inside:avoid}
-  .view{display:none!important}
-  #view-archivio{display:block!important}
-  .ayc-body{display:block!important}
-}
+/* Print — gestito da printAnno() */
 
 /* GRAFICI */
 .chart-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:18px;margin-bottom:12px}
@@ -440,13 +431,39 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 
 /* ── PRINT — singolo anno ────────────────────────────── */
 @media print{
-  .sidebar,.bot-nav,.mob-hdr,#toasts,.no-print,.btn-row{display:none!important}
+  /* Nascondi tutto il chrome */
+  .sidebar,.bot-nav,.mob-hdr,#toasts,.no-print,.btn-row,
+  .ph,.prev-banner,.past-banner,.storico-warn,
+  .adm-search,#adm-stats,.fnote{display:none!important}
+
   #app.show{display:block!important}
-  .content{margin-left:0!important;padding:0!important}
-  body{background:#fff!important;color:#000!important}
-  .card,.bdt,.sc,.mini-stat{background:#fff!important;border:1px solid #ccc!important;break-inside:avoid}
+  .content{margin-left:0!important;padding:8mm!important}
+  body{background:#fff!important;color:#000!important;font-size:12px!important}
+
+  /* Colori card in bianco */
+  .card,.bdt,.sc,.mini-stat,.ayc-body,.mini-stat{
+    background:#fff!important;border:1px solid #ccc!important;break-inside:avoid}
+  .ayc{border:1px solid #ccc!important;margin-bottom:8px!important;background:#fff!important}
+  .ayc-yr,.ayc-tot{color:#000!important}
+  .rbadge{border:1px solid #ccc!important;color:#000!important;background:#f5f5f5!important}
+  .diff{border:1px solid #ccc!important;color:#000!important;background:#f5f5f5!important}
+  .mini-stat .mv,.bv,.tlamount{color:#000!important}
+
+  /* Per default: nascondi tutte le view e tutti i card archivio */
   .view{display:none!important}
-  #view-print-target{display:block!important}
+  .ayc{display:none!important}
+  .ayc-body{display:none!important}
+
+  /* Modalità stampa ARCHIVIO singolo anno */
+  body.print-archivio #view-archivio{display:block!important}
+  body.print-archivio .ayc.print-target{display:block!important}
+  body.print-archivio .ayc.print-target .ayc-body{display:block!important}
+  body.print-archivio .ayc-h{display:flex!important}
+
+  /* Modalità stampa CALCOLO corrente */
+  body.print-calcolo #view-calcolo{display:block!important}
+  body.print-calcolo #ris-wrap{display:block!important}
+  body.print-calcolo .card{display:block!important}
 }
 
 /* ── ADMIN SEARCH ────────────────────────────────────── */
@@ -745,6 +762,26 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user');document.getElementById('imp-file').click()">⬆ Importa backup JSON</button>
       <button class="btn btn-re btn-sm btn-full" onclick="doLogout()">🚪 Disconnetti</button>
       <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user')" style="color:var(--t3)">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CAMBIO STATO -->
+<div class="modal-bg" id="modal-stato">
+  <div class="modal-box">
+    <h3>✏️ Cambia stato anno</h3>
+    <p id="stato-desc" style="color:var(--t2);font-size:13px;margin-bottom:16px">Seleziona il nuovo stato per questo anno fiscale.</p>
+    <div class="fg">
+      <label>Nuovo stato</label>
+      <select id="stato-select" style="font-size:14px">
+        <option value="bozza">📝 Bozza — dati provvisori</option>
+        <option value="definitivo">✅ Definitivo — confermato col commercialista</option>
+        <option value="archiviato">🗄️ Archiviato — anno chiuso</option>
+      </select>
+    </div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-gr btn-sm" onclick="confCambiaStato()">💾 Salva stato</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-stato')">Annulla</button>
     </div>
   </div>
 </div>
@@ -1667,20 +1704,41 @@ function togAyc(anno) {
   if (el) el.classList.toggle('open');
 }
 
-async function cambiaStato(rowId, anno) {
+// Variabile temporanea per il modal cambio stato
+let _statoRow = null;
+
+function cambiaStato(rowId, anno) {
   const d = _anni[anno]; if (!d) return;
-  const stati  = ['bozza','definitivo','archiviato'];
-  const nuovo  = stati[(stati.indexOf(d.stato || 'bozza') + 1) % 3];
+  _statoRow = { id: rowId, anno };
+  // Pre-seleziona lo stato corrente nel dropdown
+  const sel = g('stato-select');
+  if (sel) sel.value = d.stato || 'bozza';
+  // Aggiorna la descrizione
+  const stati_label = { bozza:'📝 Bozza', definitivo:'✅ Definitivo', archiviato:'🗄️ Archiviato' };
+  g('stato-desc').textContent = `Anno ${anno} — stato attuale: ${stati_label[d.stato||'bozza']}`;
+  openModal('modal-stato');
+}
+
+async function confCambiaStato() {
+  if (!_statoRow) return;
+  const { id, anno } = _statoRow;
+  const nuovo = g('stato-select').value;
+  if (!nuovo) return;
+
   setSync('busy', 'Aggiornamento...');
   const { error } = await sb.from('anni_fiscali')
     .update({ stato: nuovo, updated_at: new Date().toISOString() })
-    .eq('id', rowId)
-    .eq('user_id', _user.id);   // sicurezza extra
+    .eq('id', id)
+    .eq('user_id', _user.id);
+
   if (error) { setSync('err', 'Errore'); toast('Errore: ' + error.message, 'err'); return; }
+
   _anni[anno].stato = nuovo;
+  _statoRow = null;
+  closeModal('modal-stato');
   setSync('ok', 'Sincronizzato');
   renderSidebar(); renderArchivio();
-  toast(`Anno ${anno} → ${nuovo}`, 'ok');
+  toast(`✅ Anno ${anno} → ${nuovo}`, 'ok');
 }
 
 function richiediDel(rowId, anno) {
@@ -1839,11 +1897,18 @@ function exportPDF(annoArg) {
     d = _last;
   }
 
-  if (typeof window.jspdf === 'undefined') {
-    toast('❌ Libreria PDF non caricata. Controlla la connessione.', 'err'); return;
+  // Controlla disponibilità libreria (CDN o cache)
+  const jspdfLib = window.jspdf || (typeof jsPDF !== 'undefined' ? { jsPDF } : null);
+  if (!jspdfLib) {
+    toast('❌ Libreria PDF non caricata. Controlla la connessione e ricarica la pagina.', 'err'); return;
   }
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const { jsPDF } = jspdfLib;
+  let doc;
+  try {
+    doc = new jsPDF({ unit:'mm', format:'a4' });
+  } catch(e) {
+    toast('❌ Errore inizializzazione PDF: ' + e.message, 'err'); return;
+  }
   const W = 210, M = 15, RW = W - M*2;
 
   // Palette
@@ -1875,11 +1940,11 @@ function exportPDF(annoArg) {
   // Logo & titolo
   doc.setFontSize(22); doc.setFont('helvetica','bold');
   doc.setTextColor(...C.t1);
-  doc.text('🧾 Forfettario', M, 16);
+  doc.text('ForfettarioApp', M, 16);
 
   doc.setFontSize(10); doc.setFont('helvetica','normal');
   doc.setTextColor(...C.t2);
-  doc.text('Fascicolo Fiscale — Regime Forfettario', M, 23);
+  doc.text('Fascicolo Fiscale - Regime Forfettario - Peppone Tek', M, 23);
 
   doc.setFontSize(9);
   doc.text(`${_profile?.nome || ''} ${_profile?.cognome || ''}`.trim() || (_user?.email || ''), M, 30);
@@ -1923,7 +1988,7 @@ function exportPDF(annoArg) {
   };
 
   // Sezione parametri
-  sectionTitle('📋 Parametri Anno ' + d.anno);
+  sectionTitle('PARAMETRI ANNO ' + d.anno);
   dataRow('Anno fiscale', d.anno, false);
   dataRow('Codice ATECO', d.ateco || '—', true);
   dataRow('Gruppo / Attività', (d.gruppo_nome || '—').substring(0,45), false);
@@ -1934,7 +1999,7 @@ function exportPDF(annoArg) {
   y += 4;
 
   // Sezione calcolo
-  sectionTitle('🧮 Calcolo Dettagliato');
+  sectionTitle('CALCOLO DETTAGLIATO');
   dataRow('Fatturato imponibile', fmt(d.fatturato), false);
   dataRow(`Reddito forfettario (×${((d.coefficiente||0)*100).toFixed(0)}%)`, fmt(d.reddito_forf), true);
   dataRow('Contributi INPS stimati', '− '+fmt(d.contributi_inps), false);
@@ -1957,7 +2022,7 @@ function exportPDF(annoArg) {
   y += 22;
 
   // Sezione distribuzione
-  sectionTitle('💰 Distribuzione del Fatturato');
+  sectionTitle('DISTRIBUZIONE DEL FATTURATO');
   const netto = d.fatturato - d.totale_oneri;
   dataRow('Netto disponibile (dopo tasse+INPS)', fmt(netto), false);
   dataRow(`% Imposta su fatturato`, fmtP((d.imposta_sost/d.fatturato)*100), true);
@@ -1967,7 +2032,7 @@ function exportPDF(annoArg) {
   y += 4;
 
   // Sezione acconti
-  sectionTitle('📅 Scadenzario e Acconti');
+  sectionTitle('SCADENZARIO E ACCONTI');
   dataRow(`Saldo imposta — 30 giu ${d.anno+1}`, fmt(d.imposta_sost), false);
   if (d.acconto_tot > 0) {
     if (d.acconto_1 > 0) {
@@ -1982,7 +2047,7 @@ function exportPDF(annoArg) {
 
   // Note
   if (d.note) {
-    sectionTitle('📋 Note');
+    sectionTitle('NOTE');
     doc.setFontSize(9); doc.setFont('helvetica','normal');
     doc.setTextColor(...C.t2);
     const lines = doc.splitTextToSize(d.note, RW-6);
@@ -1998,11 +2063,15 @@ function exportPDF(annoArg) {
   doc.rect(0, 280, W, 17, 'F');
   doc.setFontSize(7); doc.setFont('helvetica','normal');
   doc.setTextColor(...C.t3);
-  doc.text('⚠️ Strumento informativo · L.190/2014 e succ. modifiche · Aliquote INPS 2024 · Consulta sempre il tuo commercialista.', W/2, 287, { align:'center' });
+  doc.text('Strumento informativo - L.190/2014 e succ. modifiche - Aliquote INPS 2024 - Consulta sempre il tuo commercialista.', W/2, 287, { align:'center' });
   doc.text(`ForfettarioApp · Peppone Tek · ${new Date().toLocaleDateString('it-IT')}`, W/2, 292, { align:'center' });
 
-  doc.save(`forfettario_${d.anno}_${(_profile?.cognome||'').toLowerCase()||'fascicolo'}.pdf`);
-  toast('✅ PDF esportato correttamente', 'ok');
+  try {
+    doc.save(`ForfettarioApp_${d.anno}_${(_profile?.cognome||'').toLowerCase()||'fascicolo'}.pdf`);
+    toast('✅ PDF esportato correttamente', 'ok');
+  } catch(e) {
+    toast('❌ Errore generazione PDF: ' + e.message, 'err');
+  }
 }
 
 /* ============================================================
@@ -2373,29 +2442,38 @@ async function importJSON(e) {
    STAMPA SINGOLO ANNO
    ============================================================ */
 function printAnno(annoArg) {
-  // Se annoArg = null usa il calcolo corrente (view calcolo)
-  // Se annoArg = numero usa i dati dall'archivio
-  let targetId;
+  const body = document.body;
+
   if (annoArg === null || annoArg === undefined) {
-    // Stampa la view calcolo corrente
-    targetId = null;
+    // ── Stampa calcolo corrente (da view calcolo) ──
+    body.classList.add('print-calcolo');
+    window.print();
+    setTimeout(() => body.classList.remove('print-calcolo'), 800);
+
   } else {
-    // Apri l'ayc-body dell'anno se non è aperto, poi stampa
-    const body = g('ayc-b-' + annoArg);
-    if (body) {
-      // Marca tutti gli altri come "not-printing"
-      document.querySelectorAll('.ayc').forEach(el => el.classList.add('not-printing'));
-      const parent = body.closest('.ayc');
-      if (parent) parent.classList.remove('not-printing');
-      body.classList.add('open', 'print-open');
-    }
+    // ── Stampa singolo anno dall'archivio ──
+    // 1. Assicura che l'ayc-body sia aperto e visibile
+    const ayc = g('ayc-b-' + annoArg)?.closest('.ayc');
+    if (!ayc) { toast('Anno non trovato nell\u2019archivio', 'err'); return; }
+
+    // 2. Apri il body se chiuso
+    const aycBody = g('ayc-b-' + annoArg);
+    const wasOpen = aycBody?.classList.contains('open');
+    if (aycBody) aycBody.classList.add('open');
+
+    // 3. Marca il target e avvia stampa
+    ayc.classList.add('print-target');
+    body.classList.add('print-archivio');
+
+    window.print();
+
+    // 4. Pulizia dopo stampa
+    setTimeout(() => {
+      body.classList.remove('print-archivio');
+      ayc.classList.remove('print-target');
+      if (!wasOpen && aycBody) aycBody.classList.remove('open');
+    }, 800);
   }
-  window.print();
-  // Rimuovi classi di stampa dopo
-  setTimeout(() => {
-    document.querySelectorAll('.ayc').forEach(el => el.classList.remove('not-printing'));
-    document.querySelectorAll('.ayc-body').forEach(el => el.classList.remove('print-open'));
-  }, 1000);
 }
 
 /* ============================================================
