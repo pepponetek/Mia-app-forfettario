@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0d1117">
-<title>Forfettario · Gestione Fiscale</title>
+<title>ForfettarioApp · Peppone Tek</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -388,6 +388,72 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 .adm-search{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;
   color:var(--t1);padding:10px 13px;font-family:inherit;font-size:14px;outline:none;margin-bottom:12px}
 .adm-search:focus{border-color:var(--ac)}
+
+/* ── GOOGLE LOGIN ─────────────────────────────────────── */
+.auth-divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--t3);font-size:12px}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--bd)}
+.btn-google{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;
+  padding:11px;border-radius:9px;border:1px solid var(--bd2);background:var(--s2);
+  color:var(--t1);font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s;margin-bottom:4px}
+.btn-google:hover{background:var(--bd);border-color:var(--t3)}
+.btn-google svg{width:18px;height:18px;flex-shrink:0}
+
+/* ── VINCOLI TEMPORALI ───────────────────────────────── */
+.past-banner{background:var(--re-d);border:1px solid var(--re-b);border-radius:9px;
+  padding:10px 13px;margin-bottom:12px;font-size:12px;color:var(--re);display:none;line-height:1.6}
+.past-banner.show{display:block}
+
+/* ── AVVISO STORICO ──────────────────────────────────── */
+.storico-warn{background:var(--ye-d);border:1px solid var(--ye-b);border-radius:10px;
+  padding:12px 14px;margin-bottom:14px}
+.storico-warn h4{color:var(--ye);font-size:13px;font-weight:800;margin-bottom:3px}
+.storico-warn p{color:var(--ye);font-size:11px;line-height:1.6;opacity:.88}
+
+/* ── ARCHIVIO MINI GRAFICO ───────────────────────────── */
+.arch-bars{margin:10px 0 8px}
+.arch-bar-row{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:5px}
+.arch-bar-lbl{width:70px;color:var(--t3);flex-shrink:0;text-align:right}
+.arch-bar-track{flex:1;height:7px;background:var(--s2);border-radius:4px;overflow:hidden}
+.arch-bar-fill{height:100%;border-radius:4px;transition:width .5s}
+.arch-bar-val{width:80px;font-family:monospace;font-size:10px;color:var(--t2)}
+.arch-diff-badge{font-size:10px;font-family:monospace;font-weight:700;
+  padding:2px 7px;border-radius:6px;border:1px solid;display:inline-flex;align-items:center;gap:3px}
+
+/* ── F24 ANNI PRECEDENTI ─────────────────────────────── */
+.f24-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
+.f24-card-h{background:var(--s2);padding:12px 16px;display:flex;align-items:center;
+  justify-content:space-between;border-bottom:1px solid var(--bd)}
+.f24-card-h .f24y{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.f24-card-body{padding:14px 16px}
+
+/* ── MODAL AGGIORNA BOZZA ───────────────────────────── */
+.modal-box.wide{max-width:440px}
+
+/* ── ADMIN SOLO ANAGRAFICA ───────────────────────────── */
+.adm-cl-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);
+  margin-bottom:6px;padding:13px 15px;display:flex;align-items:center;gap:12px}
+.adm-cl-av{width:38px;height:38px;border-radius:50%;background:var(--ac2);color:#fff;
+  font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.adm-cl-info{flex:1;min-width:0}
+.adm-cl-name{font-size:13px;font-weight:700;color:var(--t1)}
+.adm-cl-meta{font-size:11px;color:var(--t2);margin-top:2px;line-height:1.5}
+
+/* ── PRINT — singolo anno ────────────────────────────── */
+@media print{
+  .sidebar,.bot-nav,.mob-hdr,#toasts,.no-print,.btn-row{display:none!important}
+  #app.show{display:block!important}
+  .content{margin-left:0!important;padding:0!important}
+  body{background:#fff!important;color:#000!important}
+  .card,.bdt,.sc,.mini-stat{background:#fff!important;border:1px solid #ccc!important;break-inside:avoid}
+  .view{display:none!important}
+  #view-print-target{display:block!important}
+}
+
+/* ── ADMIN SEARCH ────────────────────────────────────── */
+.adm-search{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+  color:var(--t1);padding:10px 13px;font-family:inherit;font-size:14px;outline:none;margin-bottom:12px}
+.adm-search:focus{border-color:var(--ac)}
+
 </style>
 </head>
 <body>
@@ -397,7 +463,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 <!-- AUTH -->
 <div id="auth-screen">
   <div class="auth-logo">
-    <span>🧾</span><h1>Forfettario</h1><p>Gestione fiscale regime forfettario</p>
+    <span>🧾</span><h1>ForfettarioApp</h1><p>Regime Forfettario · <strong style="color:var(--ac)">Peppone Tek</strong></p>
   </div>
   <div class="auth-box">
     <div class="auth-tabs">
@@ -406,6 +472,11 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     </div>
     <!-- LOGIN -->
     <div class="auth-sect active" id="auth-login">
+      <button class="btn-google" onclick="doGoogleLogin()">
+        <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-4z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A12 12 0 0124 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20H42V20H24v8h11.3a12 12 0 01-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-4z"/></svg>
+        Continua con Google
+      </button>
+      <div class="auth-divider">oppure con email</div>
       <div class="fg"><label>Email</label><input type="email" id="l-email" placeholder="nome@email.com" autocomplete="email" inputmode="email"></div>
       <div class="fg"><label>Password</label>
         <div class="pw-wrap"><input type="password" id="l-pw" placeholder="••••••••" autocomplete="current-password">
@@ -418,6 +489,11 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     </div>
     <!-- REGISTER -->
     <div class="auth-sect" id="auth-register">
+      <button class="btn-google" onclick="doGoogleLogin()">
+        <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-4z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A12 12 0 0124 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20H42V20H24v8h11.3a12 12 0 01-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-4z"/></svg>
+        Registrati con Google
+      </button>
+      <div class="auth-divider">oppure con email</div>
       <div class="g2">
         <div class="fg"><label>Nome *</label><input type="text" id="r-nome" placeholder="Mario" autocomplete="given-name"></div>
         <div class="fg"><label>Cognome *</label><input type="text" id="r-cognome" placeholder="Rossi" autocomplete="family-name"></div>
@@ -455,7 +531,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   <div class="app-body">
     <!-- SIDEBAR -->
     <aside class="sidebar">
-      <div class="sb-logo"><span class="ico">🧾</span><div><h2>Forfettario</h2><p>Gestione fiscale</p></div></div>
+      <div class="sb-logo"><span class="ico">🧾</span><div><h2>ForfettarioApp</h2><p>Peppone Tek</p></div></div>
       <div class="sb-user"><div class="uname" id="sb-name">—</div><div class="uemail" id="sb-email">—</div><span class="rbadge" id="sb-role">—</span></div>
       <div class="sb-sect">Menu</div>
       <button class="nav-btn active" id="nav-calcolo" onclick="showView('calcolo')"><span class="ni">✏️</span> Nuovo calcolo</button>
@@ -463,6 +539,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <button class="nav-btn" id="nav-grafici" onclick="showView('grafici')"><span class="ni">📈</span> Statistiche</button>
       <button class="nav-btn" id="nav-calendario" onclick="showView('calendario')"><span class="ni">📅</span> Calendario</button>
       <button class="nav-btn" id="nav-confronto" onclick="showView('confronto')"><span class="ni">📊</span> Confronto anni</button>
+      <button class="nav-btn" id="nav-f24" onclick="showView('f24')"><span class="ni">📑</span> F24 Prec.</button>
       <button class="nav-btn" id="nav-admin" style="display:none" onclick="showView('admin')"><span class="ni">🛡️</span> Pannello Admin</button>
       <div class="sb-sect" style="margin-top:6px">Anni salvati</div>
       <div class="hist-list" id="hist-list"><div style="padding:8px 10px;font-size:11px;color:var(--t3)">Nessun anno</div></div>
@@ -482,6 +559,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <div class="view active" id="view-calcolo">
         <div class="ph"><div><h1>Nuovo calcolo anno fiscale</h1><p>Inserisci i dati · sincronizzato con il cloud</p></div></div>
         <div class="prev-banner" id="prev-banner"><span style="font-size:16px;flex-shrink:0">🔗</span><p id="prev-txt"></p></div>
+        <div class="past-banner" id="past-banner">🗄️ <strong>Anno Completo e Archiviato:</strong> hai selezionato un anno fiscale già concluso. Il mese è fissato a Dicembre e lo stato sarà automaticamente "Archiviato". Spunta "1° Anno attività" se vuoi inserire un mese specifico.</div>
         <!-- STEP 1 -->
         <div class="card">
           <div class="card-t"><span class="step">1</span> Anno fiscale, ATECO e regime</div>
@@ -545,7 +623,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
                 <span class="isuf">imp.</span>
               </div>
             </div>
-            <div class="fg"><label>Mese di riferimento (per proiezione)</label>
+            <div class="fg" id="mese-wrap"><label>Mese di riferimento (per proiezione)</label>
               <select id="f-mese">
                 <option value="1">Gennaio</option><option value="2">Febbraio</option><option value="3">Marzo</option>
                 <option value="4">Aprile</option><option value="5">Maggio</option><option value="6">Giugno</option>
@@ -556,7 +634,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
           </div>
           <div class="g2">
             <div class="fg"><label class="cbg"><input type="checkbox" id="f-deduci" checked><span>Deduci INPS dal reddito (art.1 c.64 L.190/2014)</span></label></div>
-            <div class="fg"><label class="cbg"><input type="checkbox" id="f-noaoc"><span>Primo anno attività — nessun acconto dovuto</span></label></div>
+            <div class="fg"><label class="cbg"><input type="checkbox" id="f-noaoc" onchange="onAnnoChange()"><span>Primo anno attività — nessun acconto dovuto</span></label></div>
           </div>
           <div class="fg"><label>Note per il fascicolo (visibili in archivio e in stampa)</label>
             <textarea id="f-note" placeholder="Note, accordi con il commercialista, osservazioni..."></textarea>
@@ -587,7 +665,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
             <div class="btn-row">
               <button class="btn btn-gr" id="btn-salva" onclick="salvaAnno()">☁️ Salva nel cloud</button>
               <button class="btn btn-ol" onclick="exportPDF(null)">📄 Esporta PDF</button>
-              <button class="btn btn-ol" onclick="window.print()">🖨️ Stampa fascicolo</button>
+              <button class="btn btn-ol" onclick="printAnno(null)">🖨️ Stampa fascicolo</button>
             </div>
           </div>
           <div class="fnote">⚠️ Strumento informativo · L.190/2014 e succ. modifiche · Aliquote INPS 2024 · Consulta sempre il tuo commercialista.</div>
@@ -608,7 +686,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 
       <!-- CALENDARIO -->
       <div class="view" id="view-calendario">
-        <div class="ph"><div><h1>📅 Calendario Scadenze</h1><p>Scadenzario fiscale da tutti gli anni salvati</p></div></div>
+        <div class="ph"><div><h1>📅 Calendario Scadenze</h1><p>Scadenzario anno corrente · anni archiviati esclusi</p></div></div>
         <div id="cal-cnt"><div class="no-data-state"><div class="nds-ico">📅</div><h3>Nessun dato</h3><p>Salva almeno un anno fiscale per vedere le scadenze.</p></div></div>
       </div>
 
@@ -624,15 +702,21 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <div id="conf-cnt"></div>
       </div>
 
+      <!-- F24 ANNI PRECEDENTI -->
+      <div class="view" id="view-f24">
+        <div class="ph"><div><h1>📑 F24 Anni Precedenti</h1><p>Dettaglio imposte anni archiviati · confronto immediato</p></div></div>
+        <div id="f24-cnt"><div class="loading"><div class="spinner"></div><span>Caricamento...</span></div></div>
+      </div>
+
       <!-- ADMIN -->
       <div class="view" id="view-admin">
         <div class="ph">
-          <div><h1>🛡️ Pannello Amministratore</h1><p>Gestione clienti · accesso riservato</p></div>
+          <div><h1>🛡️ Pannello Amministratore</h1><p>Anagrafica clienti · Peppone Tek</p></div>
           <button class="btn btn-sm btn-gr" onclick="exportCSV()">📊 Esporta CSV</button>
         </div>
         <div class="sg sg4" id="adm-stats" style="margin-bottom:14px"></div>
         <div class="card">
-          <div class="card-t">Utenti registrati</div>
+          <div class="card-t">Clienti registrati — solo dati anagrafici</div>
           <input class="adm-search" id="adm-search" type="text" placeholder="🔍 Cerca per nome, email o ATECO..." oninput="filterAdmin(this.value)">
           <div id="adm-tbl"><div class="loading"><div class="spinner"></div><span>Caricamento...</span></div></div>
         </div>
@@ -661,6 +745,26 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user');document.getElementById('imp-file').click()">⬆ Importa backup JSON</button>
       <button class="btn btn-re btn-sm btn-full" onclick="doLogout()">🚪 Disconnetti</button>
       <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user')" style="color:var(--t3)">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AGGIORNA BOZZA -->
+<div class="modal-bg" id="modal-bozza">
+  <div class="modal-box wide">
+    <h3>🔄 Aggiorna Imponibile</h3>
+    <p id="bozza-desc" style="color:var(--t2);font-size:13px;line-height:1.6;margin-bottom:14px">Inserisci il nuovo fatturato imponibile. Tutti i valori verranno ricalcolati e salvati nel cloud.</p>
+    <div class="fg"><label>Nuovo fatturato imponibile (€)</label>
+      <div class="iw"><span class="ipre">€</span>
+        <input type="number" id="bozza-fatt" placeholder="0.00" min="0" step="0.01" inputmode="decimal" style="padding-left:26px">
+      </div>
+    </div>
+    <div class="fg"><label>Aggiornamento note (opzionale)</label>
+      <textarea id="bozza-note" placeholder="Es: dati aggiornati a giugno..." style="min-height:50px"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-gr btn-sm" onclick="confAggiornaBozza()">🔄 Ricalcola e Salva</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-bozza')">Annulla</button>
     </div>
   </div>
 </div>
@@ -748,6 +852,7 @@ let _last    = null; // ultimo calcolo
 let _delId   = null; // UUID riga da eliminare
 let _admData = [];   // per export CSV
 let _ready   = false;// anti-doppio init
+let _bozzaRow = null; // riga bozza da aggiornare
 
 /* ============================================================
    UTILITY
@@ -864,6 +969,18 @@ async function doForgotPw() {
   toast('📧 Email di recupero inviata! Controlla la posta.', 'ok', 6000);
 }
 
+async function doGoogleLogin() {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.href,
+      queryParams: { access_type: 'offline', prompt: 'select_account' }
+    }
+  });
+  if (error) toast('❌ Errore Google: ' + error.message, 'err');
+  // onAuthStateChange gestisce la sessione al ritorno dal redirect
+}
+
 async function doLogout() {
   closeModal('modal-user');
   await sb.auth.signOut();
@@ -888,7 +1005,22 @@ async function initApp(user) {
     if (!error && data) { prof = data; break; }
     await new Promise(r => setTimeout(r, 800));
   }
-  _profile = prof || { id:user.id, nome:'', cognome:'', email:user.email||'', ruolo:'cliente', ateco:'' };
+  // Per utenti Google il nome arriva da user.user_metadata
+  const meta = user.user_metadata || {};
+  if (!prof && meta.full_name) {
+    const parts = meta.full_name.split(' ');
+    const newProf = {
+      id: user.id,
+      nome: parts[0] || '',
+      cognome: parts.slice(1).join(' ') || '',
+      email: user.email || '',
+      ruolo: 'cliente',
+      ateco: ''
+    };
+    await sb.from('profiles').upsert(newProf, { onConflict: 'id' });
+    prof = newProf;
+  }
+  _profile = prof || { id:user.id, nome: meta.given_name||'', cognome: meta.family_name||'', email:user.email||'', ruolo:'cliente', ateco:'' };
 
   // UI utente
   const nomeCompleto = [_profile.nome, _profile.cognome].filter(Boolean).join(' ') || user.email;
@@ -1013,21 +1145,50 @@ function onInpsTipoChange() {
 }
 
 /* ============================================================
-   ANNO CHANGE — banner anno precedente
+   ANNO CHANGE — vincoli temporali + banner anno precedente
    ============================================================ */
 function onAnnoChange() {
-  const anno   = parseInt(g('f-anno').value);
+  const anno    = parseInt(g('f-anno').value);
+  const annoNow = new Date().getFullYear();
+  const isPast  = anno < annoNow;
+  const isFirst = g('f-noaoc') && g('f-noaoc').checked;
+
+  // VINCOLO TEMPORALE: anno passato = archiviato, nasconde mese
+  const meseWrap = g('mese-wrap');
+  if (meseWrap) {
+    if (isPast && !isFirst) {
+      meseWrap.style.display = 'none';
+      if (g('f-mese')) g('f-mese').value = '12'; // anno completo
+    } else {
+      meseWrap.style.display = '';
+    }
+  }
+
+  // Banner anno passato
+  const pastBanner = g('past-banner');
+  if (pastBanner) {
+    if (isPast) pastBanner.classList.add('show');
+    else        pastBanner.classList.remove('show');
+  }
+
+  // Auto-imposta stato "archiviato" per anni passati
+  const statoSel = g('f-stato');
+  if (statoSel && isPast) statoSel.value = 'archiviato';
+
+  // Banner anno precedente trovato in cloud
   const prev   = _anni[anno - 1];
   const banner = g('prev-banner');
   const txt    = g('prev-txt');
-  if (prev) {
-    txt.innerHTML =
-      `<strong>✅ Anno ${anno-1} trovato in cloud</strong><br>` +
-      `Imposta sostitutiva: <strong>${fmt(prev.imposta_sost)}</strong> · INPS: <strong>${fmt(prev.contributi_inps)}</strong><br>` +
-      `Gli acconti per il ${anno+1} saranno calcolati sul tuo dato reale.`;
-    banner.classList.add('show');
-  } else {
-    banner.classList.remove('show');
+  if (txt && banner) {
+    if (prev) {
+      txt.innerHTML =
+        `<strong>✅ Anno ${anno-1} trovato in cloud</strong><br>` +
+        `Imposta sostitutiva: <strong>${fmt(prev.imposta_sost)}</strong> · INPS: <strong>${fmt(prev.contributi_inps)}</strong><br>` +
+        `Gli acconti per il ${anno+1} saranno calcolati sul dato reale.`;
+      banner.classList.add('show');
+    } else {
+      banner.classList.remove('show');
+    }
   }
 }
 
@@ -1088,6 +1249,10 @@ function calcola() {
   const imp_sost  = r_imp * aliq;
   const tot_oneri = imp_sost + c_inps;
 
+  // STORICO — obbligo 3 anni per previsione F24 affidabile
+  const anniSalvati = Object.keys(_anni).length;
+  const storicoOk   = anniSalvati >= 3;
+
   // ACCONTI (metodo storico su anno corrente)
   let acc1 = 0, acc2 = 0, acc_tot = 0, acc_note = '';
   const doAcc = !noAoc && imp_sost > S_ACC;
@@ -1127,10 +1292,12 @@ function calcola() {
     acconto_tot:     acc_tot,
     acconto_note:    acc_note,
     // solo display (non in DB)
-    _proiez:   proiez,
-    _form:     inps_form,
-    _prev:     prevAnno,
-    _doAcc:    doAcc
+    _proiez:      proiez,
+    _form:        inps_form,
+    _prev:        prevAnno,
+    _doAcc:       doAcc,
+    _storicoOk:   storicoOk,
+    _anniSalvati: anniSalvati
   };
 
   renderRisultati(_last);
@@ -1227,8 +1394,14 @@ function renderRisultati(c) {
       </div>
     </div>`;
 
-  // — Scadenzario —
+  // — Scadenzario + avviso storico —
   let sc = '';
+  if (!c._storicoOk) {
+    sc += `<div class="storico-warn">
+      <h4>⚠️ Storico Insufficiente — Previsione F24 Limitata</h4>
+      <p>Hai <strong>${c._anniSalvati}/3 anni</strong> salvati. Per una previsione degli F24 futuri basata su dati storici reali, salva <strong>almeno 3 anni fiscali</strong>. Le cifre sono stime provvisorie.</p>
+    </div>`;
+  }
   sc += tline('warn','⇒', `30 giugno ${c.anno+1} (oppure luglio +0,40%)`,
     `Saldo imposta sostitutiva ${c.anno}`, fmt(c.imposta_sost), 'Modello F24 · Codice tributo 1792', true);
 
@@ -1334,11 +1507,12 @@ function showView(name) {
   const nd = g('nav-' + name), nb = g('bn-' + name);
   if (nd) nd.classList.add('active');
   if (nb) nb.classList.add('active');
-  const titles = { calcolo:'Calcolo', archivio:'Archivio', confronto:'Confronto', admin:'Admin', grafici:'Statistiche', calendario:'Scadenze' };
-  g('mob-title').textContent = titles[name] || 'Forfettario';
+  const titles = { calcolo:'Calcolo', archivio:'Archivio', confronto:'Confronto', admin:'Admin', grafici:'Statistiche', calendario:'Scadenze', f24:'F24 Prec.' };
+  g('mob-title').textContent = titles[name] || 'ForfettarioApp';
   if (name === 'archivio')   renderArchivio();
   if (name === 'grafici')    renderGrafici();
   if (name === 'calendario') renderCalendario();
+  if (name === 'f24')        renderF24Precedenti();
   if (name === 'confronto')  { fillConfSelectors(); renderConfronto(); }
   if (name === 'admin')      loadAdmin();
   window.scrollTo(0, 0);
@@ -1389,13 +1563,53 @@ function renderArchivio() {
   }
   el.innerHTML = anni.map(d => {
     const prev   = _anni[d.anno - 1];
-    let diffH    = '';
+    let diffH = '';
+    let archBars = '';
     if (prev) {
-      const diff = d.totale_oneri - prev.totale_oneri;
-      const sign = diff > 0 ? '+' : '';
-      const cls  = diff > 0 ? 'diff-up' : diff < 0 ? 'diff-dn' : 'diff-eq';
-      const ic   = diff > 0 ? '↑' : diff < 0 ? '↓' : '=';
-      diffH = `<span class="diff ${cls}">${ic}${sign}${fmt(Math.abs(diff))}</span>`;
+      const diff     = d.totale_oneri - prev.totale_oneri;
+      const diffFatt = d.fatturato - prev.fatturato;
+      const pct      = prev.totale_oneri > 0 ? ((diff / prev.totale_oneri)*100).toFixed(1) : 0;
+      const pctFatt  = prev.fatturato > 0 ? ((diffFatt / prev.fatturato)*100).toFixed(1) : 0;
+      const sign     = diff > 0 ? '+' : '';
+      const cls      = diff > 0 ? 'diff-up' : diff < 0 ? 'diff-dn' : 'diff-eq';
+      const ic       = diff > 0 ? '↑' : diff < 0 ? '↓' : '=';
+      const clsF     = diffFatt > 0 ? 'diff-up' : diffFatt < 0 ? 'diff-dn' : 'diff-eq';
+      const icF      = diffFatt > 0 ? '↑' : diffFatt < 0 ? '↓' : '=';
+      diffH = `<span class="diff ${cls}" title="Var. oneri vs ${prev.anno}">${ic}${sign}${pct}%</span>`;
+      archBars = `
+        <div class="arch-bars">
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Fatturato</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:100%;background:var(--ac)"></div></div>
+            <div class="arch-bar-val">${fmt(d.fatturato)}</div>
+            <span class="arch-diff-badge ${clsF}" style="color:${diffFatt>0?'var(--re)':diffFatt<0?'var(--gr)':'var(--t3)'};border-color:currentColor;background:var(--s2)">${icF}${pctFatt}%</span>
+          </div>
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Oneri tot.</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:${Math.min((d.totale_oneri/d.fatturato)*100,100).toFixed(0)}%;background:var(--re)"></div></div>
+            <div class="arch-bar-val">${fmt(d.totale_oneri)}</div>
+            <span class="arch-diff-badge ${cls}" style="color:${diff>0?'var(--re)':diff<0?'var(--gr)':'var(--t3)'};border-color:currentColor;background:var(--s2)">${ic}${sign}${pct}%</span>
+          </div>
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Netto disp.</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:${Math.min(((d.fatturato-d.totale_oneri)/d.fatturato)*100,100).toFixed(0)}%;background:var(--gr)"></div></div>
+            <div class="arch-bar-val">${fmt(d.fatturato-d.totale_oneri)}</div>
+          </div>
+        </div>`;
+    } else {
+      archBars = `
+        <div class="arch-bars">
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Fatturato</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:100%;background:var(--ac)"></div></div>
+            <div class="arch-bar-val">${fmt(d.fatturato)}</div>
+          </div>
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Oneri tot.</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:${Math.min((d.totale_oneri/d.fatturato)*100,100).toFixed(0)}%;background:var(--re)"></div></div>
+            <div class="arch-bar-val">${fmt(d.totale_oneri)}</div>
+          </div>
+        </div>`;
     }
     const sal = new Date(d.salvato_il || d.created_at).toLocaleDateString('it-IT');
     const s   = d.stato || 'bozza';
@@ -1426,6 +1640,7 @@ function renderArchivio() {
           <div class="mini-stat" style="border-color:var(--ac2)"><div class="ml">Acconto ${d.anno+1}</div><div class="mv">${fmt(d.acconto_tot)}</div></div>
           <div class="mini-stat"><div class="ml">Rate 1ª / 2ª</div><div class="mv">${d.acconto_1>0?fmt(d.acconto_1):'—'} / ${fmt(d.acconto_2)}</div></div>
         </div>
+        ${archBars}
         <div class="bdt">
           ${row('var(--ac)','Fatturato imponibile',fmt(d.fatturato))}
           ${rowF('var(--gr)','Reddito forfettario',`${fmt(d.fatturato)}×${(d.coefficiente*100).toFixed(0)}%`,fmt(d.reddito_forf))}
@@ -1436,9 +1651,10 @@ function renderArchivio() {
         ${d.note ? `<div class="al al-i" style="margin-top:8px"><span class="ai">📋</span><span style="font-style:italic">${sanitizeHTML(d.note)}</span></div>` : ''}
         <div style="font-size:11px;color:var(--t3);margin-top:8px">☁️ Salvato il ${sal} · Stato: <strong>${s}</strong> · ${d.acconto_note}</div>
         <div class="btn-row">
-          <button class="btn btn-sm btn-ol" onclick="exportPDF(${d.anno})">📄 Esporta PDF</button>
-          <button class="btn btn-sm btn-ol" onclick="window.print()">🖨️ Stampa</button>
-          <button class="btn btn-sm btn-ye" onclick="cambiaStato('${d.id}',${d.anno})">✏️ Cambia stato</button>
+          <button class="btn btn-sm btn-ol" onclick="exportPDF(${d.anno})">📄 PDF</button>
+          <button class="btn btn-sm btn-ol" onclick="printAnno(${d.anno})">🖨️ Stampa</button>
+          ${s === 'bozza' ? `<button class="btn btn-sm btn-ye" onclick="apriAggiornaBozza('${d.id}',${d.anno})">🔄 Aggiorna Imponibile</button>` : ''}
+          <button class="btn btn-sm btn-ol" style="color:var(--t3)" onclick="cambiaStato('${d.id}',${d.anno})">✏️ Stato</button>
           <button class="btn btn-sm btn-re btn-ol" onclick="richiediDel('${d.id}',${d.anno})">🗑️ Elimina</button>
         </div>
       </div>
@@ -1783,7 +1999,7 @@ function exportPDF(annoArg) {
   doc.setFontSize(7); doc.setFont('helvetica','normal');
   doc.setTextColor(...C.t3);
   doc.text('⚠️ Strumento informativo · L.190/2014 e succ. modifiche · Aliquote INPS 2024 · Consulta sempre il tuo commercialista.', W/2, 287, { align:'center' });
-  doc.text(`Forfettario App · ${new Date().toLocaleDateString('it-IT')}`, W/2, 292, { align:'center' });
+  doc.text(`ForfettarioApp · Peppone Tek · ${new Date().toLocaleDateString('it-IT')}`, W/2, 292, { align:'center' });
 
   doc.save(`forfettario_${d.anno}_${(_profile?.cognome||'').toLowerCase()||'fascicolo'}.pdf`);
   toast('✅ PDF esportato correttamente', 'ok');
@@ -1932,7 +2148,11 @@ function renderGrafici() {
    CALENDARIO SCADENZE FISCALI
    ============================================================ */
 function renderCalendario() {
-  const anni = Object.values(_anni).sort((a,b) => b.anno - a.anno);
+  // Solo anni NON archiviati + anno corrente
+  const annoNowCal = new Date().getFullYear();
+  const anni = Object.values(_anni)
+    .filter(a => a.stato !== 'archiviato' || a.anno >= annoNowCal)
+    .sort((a,b) => b.anno - a.anno);
   const el   = g('cal-cnt');
 
   if (!anni.length) {
@@ -2030,89 +2250,54 @@ async function loadAdmin() {
     g('view-admin').innerHTML = '<div class="al al-d" style="margin:20px"><span class="ai">🚫</span><span>Accesso riservato agli amministratori.</span></div>';
     return;
   }
-  g('adm-tbl').innerHTML = '<div class="loading"><div class="spinner"></div><span>Caricamento utenti...</span></div>';
+  g('adm-tbl').innerHTML = '<div class="loading"><div class="spinner"></div><span>Caricamento...</span></div>';
 
+  // ⚠️  Admin vede SOLO dati anagrafici — nessun dato fiscale
   const { data: profiles, error: pe } = await sb
     .from('profiles')
-    .select('*')
+    .select('id, nome, cognome, email, ruolo, ateco, created_at')
     .order('created_at', { ascending: false });
   if (pe) { g('adm-tbl').innerHTML = `<div class="al al-d"><span>Errore: ${sanitizeHTML(pe.message)}</span></div>`; return; }
 
-  const { data: anniAll } = await sb
-    .from('anni_fiscali')
-    .select('*')
-    .order('anno', { ascending: false });
+  _admData = profiles || [];
 
-  _admData    = profiles || [];
-  _admAnniAll = anniAll  || [];
-
-  // Stats
-  const totU = profiles.length;
-  const cliU = profiles.filter(p => p.ruolo === 'cliente').length;
-  const admU = totU - cliU;
-  const totA = _admAnniAll.length;
-  const totFatt = _admAnniAll.reduce((s,a) => s + (+a.fatturato||0), 0);
+  const totU = _admData.length;
+  const cliU = _admData.filter(p => p.ruolo === 'cliente').length;
 
   g('adm-stats').innerHTML = `
     <div class="sc ac"><div class="sl">Utenti totali</div><div class="sv">${totU}</div></div>
-    <div class="sc"><div class="sl">Clienti</div><div class="sv">${cliU}</div></div>
-    <div class="sc gc"><div class="sl">Anni salvati</div><div class="sv">${totA}</div></div>
-    <div class="sc yc"><div class="sl">Fatturato totale</div><div class="sv" style="font-size:13px">${fmt(totFatt)}</div></div>`;
+    <div class="sc gc"><div class="sl">Clienti</div><div class="sv">${cliU}</div></div>
+    <div class="sc yc"><div class="sl">Amministratori</div><div class="sv">${totU - cliU}</div></div>
+    <div class="sc"><div class="sl">Peppone Tek</div><div class="sv" style="font-size:11px;color:var(--ac)">ForfettarioApp</div></div>`;
 
   renderAdminUsers(_admData);
 }
 
-let _admAnniAll = [];
+let _admAnniAll = []; // mantenuto per compatibilità interna
 
 function renderAdminUsers(profiles) {
   if (!profiles.length) {
-    g('adm-tbl').innerHTML = '<div class="loading"><span>Nessun utente trovato.</span></div>';
+    g('adm-tbl').innerHTML = '<div style="text-align:center;padding:24px;color:var(--t2)">Nessun utente trovato.</div>';
     return;
   }
   g('adm-tbl').innerHTML = profiles.map(p => {
-    const ua  = _admAnniAll.filter(a => a.user_id === p.id).sort((a,b)=>b.anno-a.anno);
-    const ult = ua.length ? ua[0].anno : '—';
     const isc = new Date(p.created_at).toLocaleDateString('it-IT');
-    const s   = p.ruolo === 'admin' ? 'rb-admin' : 'rb-definitivo';
-    const totFattU = ua.reduce((s,a)=>s+(+a.fatturato||0),0);
-
-    // Dettaglio anni del singolo utente
-    const anniHTML = ua.length ? ua.map(a => `
-      <div class="adm-anno-item">
-        <div class="aa-y">${a.anno}</div>
-        <div class="aa-l">Fatturato</div><div class="aa-v" style="color:var(--ac)">${fmt(a.fatturato)}</div>
-        <div class="aa-l" style="margin-top:3px">Imposta sost.</div><div class="aa-v" style="color:var(--re)">${fmt(a.imposta_sost)}</div>
-        <div class="aa-l" style="margin-top:3px">INPS</div><div class="aa-v" style="color:var(--pu)">${fmt(a.contributi_inps)}</div>
-        <div class="aa-l" style="margin-top:3px">Netto</div><div class="aa-v" style="color:var(--gr)">${fmt(a.fatturato-a.totale_oneri)}</div>
-        <div style="margin-top:5px"><span class="rbadge rb-${a.stato||'bozza'}">${a.stato||'bozza'}</span></div>
-      </div>`).join('') : '<div style="color:var(--t3);font-size:12px;padding:8px 0">Nessun anno salvato.</div>';
-
-    return `<div class="adm-user-card">
-      <div class="adm-user-h" onclick="togAdmUser('${p.id}')">
-        <div class="adm-user-info">
-          <div class="adm-user-name">${sanitizeHTML(p.nome||'—')} ${sanitizeHTML(p.cognome||'')}
-            <span class="rbadge ${s}" style="margin-left:6px">${p.ruolo}</span>
-          </div>
-          <div class="adm-user-meta">${sanitizeHTML(p.email)} · ATECO: ${sanitizeHTML(p.ateco||'—')} · Iscritto: ${isc}</div>
+    const roleClass = p.ruolo === 'admin' ? 'rb-admin' : 'rb-cliente';
+    const iniziale  = ((p.nome || p.email || '?').charAt(0)).toUpperCase();
+    return `<div class="adm-cl-card">
+      <div class="adm-cl-av">${iniziale}</div>
+      <div class="adm-cl-info">
+        <div class="adm-cl-name">
+          ${sanitizeHTML(p.nome||'—')} ${sanitizeHTML(p.cognome||'')}
+          <span class="rbadge ${roleClass}" style="margin-left:6px">${p.ruolo}</span>
         </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-family:monospace;font-weight:700;font-size:13px;color:var(--ac)">${ua.length} anni</div>
-          <div style="font-size:11px;color:var(--t3)">ult. ${ult}</div>
-          ${totFattU>0?`<div style="font-size:11px;color:var(--gr)">${fmt(totFattU)} tot.</div>`:''}
+        <div class="adm-cl-meta">
+          📧 ${sanitizeHTML(p.email)}<br>
+          📋 ATECO: <strong>${sanitizeHTML(p.ateco||'—')}</strong> · Iscritto: ${isc}
         </div>
-        <span style="color:var(--t3);margin-left:8px">›</span>
-      </div>
-      <div class="adm-user-body" id="adm-u-${p.id}">
-        <div style="font-size:11px;color:var(--t2);margin-bottom:8px">Storico anni fiscali di ${sanitizeHTML(p.nome||p.email)}:</div>
-        <div class="adm-anni-list">${anniHTML}</div>
       </div>
     </div>`;
   }).join('');
-}
-
-function togAdmUser(id) {
-  const el = g('adm-u-' + id);
-  if (el) el.classList.toggle('open');
 }
 
 function filterAdmin(query) {
@@ -2133,16 +2318,17 @@ function filterAdmin(query) {
    ============================================================ */
 function exportCSV() {
   if (!_admData.length) { toast('Carica prima il pannello admin', 'err'); return; }
+  // Esporta solo dati anagrafici (nessun dato fiscale)
   const header = 'Nome,Cognome,Email,Ruolo,ATECO,Iscritto il\n';
   const rows   = _admData.map(p =>
-    `"${p.nome||''}","${p.cognome||''}","${p.email}","${p.ruolo}","${p.ateco||''}","${new Date(p.created_at).toLocaleDateString('it-IT')}"`
+    `"${(p.nome||'').replace(/"/g,'""')}","${(p.cognome||'').replace(/"/g,'""')}","${p.email}","${p.ruolo}","${p.ateco||''}","${new Date(p.created_at).toLocaleDateString('it-IT')}"`
   ).join('\n');
   const blob = new Blob(['\ufeff' + header + rows], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = `clienti_forfettario_${new Date().toISOString().slice(0,10)}.csv`;
+  a.href = url; a.download = `anagrafica_peppone_${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
-  toast('✅ CSV esportato', 'ok');
+  toast('✅ CSV anagrafica esportato', 'ok');
 }
 
 function exportJSON() {
@@ -2180,6 +2366,194 @@ async function importJSON(e) {
   };
   reader.readAsText(file);
   e.target.value = ''; // Reset input per permettere re-import dello stesso file
+}
+
+
+/* ============================================================
+   STAMPA SINGOLO ANNO
+   ============================================================ */
+function printAnno(annoArg) {
+  // Se annoArg = null usa il calcolo corrente (view calcolo)
+  // Se annoArg = numero usa i dati dall'archivio
+  let targetId;
+  if (annoArg === null || annoArg === undefined) {
+    // Stampa la view calcolo corrente
+    targetId = null;
+  } else {
+    // Apri l'ayc-body dell'anno se non è aperto, poi stampa
+    const body = g('ayc-b-' + annoArg);
+    if (body) {
+      // Marca tutti gli altri come "not-printing"
+      document.querySelectorAll('.ayc').forEach(el => el.classList.add('not-printing'));
+      const parent = body.closest('.ayc');
+      if (parent) parent.classList.remove('not-printing');
+      body.classList.add('open', 'print-open');
+    }
+  }
+  window.print();
+  // Rimuovi classi di stampa dopo
+  setTimeout(() => {
+    document.querySelectorAll('.ayc').forEach(el => el.classList.remove('not-printing'));
+    document.querySelectorAll('.ayc-body').forEach(el => el.classList.remove('print-open'));
+  }, 1000);
+}
+
+/* ============================================================
+   AGGIORNA IMPONIBILE BOZZA
+   ============================================================ */
+function apriAggiornaBozza(rowId, anno) {
+  _bozzaRow = { id: rowId, anno };
+  const d = _anni[anno];
+  g('bozza-desc').textContent = `Anno ${anno} — Fatturato attuale: ${fmt(d?.fatturato||0)}. Inserisci il nuovo imponibile per ricalcolare.`;
+  g('bozza-fatt').value = d?.fatturato || '';
+  g('bozza-note').value = d?.note || '';
+  openModal('modal-bozza');
+}
+
+async function confAggiornaBozza() {
+  if (!_bozzaRow) return;
+  const { id, anno } = _bozzaRow;
+  const d = _anni[anno];
+  if (!d) { toast('Anno non trovato', 'err'); return; }
+
+  const newFatt = parseFloat(g('bozza-fatt').value);
+  if (!newFatt || newFatt <= 0) { toast('⚠️ Inserisci un fatturato valido', 'err'); return; }
+  if (newFatt > 9999999) { toast('⚠️ Fatturato troppo elevato', 'err'); return; }
+  const newNote = g('bozza-note').value.trim();
+
+  // Ricalcola tutti i valori
+  const gi    = d.gruppo_idx;
+  const gr    = GRUPPI[gi];
+  const coeff = gr.coeff;
+  const aliq  = d.aliquota;
+  const tipo  = d.inps_tipo;
+  const mese  = d.mese_rif || 12;
+
+  const r_forf = newFatt * coeff;
+  let c_inps = 0;
+  if (tipo === 'gs' || tipo === 'gs-pen') {
+    c_inps = r_forf * INPS_INFO[tipo].a;
+  } else if (tipo === 'art' || tipo === 'com') {
+    const info = INPS_INFO[tipo];
+    c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+  } else if (tipo === 'cassa') {
+    c_inps = r_forf * ((d.cassa_pct || 14.5) / 100);
+  }
+
+  const r_imp     = d.deduci_inps ? Math.max(0, r_forf - c_inps) : r_forf;
+  const imp_sost  = r_imp * aliq;
+  const tot_oneri = imp_sost + c_inps;
+
+  let acc1 = 0, acc2 = 0, acc_tot = 0;
+  if (imp_sost > S_ACC) {
+    acc_tot = imp_sost;
+    if (acc_tot > S_DUE) { acc1 = acc_tot * .4; acc2 = acc_tot * .6; }
+    else { acc2 = acc_tot; }
+  }
+
+  const updates = {
+    fatturato:       newFatt,
+    reddito_forf:    r_forf,
+    contributi_inps: c_inps,
+    reddito_imp:     r_imp,
+    imposta_sost:    imp_sost,
+    totale_oneri:    tot_oneri,
+    acconto_1:       acc1,
+    acconto_2:       acc2,
+    acconto_tot:     acc_tot,
+    note:            newNote || d.note,
+    updated_at:      new Date().toISOString()
+  };
+
+  setSync('busy', 'Aggiornamento...');
+  const { error } = await sb.from('anni_fiscali')
+    .update(updates).eq('id', id).eq('user_id', _user.id);
+
+  if (error) { setSync('err', 'Errore'); toast('❌ Errore: ' + error.message, 'err'); return; }
+
+  // Aggiorna cache locale
+  Object.assign(_anni[anno], updates);
+  closeModal('modal-bozza');
+  _bozzaRow = null;
+  setSync('ok', 'Sincronizzato');
+  renderSidebar(); renderArchivio();
+  toast(`✅ Anno ${anno} aggiornato con fatturato ${fmt(newFatt)}`, 'ok');
+}
+
+/* ============================================================
+   F24 ANNI PRECEDENTI — view dedicata anni archiviati
+   ============================================================ */
+function renderF24Precedenti() {
+  const el = g('f24-cnt');
+  const archiviati = Object.values(_anni)
+    .filter(a => a.stato === 'archiviato')
+    .sort((a, b) => b.anno - a.anno);
+
+  if (!archiviati.length) {
+    el.innerHTML = `<div class="no-data-state">
+      <div class="nds-ico">📑</div>
+      <h3>Nessun anno archiviato</h3>
+      <p>Gli anni in stato "Archiviato" compariranno qui separati per un confronto immediato degli F24.</p>
+      <button class="btn" style="margin-top:14px" onclick="showView('archivio')">Vai all'Archivio</button>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="al al-i" style="margin-bottom:14px">
+      <span class="ai">📋</span>
+      <span>Dati F24 degli anni archiviati. Per ogni anno: saldo imposta sostitutiva + acconti + INPS. Usa <strong>Esporta PDF</strong> per stamparli singolarmente.</span>
+    </div>
+    ${archiviati.map((d, idx) => {
+      const prev = archiviati[idx + 1]; // anno precedente in lista
+      let diffTag = '';
+      if (prev) {
+        const diffOneri = d.totale_oneri - prev.totale_oneri;
+        const pct = prev.totale_oneri > 0 ? ((diffOneri/prev.totale_oneri)*100).toFixed(1) : 0;
+        const cls = diffOneri > 0 ? 'diff-up' : diffOneri < 0 ? 'diff-dn' : 'diff-eq';
+        const ic  = diffOneri > 0 ? '↑' : diffOneri < 0 ? '↓' : '=';
+        diffTag = `<span class="diff ${cls}" title="vs ${prev.anno}">${ic}${pct}%</span>`;
+      }
+      return `<div class="f24-card">
+        <div class="f24-card-h">
+          <div>
+            <div class="f24y">📑 Anno ${d.anno}</div>
+            <div style="font-size:11px;color:var(--t2);margin-top:2px">${d.ateco||'—'} · ${d.gruppo_nome||'—'}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${diffTag}
+            <span class="rbadge rb-archiviato">archiviato</span>
+            <button class="btn btn-sm btn-ol no-print" onclick="exportPDF(${d.anno})">📄 PDF</button>
+          </div>
+        </div>
+        <div class="f24-card-body">
+          <div class="bdt">
+            ${row('var(--ac)','Fatturato imponibile',fmt(d.fatturato))}
+            ${row('var(--gr)','Reddito forfettario',fmt(d.reddito_forf))}
+            ${row('var(--pu)','Contributi INPS ('+d.inps_desc+')',fmt(d.contributi_inps))}
+            ${row('var(--ye)','Reddito imponibile netto',fmt(d.reddito_imp))}
+            <div class="bdr tot">
+              <span class="bl" style="color:var(--t1)"><span class="dot" style="background:var(--re)"></span>Imposta sostitutiva (${(d.aliquota*100).toFixed(0)}%)</span>
+              <span class="bv">${fmt(d.imposta_sost)}</span>
+            </div>
+          </div>
+          <div class="sg sg4" style="margin-top:12px">
+            <div class="sc rc"><div class="sl">🧾 F24 Saldo</div><div class="sv">${fmt(d.imposta_sost)}</div><div class="ss">Entro 30 giu ${d.anno+1}</div></div>
+            ${d.acconto_1 > 0 ? `
+            <div class="sc yc"><div class="sl">📋 Acconto 1ª rata</div><div class="sv">${fmt(d.acconto_1)}</div><div class="ss">30 giu ${d.anno+1} (40%)</div></div>
+            <div class="sc yc"><div class="sl">📋 Acconto 2ª rata</div><div class="sv">${fmt(d.acconto_2)}</div><div class="ss">30 nov ${d.anno+1} (60%)</div></div>
+            ` : d.acconto_2 > 0 ? `
+            <div class="sc yc"><div class="sl">📋 Acconto unico</div><div class="sv">${fmt(d.acconto_2)}</div><div class="ss">30 nov ${d.anno+1}</div></div>
+            ` : '<div class="sc"><div class="sl">📋 Acconti</div><div class="sv">—</div><div class="ss">Nessuno</div></div>'}
+            <div class="sc gc"><div class="sl">💵 Netto disp.</div><div class="sv">${fmt(d.fatturato-d.totale_oneri)}</div><div class="ss">${fmtP(((d.fatturato-d.totale_oneri)/d.fatturato)*100)}</div></div>
+          </div>
+          <div style="margin-top:10px;padding:10px 12px;background:var(--re-d);border:1px solid var(--re-b);border-radius:8px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+            <span style="color:var(--t2)">💰 Totale oneri ${d.anno}</span>
+            <span style="color:var(--re);font-family:monospace">${fmt(d.totale_oneri)}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}`;
 }
 
 /* ============================================================
