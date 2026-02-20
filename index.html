@@ -855,7 +855,6 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <label>Nuovo stato</label>
       <select id="stato-select" style="font-size:14px">
         <option value="bozza">📝 Bozza — dati provvisori</option>
-        <option value="definitivo">✅ Definitivo</option>
         <option value="archiviato">🗄️ Archiviato — anno chiuso</option>
       </select>
     </div>
@@ -1802,11 +1801,14 @@ function cambiaStato(rowId, anno) {
   const d = _anni[anno]; if (!d) return;
   _statoRow = { id: rowId, anno };
   // Pre-seleziona lo stato corrente nel dropdown
+  // "definitivo" non è più un'opzione → fallback a "bozza"
   const sel = g('stato-select');
-  if (sel) sel.value = d.stato || 'bozza';
+  const statoCorrente = d.stato || 'bozza';
+  const opzioniValide = ['bozza', 'archiviato'];
+  if (sel) sel.value = opzioniValide.includes(statoCorrente) ? statoCorrente : 'bozza';
   // Aggiorna la descrizione
   const stati_label = { bozza:'📝 Bozza', definitivo:'✅ Definitivo', archiviato:'🗄️ Archiviato' };
-  g('stato-desc').textContent = `Anno ${anno} — stato attuale: ${stati_label[d.stato||'bozza']}`;
+  g('stato-desc').textContent = `Anno ${anno} — stato attuale: ${stati_label[statoCorrente] || statoCorrente}`;
   openModal('modal-stato');
 }
 
@@ -2892,7 +2894,7 @@ async function wizNext() {
   const record = {
     user_id:         _user.id,
     anno,
-    stato:           'definitivo',   // ← sempre definitivo
+    stato:           'archiviato',  // anni precedenti → anno chiuso
     ateco:           _last.ateco,
     gruppo_idx:      _last.gruppo_idx,
     gruppo_nome:     gr.name,
