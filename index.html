@@ -708,7 +708,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
             <div class="fg"><label>Stato del calcolo</label>
               <select id="f-stato">
                 <option value="bozza">📝 Bozza — dati provvisori</option>
-                <option value="definitivo">✅ Definitivo — confermato col commercialista</option>
+                <option value="definitivo">✅ Definitivo</option>
                 <option value="archiviato">🗄️ Archiviato — anno chiuso</option>
               </select>
             </div>
@@ -855,7 +855,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <label>Nuovo stato</label>
       <select id="stato-select" style="font-size:14px">
         <option value="bozza">📝 Bozza — dati provvisori</option>
-        <option value="definitivo">✅ Definitivo — confermato col commercialista</option>
+        <option value="definitivo">✅ Definitivo</option>
         <option value="archiviato">🗄️ Archiviato — anno chiuso</option>
       </select>
     </div>
@@ -1978,190 +1978,208 @@ function validateEmail(email) {
    EXPORT PDF — Fascicolo fiscale
    ============================================================ */
 function exportPDF(annoArg) {
-  // Dati: da archivio se anno specificato, altrimenti dall'ultimo calcolo
   let d = null;
   if (annoArg !== null && annoArg !== undefined) {
     d = _anni[annoArg];
     if (!d) { toast('Anno non trovato', 'err'); return; }
   } else {
-    if (!_last) { toast('⚠️ Esegui prima il calcolo', 'err'); return; }
+    if (!_last) { toast('\u26a0\ufe0f Esegui prima il calcolo', 'err'); return; }
     d = _last;
   }
 
-  // Controlla disponibilità libreria (CDN o cache)
-  const jspdfLib = window.jspdf || (typeof jsPDF !== 'undefined' ? { jsPDF } : null);
-  if (!jspdfLib) {
-    toast('❌ Libreria PDF non caricata. Controlla la connessione e ricarica la pagina.', 'err'); return;
+  // Verifica libreria jsPDF
+  const jspdfLib = window.jspdf;
+  if (!jspdfLib || !jspdfLib.jsPDF) {
+    toast('\u274c Libreria PDF non caricata. Ricarica la pagina.', 'err'); return;
   }
   const { jsPDF } = jspdfLib;
+
+  // Sanitizzatore WinAnsi: rimuove caratteri fuori dal charset Helvetica
+  // Euro \u20AC -> EUR, em-dash \u2014 -> -, minus \u2212 -> -, smart quotes -> '
+  const ps = str => String(str)
+    .replace(/\u20AC/g, 'EUR')
+    .replace(/\u2014|\u2013/g, '-')
+    .replace(/\u2212/g, '-')
+    .replace(/\u00D7/g, 'x')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[^\x00-\xFF]/g, '?');
+
+  // Formattatore importi per PDF — solo ASCII, nessun toLocaleString
+  // toLocaleString('it-IT') in Chrome >= 106 usa \u202F come sep. migliaia
+  // quel char e' > \xFF e verrebbe convertito in '?' da ps()
+  const pf = n => {
+    const num  = Number(n) || 0;
+    const sign = num < 0 ? '-' : '';
+    const abs  = Math.abs(num).toFixed(2);
+    const [intPart, decPart] = abs.split('.');
+    const intFmt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return sign + 'EUR ' + intFmt + ',' + decPart;
+  };
+
   let doc;
-  try {
-    doc = new jsPDF({ unit:'mm', format:'a4' });
-  } catch(e) {
-    toast('❌ Errore inizializzazione PDF: ' + e.message, 'err'); return;
-  }
+  try { doc = new jsPDF({ unit:'mm', format:'a4' }); }
+  catch(e) { toast('\u274c Errore init PDF: ' + e.message, 'err'); return; }
+
   const W = 210, M = 15, RW = W - M*2;
 
-  // Palette
+  // Palette colori
   const C = {
-    bg:  [13, 17, 23],
-    s1:  [22, 27, 34],
-    bd:  [42, 49, 64],
-    ac:  [88, 166, 255],
-    gr:  [63, 185, 80],
-    re:  [248, 81, 73],
-    pu:  [188, 140, 255],
-    t1:  [230, 237, 243],
-    t2:  [139, 148, 158],
-    t3:  [110, 118, 129]
+    bg: [13,17,23], s1: [22,27,34], bd: [42,49,64],
+    ac: [88,166,255], gr: [63,185,80], re: [248,81,73],
+    pu: [188,140,255], t1: [230,237,243], t2: [139,148,158], t3: [110,118,129]
   };
 
   let y = 0;
 
-  // Sfondo pagina
-  doc.setFillColor(...C.bg);
-  doc.rect(0, 0, W, 297, 'F');
+  // === SFONDO + HEADER ===
+  doc.setFillColor(...C.bg);  doc.rect(0, 0, W, 297, 'F');
+  doc.setFillColor(...C.s1);  doc.rect(0, 0, W, 42, 'F');
+  doc.setFillColor(...C.ac);  doc.rect(0, 40, W, 2, 'F');
 
-  // Header band
-  doc.setFillColor(...C.s1);
-  doc.rect(0, 0, W, 40, 'F');
-  doc.setFillColor(...C.ac);
-  doc.rect(0, 38, W, 2, 'F');
-
-  // Logo & titolo
-  doc.setFontSize(22); doc.setFont('helvetica','bold');
+  doc.setFontSize(24); doc.setFont('helvetica','bold');
   doc.setTextColor(...C.t1);
-  doc.text('ForfettarioApp', M, 16);
+  doc.text('ForfettarioApp', M, 17);
 
-  doc.setFontSize(10); doc.setFont('helvetica','normal');
+  doc.setFontSize(9); doc.setFont('helvetica','normal');
   doc.setTextColor(...C.t2);
-  doc.text('Fascicolo Fiscale - Regime Forfettario - Peppone Tek', M, 23);
+  doc.text('Fascicolo Fiscale - Regime Forfettario - Peppone Tek', M, 24);
 
+  const nomeCliente = ps(
+    (`${_profile?.nome || ''} ${_profile?.cognome || ''}`.trim()) || (_user?.email || '')
+  );
   doc.setFontSize(9);
-  doc.text(`${_profile?.nome || ''} ${_profile?.cognome || ''}`.trim() || (_user?.email || ''), M, 30);
-  doc.text(`Generato il ${new Date().toLocaleDateString('it-IT')}`, W - M, 30, { align:'right' });
+  doc.text(nomeCliente, M, 32);
+  doc.text(`Generato il ${new Date().toLocaleDateString('it-IT')}`, W-M, 32, { align:'right' });
 
-  y = 50;
+  y = 52;
 
-  // Funzione helper per sezione
+  // === HELPER FUNZIONI ===
   const sectionTitle = (title) => {
-    doc.setFillColor(...C.bd);
-    doc.rect(M, y, RW, 7, 'F');
-    doc.setFontSize(9); doc.setFont('helvetica','bold');
+    if (y > 260) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+    doc.setFillColor(...C.bd); doc.rect(M, y, RW, 7, 'F');
+    doc.setFontSize(8); doc.setFont('helvetica','bold');
     doc.setTextColor(...C.t2);
-    doc.text(title.toUpperCase(), M+3, y+5);
+    doc.text(ps(title), M+3, y+5);
     y += 11;
   };
 
   const dataRow = (lbl, val, highlight) => {
-    doc.setFillColor(highlight ? [...C.s1] : [...C.bg]);
+    if (y > 270) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+    doc.setFillColor(...(highlight ? C.s1 : C.bg));
     doc.rect(M, y, RW, 6, 'F');
-    doc.setFontSize(9); doc.setFont('helvetica','normal');
+    doc.setFontSize(8.5); doc.setFont('helvetica','normal');
     doc.setTextColor(...C.t2);
-    doc.text(lbl, M+3, y+4.2);
-    doc.setFont('helvetica','bold');
-    doc.setTextColor(...C.t1);
-    doc.text(String(val), W-M-3, y+4.2, { align:'right' });
-    doc.setDrawColor(...C.bd);
-    doc.line(M, y+6, W-M, y+6);
+    doc.text(ps(lbl), M+3, y+4.2);
+    doc.setFont('helvetica','bold'); doc.setTextColor(...C.t1);
+    doc.text(ps(val), W-M-3, y+4.2, { align:'right' });
+    doc.setDrawColor(...C.bd); doc.line(M, y+6, W-M, y+6);
     y += 6.5;
   };
 
   const totRow = (lbl, val, color) => {
-    doc.setFillColor(...C.s1);
-    doc.rect(M, y, RW, 8, 'F');
-    doc.setFontSize(11); doc.setFont('helvetica','bold');
-    doc.setTextColor(...C.t2);
-    doc.text(lbl, M+3, y+5.5);
-    doc.setTextColor(...(color || C.re));
-    doc.text(String(val), W-M-3, y+5.5, { align:'right' });
-    y += 10;
+    if (y > 270) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+    doc.setFillColor(...C.s1); doc.rect(M, y, RW, 9, 'F');
+    doc.setFontSize(10); doc.setFont('helvetica','bold');
+    doc.setTextColor(...C.t2); doc.text(ps(lbl), M+3, y+6);
+    doc.setTextColor(...(color || C.re)); doc.text(ps(val), W-M-3, y+6, { align:'right' });
+    y += 11;
   };
 
-  // Sezione parametri
+  // === SEZIONE 1: PARAMETRI ===
   sectionTitle('PARAMETRI ANNO ' + d.anno);
-  dataRow('Anno fiscale', d.anno, false);
-  dataRow('Codice ATECO', d.ateco || '—', true);
-  dataRow('Gruppo / Attività', (d.gruppo_nome || '—').substring(0,45), false);
-  dataRow('Coefficiente di redditività', ((d.coefficiente||0)*100).toFixed(0)+'%', true);
-  dataRow('Aliquota imposta sostitutiva', ((d.aliquota||0)*100).toFixed(0)+'%', false);
-  dataRow('Gestione previdenziale', d.inps_desc || '—', true);
-  dataRow('Deduzione INPS dal reddito', d.deduci_inps ? 'Sì (art. 1 c. 64 L.190/2014)' : 'No', false);
+  dataRow('Anno fiscale',                  String(d.anno),                                     false);
+  dataRow('Codice ATECO',                  ps(d.ateco || '-'),                                 true);
+  dataRow('Gruppo / Attivita',             ps((d.gruppo_nome||'-').substring(0,50)),            false);
+  dataRow('Coefficiente di redditivita',   ((d.coefficiente||0)*100).toFixed(0)+'%',           true);
+  dataRow('Aliquota imposta sostitutiva',  ((d.aliquota||0)*100).toFixed(0)+'%',               false);
+  dataRow('Gestione previdenziale',        ps(d.inps_desc || '-'),                             true);
+  dataRow('Deduzione INPS dal reddito',    d.deduci_inps ? 'Si (art.1 c.64 L.190/2014)':'No', false);
   y += 4;
 
-  // Sezione calcolo
+  // === SEZIONE 2: CALCOLO ===
   sectionTitle('CALCOLO DETTAGLIATO');
-  dataRow('Fatturato imponibile', fmt(d.fatturato), false);
-  dataRow(`Reddito forfettario (×${((d.coefficiente||0)*100).toFixed(0)}%)`, fmt(d.reddito_forf), true);
-  dataRow('Contributi INPS stimati', '− '+fmt(d.contributi_inps), false);
-  dataRow('Reddito imponibile netto', fmt(d.reddito_imp), true);
+  dataRow('Fatturato imponibile',          pf(d.fatturato),                                    false);
+  dataRow('Reddito forfettario (x'+((d.coefficiente||0)*100).toFixed(0)+'%)',
+                                           pf(d.reddito_forf),                                 true);
+  dataRow('Contributi INPS stimati',       '- '+pf(d.contributi_inps),                        false);
+  dataRow('Reddito imponibile netto',      pf(d.reddito_imp),                                  true);
   y += 2;
-  totRow('Imposta sostitutiva ('+((d.aliquota||0)*100).toFixed(0)+'%)', fmt(d.imposta_sost), C.re);
-  totRow('Contributi INPS', fmt(d.contributi_inps), C.pu);
+  totRow('Imposta sostitutiva ('+((d.aliquota||0)*100).toFixed(0)+'%)', pf(d.imposta_sost), C.re);
+  totRow('Contributi INPS', pf(d.contributi_inps), C.pu);
   y += 2;
 
   // Box totale
-  doc.setFillColor(20, 40, 70);
-  doc.rect(M, y, RW, 16, 'F');
-  doc.setDrawColor(...C.ac);
-  doc.rect(M, y, RW, 16);
-  doc.setFontSize(10); doc.setFont('helvetica','bold');
+  if (y > 255) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+  doc.setFillColor(20,40,70); doc.rect(M, y, RW, 18, 'F');
+  doc.setDrawColor(...C.ac);  doc.rect(M, y, RW, 18);
+  doc.setFontSize(9); doc.setFont('helvetica','bold');
   doc.setTextColor(...C.t2);
-  doc.text('TOTALE ONERI FISCALI E PREVIDENZIALI', M+4, y+6);
-  doc.setFontSize(16); doc.setTextColor(...C.re);
-  doc.text(fmt(d.totale_oneri), W-M-4, y+11, { align:'right' });
-  y += 22;
+  doc.text('TOTALE ONERI FISCALI E PREVIDENZIALI', M+4, y+7);
+  doc.setFontSize(15); doc.setTextColor(...C.re);
+  doc.text(pf(d.totale_oneri), W-M-4, y+13, { align:'right' });
+  y += 24;
 
-  // Sezione distribuzione
+  // === SEZIONE 3: DISTRIBUZIONE ===
   sectionTitle('DISTRIBUZIONE DEL FATTURATO');
   const netto = d.fatturato - d.totale_oneri;
-  dataRow('Netto disponibile (dopo tasse+INPS)', fmt(netto), false);
-  dataRow(`% Imposta su fatturato`, fmtP((d.imposta_sost/d.fatturato)*100), true);
-  dataRow(`% INPS su fatturato`, fmtP((d.contributi_inps/d.fatturato)*100), false);
-  dataRow(`% Totale oneri su fatturato`, fmtP((d.totale_oneri/d.fatturato)*100), true);
-  dataRow(`% Netto disponibile`, fmtP((netto/d.fatturato)*100), false);
+  dataRow('Netto disponibile (dopo tasse+INPS)',   pf(netto),                                  false);
+  dataRow('% Imposta su fatturato',                fmtP((d.imposta_sost/d.fatturato)*100),     true);
+  dataRow('% INPS su fatturato',                   fmtP((d.contributi_inps/d.fatturato)*100),  false);
+  dataRow('% Totale oneri su fatturato',           fmtP((d.totale_oneri/d.fatturato)*100),     true);
+  dataRow('% Netto disponibile',                   fmtP((netto/d.fatturato)*100),              false);
   y += 4;
 
-  // Sezione acconti
+  // === SEZIONE 4: SCADENZARIO ===
   sectionTitle('SCADENZARIO E ACCONTI');
-  dataRow(`Saldo imposta — 30 giu ${d.anno+1}`, fmt(d.imposta_sost), false);
-  if (d.acconto_tot > 0) {
-    if (d.acconto_1 > 0) {
-      dataRow(`1ª rata acconto (40%) — 30 giu ${d.anno+1}`, fmt(d.acconto_1), true);
-      dataRow(`2ª rata acconto (60%) — 30 nov ${d.anno+1}`, fmt(d.acconto_2), false);
+  dataRow('Saldo imposta - 30 giu '+  (d.anno+1), pf(d.imposta_sost),  false);
+  if ((d.acconto_tot||0) > 0) {
+    if ((d.acconto_1||0) > 0) {
+      dataRow('1a rata acconto (40%) - 30 giu '+(d.anno+1), pf(d.acconto_1), true);
+      dataRow('2a rata acconto (60%) - 30 nov '+(d.anno+1), pf(d.acconto_2), false);
     } else {
-      dataRow(`Acconto unico — 30 nov ${d.anno+1}`, fmt(d.acconto_2), true);
+      dataRow('Acconto unico - 30 nov '+(d.anno+1), pf(d.acconto_2), true);
     }
+  } else {
+    dataRow('Acconti anno '+(d.anno+1), 'Nessuno (sotto soglia)', false);
   }
-  dataRow('Totale acconto anno successivo', fmt(d.acconto_tot), false);
+  dataRow('Totale acconto anno successivo', pf(d.acconto_tot||0), false);
   y += 4;
 
-  // Note
-  if (d.note) {
+  // === SEZIONE 5: NOTE ===
+  if (d.note && ps(d.note).trim()) {
     sectionTitle('NOTE');
-    doc.setFontSize(9); doc.setFont('helvetica','normal');
+    doc.setFontSize(8.5); doc.setFont('helvetica','normal');
     doc.setTextColor(...C.t2);
-    const lines = doc.splitTextToSize(d.note, RW-6);
+    const lines = doc.splitTextToSize(ps(d.note), RW-6);
     lines.forEach(line => {
-      doc.text(line, M+3, y+4);
-      y += 5.5;
+      if (y > 270) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+      doc.text(line, M+3, y+4); y += 5.5;
     });
     y += 4;
   }
 
-  // Footer
-  doc.setFillColor(...C.s1);
-  doc.rect(0, 280, W, 17, 'F');
+  // === FOOTER ===
+  doc.setFillColor(...C.s1); doc.rect(0, 278, W, 19, 'F');
+  doc.setDrawColor(...C.bd); doc.line(0, 278, W, 278);
   doc.setFontSize(7); doc.setFont('helvetica','normal');
   doc.setTextColor(...C.t3);
-  doc.text('Strumento informativo - L.190/2014 e succ. modifiche - Aliquote INPS 2024 - Consulta sempre il tuo commercialista.', W/2, 287, { align:'center' });
-  doc.text(`ForfettarioApp · Peppone Tek · ${new Date().toLocaleDateString('it-IT')}`, W/2, 292, { align:'center' });
+  doc.text(
+    'Strumento informativo - L.190/2014 e succ. modifiche - Aliquote INPS 2024 - Consulta sempre il tuo commercialista.',
+    W/2, 284, { align:'center' }
+  );
+  doc.text(
+    'ForfettarioApp - Peppone Tek - ' + new Date().toLocaleDateString('it-IT'),
+    W/2, 291, { align:'center' }
+  );
 
+  // === SALVA ===
   try {
-    doc.save(`ForfettarioApp_${d.anno}_${(_profile?.cognome||'').toLowerCase()||'fascicolo'}.pdf`);
-    toast('✅ PDF esportato correttamente', 'ok');
+    const cognome = ps((_profile?.cognome||'').toLowerCase()) || 'fascicolo';
+    doc.save(`ForfettarioApp_${d.anno}_${cognome}.pdf`);
+    toast('\u2705 PDF esportato correttamente', 'ok');
   } catch(e) {
-    toast('❌ Errore generazione PDF: ' + e.message, 'err');
+    toast('\u274c Errore salvataggio PDF: ' + e.message, 'err');
   }
 }
 
@@ -2746,7 +2764,7 @@ function wizOpen(annoTarget) {
   // Calcola gli anni mancanti precedenti all'annoTarget
   // Usa i 2 anni immediatamente precedenti non ancora salvati
   const stepsArr = [];
-  for (let a = annoTarget - 1; a >= annoTarget - 2; a--) {
+  for (let a = annoTarget - 1; a >= annoTarget - 4; a--) {
     if (a < 2015) break;
     if (!_anni[a]) stepsArr.push(a); // solo se non già salvato
   }
