@@ -3011,13 +3011,35 @@ async function wizComplete() {
   const ls = document.getElementById('loading-screen');
   let appStarted = false;
 
+  // Timeout di sicurezza: dopo 6s rimuove il loading screen in ogni caso
+  const safetyTimer = setTimeout(() => {
+    if (!appStarted) {
+      window.location.replace('/index.html');
+    } else {
+      if (ls) { ls.classList.add('hidden'); setTimeout(() => ls && ls.remove(), 350); }
+    }
+  }, 6000);
+
+  async function startApp(user, lsEl) {
+    clearTimeout(safetyTimer);
+    try {
+      await initApp(user);
+    } catch(e) {
+      console.error('initApp error:', e);
+      // Mostra l'app comunque anche se initApp crasha parzialmente
+      try { g('auth-screen').style.display = 'none'; } catch(_){}
+      try { g('app').classList.add('show'); } catch(_){}
+    } finally {
+      const el = lsEl || document.getElementById('loading-screen');
+      if (el) { el.classList.add('hidden'); setTimeout(() => el.remove(), 350); }
+    }
+  }
+
   // 1. Ascolta PRIMA i cambi auth — cattura il callback OAuth di Google
   sb.auth.onAuthStateChange(async (event, session) => {
     if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user && !appStarted) {
       appStarted = true;
-      await initApp(session.user);
-      const ls2 = document.getElementById('loading-screen');
-      if (ls2) { ls2.classList.add('hidden'); setTimeout(() => ls2.remove(), 350); }
+      await startApp(session.user);
     } else if (event === 'SIGNED_OUT') {
       resetApp();
     }
@@ -3028,11 +3050,8 @@ async function wizComplete() {
 
   if (session?.user && !appStarted) {
     appStarted = true;
-    await initApp(session.user);
-    ls.classList.add('hidden');
-    setTimeout(() => ls.remove(), 350);
+    await startApp(session.user, ls);
   } else if (!session?.user) {
-    // Aspetta 1.5s per dare tempo a Supabase di processare il token OAuth dalla URL
     setTimeout(() => {
       if (!appStarted) window.location.replace('/index.html');
     }, 1500);
