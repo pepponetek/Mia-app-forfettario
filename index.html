@@ -530,12 +530,8 @@ footer{
 <!-- ===== NAV ===== -->
 <nav>
   <a class="nav-logo" href="#">
-    <img src="/logo.svg" alt="ForfettarioApp Logo"
-         style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0">
-    <div>
-      <div class="name">ForfettarioApp</div>
-      <div class="by">by Peppone Tek</div>
-    </div>
+    <img src="/logo-orizzontale.svg" alt="ForfettarioApp"
+         style="height:42px;width:auto;flex-shrink:0">
   </a>
   <div class="nav-links">
     <a class="nav-link" href="#features">Funzionalità</a>
@@ -865,7 +861,7 @@ footer{
 <footer>
   <div>
     <a class="foot-logo" href="#">
-      <img src="/logo.svg" alt="ForfettarioApp"
+      <img src="/logo.png" alt="ForfettarioApp"
            style="width:30px;height:30px;border-radius:6px;object-fit:cover;flex-shrink:0">
       <div>
         <div class="name">ForfettarioApp</div>
@@ -886,7 +882,7 @@ footer{
   <div class="modal">
     <button class="modal-close" onclick="closeModal()">✕</button>
     <div class="modal-logo">
-      <img src="/logo.svg" alt=""
+      <img src="/logo.png" alt=""
            style="width:72px;height:72px;border-radius:16px;object-fit:cover;margin:0 auto 12px;display:block;box-shadow:0 4px 20px rgba(88,166,255,.25)">
       <h2>ForfettarioApp</h2>
       <p>Gestisci il tuo regime forfettario</p>
@@ -984,10 +980,17 @@ function togglePw(id,btn){
 // ===== SUPABASE INIT =====
 const SURL = 'https://kychcfbiyrcpoelfvaql.supabase.co';
 const SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5Y2hjZmJpeXJjcG9lbGZ2YXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjQyOTgsImV4cCI6MjA4NzAwMDI5OH0.t7tZUbhYayk1kJxRb03zJMkE5VOUS4iuRWqttVbOfOA';
-const sb = supabase.createClient(SURL, SKEY);
+
+let sb = null;
+try {
+  sb = supabase.createClient(SURL, SKEY);
+} catch(e) {
+  console.error('Supabase non caricato:', e);
+}
 
 // Se l'utente è già loggato → manda direttamente all'app
 (async function checkSession(){
+  if(!sb) return;
   const { data: { session } } = await sb.auth.getSession();
   if(session?.user) window.location.replace('/app.html');
 })();
@@ -995,21 +998,28 @@ const sb = supabase.createClient(SURL, SKEY);
 // ===== AUTH REALE =====
 function showMsg(side,text,type){
   const el=document.getElementById('msg-'+side);
+  if(!el) return;
   el.textContent=text;
   el.className='auth-msg '+type;
 }
 
 async function doLogin(){
+  if(!sb){ showMsg('login','Errore: ricarica la pagina.','err'); return; }
   const email=document.getElementById('login-email').value.trim();
   const pw=document.getElementById('login-pw').value;
   if(!email||!pw){showMsg('login','Compila tutti i campi.','err');return;}
   showMsg('login','Accesso in corso…','ok');
-  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
-  if(error){ showMsg('login', error.message, 'err'); return; }
-  window.location.replace('/app.html');
+  try {
+    const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+    if(error){ showMsg('login', error.message, 'err'); return; }
+    window.location.replace('/app.html');
+  } catch(e) {
+    showMsg('login','Errore di connessione. Riprova.','err');
+  }
 }
 
 async function doRegister(){
+  if(!sb){ showMsg('register','Errore: ricarica la pagina.','err'); return; }
   const email=document.getElementById('reg-email').value.trim();
   const pw=document.getElementById('reg-pw').value;
   const pw2=document.getElementById('reg-pw2').value;
@@ -1017,24 +1027,33 @@ async function doRegister(){
   if(pw!==pw2){showMsg('register','Le password non coincidono.','err');return;}
   if(pw.length<8){showMsg('register','Password troppo corta (min. 8 caratteri).','err');return;}
   showMsg('register','Registrazione in corso…','ok');
-  const { data, error } = await sb.auth.signUp({ email, password: pw });
-  if(error){ showMsg('register', error.message, 'err'); return; }
-  if(data.user && !data.session){
-    showMsg('register','✅ Controlla la tua email per confermare l\'account.','ok');
-  } else {
-    window.location.replace('/app.html');
+  try {
+    const { data, error } = await sb.auth.signUp({ email, password: pw });
+    if(error){ showMsg('register', error.message, 'err'); return; }
+    if(data.user && !data.session){
+      showMsg('register','✅ Controlla la tua email per confermare l\'account.','ok');
+    } else {
+      window.location.replace('/app.html');
+    }
+  } catch(e) {
+    showMsg('register','Errore di connessione. Riprova.','err');
   }
 }
 
 async function doGoogle(){
-  const { error } = await sb.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: 'https://tax-forfettario.vercel.app/app.html',
-      queryParams: { access_type: 'offline', prompt: 'select_account' }
-    }
-  });
-  if(error) showMsg('login', error.message, 'err');
+  if(!sb){ showMsg('login','Errore: ricarica la pagina.','err'); return; }
+  try {
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: 'https://tax-forfettario.vercel.app/app.html',
+        queryParams: { access_type: 'offline', prompt: 'select_account' }
+      }
+    });
+    if(error) showMsg('login', error.message, 'err');
+  } catch(e) {
+    showMsg('login','Errore Google. Riprova.','err');
+  }
 }
 
 // ===== SCROLL REVEAL =====
