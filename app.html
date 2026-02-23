@@ -3011,6 +3011,14 @@ async function wizComplete() {
   const ls = document.getElementById('loading-screen');
   let appStarted = false;
 
+  // Rileva se siamo in un callback OAuth (Google mette il token nell'URL hash)
+  const isOAuthCallback = window.location.hash.includes('access_token') ||
+                          window.location.search.includes('code=');
+
+  function hideLs() {
+    if (ls) { ls.classList.add('hidden'); setTimeout(() => { if(ls.parentNode) ls.remove(); }, 400); }
+  }
+
   async function startApp(user) {
     if (appStarted) return;
     appStarted = true;
@@ -3020,32 +3028,42 @@ async function wizComplete() {
       console.error('initApp error:', e);
       try { g('auth-screen').style.display = 'none'; } catch(_){}
       try { g('app').classList.add('show'); } catch(_){}
-    } finally {
-      if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 350); }
     }
+    hideLs();
   }
 
-  // onAuthStateChange gestisce TUTTO: caricamento iniziale, OAuth Google, logout
+  // Ascolta SEMPRE logout e callback OAuth Google
   sb.auth.onAuthStateChange(async (event, session) => {
-
-    if (event === 'INITIAL_SESSION') {
-      // Pagina appena caricata: sessione presente o assente
-      if (session?.user) {
-        await startApp(session.user);
-      } else {
-        // Nessuna sessione → torna alla landing
-        window.location.replace('/index.html');
-      }
-
-    } else if (event === 'SIGNED_IN' && session?.user && !appStarted) {
-      // Callback OAuth Google (o login che arriva dopo INITIAL_SESSION)
+    if (event === 'SIGNED_IN' && session?.user && !appStarted) {
       await startApp(session.user);
-
     } else if (event === 'SIGNED_OUT') {
-      // Logout esplicito → torna alla landing
       window.location.replace('/index.html');
     }
   });
+
+  // Se è un callback OAuth, aspetta onAuthStateChange (non usare getSession subito)
+  if (isOAuthCallback) {
+    // Supabase processerà il token e farà scattare SIGNED_IN sopra
+    // Timeout di sicurezza: se dopo 5s non arriva nulla → torna alla landing
+    setTimeout(() => {
+      if (!appStarted) window.location.replace('/index.html');
+    }, 5000);
+    return;
+  }
+
+  // Altrimenti controlla sessione normale
+  try {
+    const { data: { session }, error } = await sb.auth.getSession();
+    if (error) throw error;
+    if (session?.user) {
+      await startApp(session.user);
+    } else {
+      window.location.replace('/index.html');
+    }
+  } catch(e) {
+    console.error('getSession error:', e);
+    window.location.replace('/index.html');
+  }
 })();
 
 </script>
