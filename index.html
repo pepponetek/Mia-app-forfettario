@@ -990,10 +990,8 @@ try {
 
 // Se l'utente è già loggato → manda direttamente all'app
 if(sb) {
-  sb.auth.onAuthStateChange((event, session) => {
-    if (event === 'INITIAL_SESSION' && session?.user) {
-      window.location.replace('/app.html');
-    }
+  sb.auth.getSession().then(({ data: { session } }) => {
+    if (session?.user) window.location.replace('/app.html');
   });
 }
 
