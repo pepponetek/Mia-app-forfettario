@@ -989,11 +989,13 @@ try {
 }
 
 // Se l'utente è già loggato → manda direttamente all'app
-(async function checkSession(){
-  if(!sb) return;
-  const { data: { session } } = await sb.auth.getSession();
-  if(session?.user) window.location.replace('/app.html');
-})();
+if(sb) {
+  sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'INITIAL_SESSION' && session?.user) {
+      window.location.replace('/app.html');
+    }
+  });
+}
 
 // ===== AUTH REALE =====
 function showMsg(side,text,type){
