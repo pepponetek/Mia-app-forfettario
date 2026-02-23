@@ -39,7 +39,8 @@ body{background:var(--bg);color:var(--t1);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
   transition:opacity .3s ease;
 }
-#loading-screen.hidden{opacity:0;pointer-events:none}
+#loading-screen.hidden{opacity:0;pointer-events:none;visibility:hidden}
+#loading-screen.gone{display:none}
 #loading-screen .ls-ico{font-size:48px;animation:lsPulse 1.5s ease-in-out infinite}
 #loading-screen .ls-spinner{
   width:36px;height:36px;border-radius:50%;
@@ -3011,28 +3012,39 @@ async function wizComplete() {
   const ls = document.getElementById('loading-screen');
   let appStarted = false;
 
-  // Rileva se siamo in un callback OAuth (Google mette il token nell'URL hash)
+  // Rileva callback OAuth Google (token nell'URL)
   const isOAuthCallback = window.location.hash.includes('access_token') ||
                           window.location.search.includes('code=');
 
   function hideLs() {
-    if (ls) { ls.classList.add('hidden'); setTimeout(() => { if(ls.parentNode) ls.remove(); }, 400); }
+    if (!ls) return;
+    ls.classList.add('hidden');
+    setTimeout(() => { ls.classList.add('gone'); }, 400);
   }
 
   async function startApp(user) {
     if (appStarted) return;
     appStarted = true;
+    // Timeout di sicurezza: dopo 8s forza la visualizzazione dell'app comunque
+    const safetyTimer = setTimeout(() => {
+      console.warn('startApp timeout — forzo visualizzazione app');
+      try { g('auth-screen').style.display = 'none'; } catch(_){}
+      try { g('app').classList.add('show'); } catch(_){}
+      hideLs();
+    }, 8000);
     try {
       await initApp(user);
     } catch(e) {
       console.error('initApp error:', e);
       try { g('auth-screen').style.display = 'none'; } catch(_){}
       try { g('app').classList.add('show'); } catch(_){}
+    } finally {
+      clearTimeout(safetyTimer);
+      hideLs();
     }
-    hideLs();
   }
 
-  // Ascolta SEMPRE logout e callback OAuth Google
+  // Ascolta logout e SIGNED_IN (callback OAuth Google)
   sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session?.user && !appStarted) {
       await startApp(session.user);
@@ -3041,19 +3053,21 @@ async function wizComplete() {
     }
   });
 
-  // Se è un callback OAuth, aspetta onAuthStateChange (non usare getSession subito)
+  // Se è callback OAuth aspetta SIGNED_IN con timeout di sicurezza
   if (isOAuthCallback) {
-    // Supabase processerà il token e farà scattare SIGNED_IN sopra
-    // Timeout di sicurezza: se dopo 5s non arriva nulla → torna alla landing
     setTimeout(() => {
       if (!appStarted) window.location.replace('/index.html');
     }, 5000);
     return;
   }
 
-  // Altrimenti controlla sessione normale
+  // getSession con timeout 4 secondi — evita blocco su rete lenta
   try {
-    const { data: { session }, error } = await sb.auth.getSession();
+    const sessionPromise = sb.auth.getSession();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 4000)
+    );
+    const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
     if (error) throw error;
     if (session?.user) {
       await startApp(session.user);
@@ -3061,7 +3075,7 @@ async function wizComplete() {
       window.location.replace('/index.html');
     }
   } catch(e) {
-    console.error('getSession error:', e);
+    console.error('boot error:', e.message);
     window.location.replace('/index.html');
   }
 })();
