@@ -3011,51 +3011,41 @@ async function wizComplete() {
   const ls = document.getElementById('loading-screen');
   let appStarted = false;
 
-  // Timeout di sicurezza: dopo 6s rimuove il loading screen in ogni caso
-  const safetyTimer = setTimeout(() => {
-    if (!appStarted) {
-      window.location.replace('/index.html');
-    } else {
-      if (ls) { ls.classList.add('hidden'); setTimeout(() => ls && ls.remove(), 350); }
-    }
-  }, 6000);
-
-  async function startApp(user, lsEl) {
-    clearTimeout(safetyTimer);
+  async function startApp(user) {
+    if (appStarted) return;
+    appStarted = true;
     try {
       await initApp(user);
     } catch(e) {
       console.error('initApp error:', e);
-      // Mostra l'app comunque anche se initApp crasha parzialmente
       try { g('auth-screen').style.display = 'none'; } catch(_){}
       try { g('app').classList.add('show'); } catch(_){}
     } finally {
-      const el = lsEl || document.getElementById('loading-screen');
-      if (el) { el.classList.add('hidden'); setTimeout(() => el.remove(), 350); }
+      if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 350); }
     }
   }
 
-  // 1. Ascolta PRIMA i cambi auth — cattura il callback OAuth di Google
+  // onAuthStateChange gestisce TUTTO: caricamento iniziale, OAuth Google, logout
   sb.auth.onAuthStateChange(async (event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user && !appStarted) {
-      appStarted = true;
+
+    if (event === 'INITIAL_SESSION') {
+      // Pagina appena caricata: sessione presente o assente
+      if (session?.user) {
+        await startApp(session.user);
+      } else {
+        // Nessuna sessione → torna alla landing
+        window.location.replace('/index.html');
+      }
+
+    } else if (event === 'SIGNED_IN' && session?.user && !appStarted) {
+      // Callback OAuth Google (o login che arriva dopo INITIAL_SESSION)
       await startApp(session.user);
+
     } else if (event === 'SIGNED_OUT') {
-      resetApp();
+      // Logout esplicito → torna alla landing
+      window.location.replace('/index.html');
     }
   });
-
-  // 2. Controlla sessione esistente (login email/password)
-  const { data: { session } } = await sb.auth.getSession();
-
-  if (session?.user && !appStarted) {
-    appStarted = true;
-    await startApp(session.user, ls);
-  } else if (!session?.user) {
-    setTimeout(() => {
-      if (!appStarted) window.location.replace('/index.html');
-    }, 1500);
-  }
 })();
 
 </script>
