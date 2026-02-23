@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Termini di Servizio · ForfettarioApp</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--s1:#161b22;--bd:#2a3140;
+  --t1:#e6edf3;--t2:#8b949e;--t3:#6e7681;
+  --ac:#58a6ff;--ac2:#1f6feb;--gr:#3fb950;--ye:#d29922;--r:10px;
+}
+body{background:var(--bg);color:var(--t1);font-family:'DM Sans',sans-serif;font-size:16px;line-height:1.7;
+  background-image:radial-gradient(ellipse 80% 40% at 50% -10%,rgba(31,111,235,.1),transparent)}
+nav{
+  position:sticky;top:0;z-index:99;
+  background:rgba(13,17,23,.9);border-bottom:1px solid var(--bd);
+  backdrop-filter:blur(16px);padding:0 clamp(20px,5vw,80px);
+  height:60px;display:flex;align-items:center;justify-content:space-between;
+}
+.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none}
+.nav-logo .ico{font-size:22px}
+.nav-logo .name{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--t1)}
+.back{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;color:var(--t2);text-decoration:none;
+  padding:6px 12px;border-radius:7px;border:1px solid var(--bd);
+  transition:color .15s,border-color .15s;
+}
+.back:hover{color:var(--t1);border-color:var(--t2)}
+main{max-width:760px;margin:0 auto;padding:60px clamp(20px,5vw,40px) 100px}
+.doc-header{margin-bottom:48px;padding-bottom:28px;border-bottom:1px solid var(--bd)}
+.doc-label{
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:11px;color:var(--ac);font-weight:600;
+  text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px;
+}
+.doc-label::before{content:'';width:18px;height:1px;background:var(--ac)}
+h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,40px);font-weight:800;
+  letter-spacing:-.02em;margin-bottom:12px}
+.doc-meta{font-size:13px;color:var(--t3)}
+.doc-meta span{color:var(--t2);font-weight:500}
+
+section{margin-bottom:40px}
+h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;
+  color:var(--ac);margin-bottom:12px;padding-bottom:8px;
+  border-bottom:1px solid rgba(88,166,255,.15)}
+p{color:var(--t2);margin-bottom:12px}
+ul{color:var(--t2);padding-left:20px;margin-bottom:12px}
+ul li{margin-bottom:6px}
+strong{color:var(--t1)}
+a{color:var(--ac);text-decoration:none}
+a:hover{text-decoration:underline}
+
+.highlight{
+  background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.18);
+  border-radius:var(--r);padding:16px 20px;margin-bottom:20px;
+}
+.highlight p{margin:0;color:var(--t2)}
+.highlight strong{color:var(--ac)}
+
+.warn-box{
+  background:rgba(210,153,34,.06);border:1px solid rgba(210,153,34,.2);
+  border-radius:var(--r);padding:16px 20px;margin-bottom:20px;
+}
+.warn-box p{margin:0;color:var(--t2)}
+.warn-box strong{color:var(--ye)}
+
+footer{border-top:1px solid var(--bd);padding:30px clamp(20px,5vw,80px);
+  text-align:center;font-size:12px;color:var(--t3)}
+footer a{color:var(--ac)}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="/index.html">
+    <span class="ico">🧾</span>
+    <span class="name">ForfettarioApp</span>
+  </a>
+  <a class="back" href="/index.html">← Torna alla home</a>
+</nav>
+
+<main>
+  <div class="doc-header">
+    <div class="doc-label">Documento legale</div>
+    <h1>Termini di Servizio</h1>
+    <div class="doc-meta">
+      Ultimo aggiornamento: <span>Febbraio 2025</span> ·
+      Versione: <span>1.0</span>
+    </div>
+  </div>
+
+  <div class="highlight">
+    <p><strong>In sintesi:</strong> ForfettarioApp è uno strumento informativo di supporto alla gestione fiscale. I calcoli prodotti hanno valore indicativo e non sostituiscono la consulenza di un commercialista.</p>
+  </div>
+
+  <section>
+    <h2>1. Accettazione dei termini</h2>
+    <p>Utilizzando ForfettarioApp (il "Servizio"), disponibile all'indirizzo <a href="https://tax-forfettario.vercel.app">tax-forfettario.vercel.app</a>, accetti integralmente i presenti Termini di Servizio. Se non accetti questi termini, ti chiediamo di non utilizzare il Servizio.</p>
+    <p>Il Servizio è fornito da <strong>Peppone Tek</strong> (il "Fornitore").</p>
+  </section>
+
+  <section>
+    <h2>2. Descrizione del servizio</h2>
+    <p>ForfettarioApp è un'applicazione web che permette ai professionisti in regime forfettario di:</p>
+    <ul>
+      <li>Calcolare imposta sostitutiva, contributi INPS e netto effettivo in base al fatturato inserito</li>
+      <li>Archiviare e consultare lo storico dei propri anni fiscali</li>
+      <li>Visualizzare grafici e statistiche sull'andamento fiscale</li>
+      <li>Generare ed esportare prospetti fiscali in formato PDF</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. Natura informativa del servizio</h2>
+    <div class="warn-box">
+      <p><strong>⚠️ Importante:</strong> ForfettarioApp è uno strumento di supporto informativo. I calcoli prodotti sono indicativi e basati sulle aliquote e coefficienti vigenti al momento dello sviluppo. Non costituiscono consulenza fiscale, tributaria o legale.</p>
+    </div>
+    <p>Il Fornitore non si assume responsabilità per:</p>
+    <ul>
+      <li>Errori nei calcoli derivanti da dati inseriti in modo errato dall'utente</li>
+      <li>Variazioni normative successive all'ultimo aggiornamento dell'applicazione</li>
+      <li>Decisioni fiscali prese esclusivamente sulla base dei risultati dell'app</li>
+    </ul>
+    <p>Si raccomanda sempre di confrontare i risultati con un commercialista o consulente fiscale abilitato.</p>
+  </section>
+
+  <section>
+    <h2>4. Registrazione e account</h2>
+    <p>Per utilizzare le funzionalità del Servizio è necessario creare un account fornendo un indirizzo email valido e una password, oppure tramite accesso con Google.</p>
+    <p>L'utente è responsabile di:</p>
+    <ul>
+      <li>Mantenere riservate le proprie credenziali di accesso</li>
+      <li>Tutte le attività svolte tramite il proprio account</li>
+      <li>Notificare immediatamente al Fornitore qualsiasi accesso non autorizzato</li>
+    </ul>
+    <p>È consentito un solo account per persona. Account multipli possono essere sospesi.</p>
+  </section>
+
+  <section>
+    <h2>5. Uso accettabile</h2>
+    <p>L'utente si impegna a utilizzare il Servizio esclusivamente per scopi legittimi e personali. È vietato:</p>
+    <ul>
+      <li>Tentare di accedere ai dati di altri utenti</li>
+      <li>Utilizzare strumenti automatizzati (bot, scraper) per accedere al Servizio</li>
+      <li>Caricare contenuti illegali, offensivi o che violino diritti di terzi</li>
+      <li>Tentare di compromettere la sicurezza o il funzionamento del Servizio</li>
+      <li>Rivendere o sublicenziare l'accesso al Servizio a terzi</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. Dati inseriti dall'utente</h2>
+    <p>I dati fiscali inseriti (fatturato, codice ATECO, ecc.) rimangono di <strong>esclusiva proprietà dell'utente</strong>. Il Fornitore non utilizza tali dati per scopi diversi dall'erogazione del Servizio.</p>
+    <p>L'utente può in qualsiasi momento richiedere la cancellazione del proprio account e di tutti i dati associati scrivendo a <a href="mailto:peppone.tek@gmail.com">peppone.tek@gmail.com</a>.</p>
+  </section>
+
+  <section>
+    <h2>7. Disponibilità del servizio</h2>
+    <p>Il Fornitore si impegna a garantire la disponibilità del Servizio, ma non può garantire un'operatività del 100%. Il Servizio potrebbe essere temporaneamente non disponibile per manutenzione, aggiornamenti o cause di forza maggiore.</p>
+    <p>Il Fornitore si riserva il diritto di modificare, sospendere o interrompere il Servizio, in tutto o in parte, con ragionevole preavviso agli utenti registrati.</p>
+  </section>
+
+  <section>
+    <h2>8. Proprietà intellettuale</h2>
+    <p>Tutti i contenuti del Servizio (codice, design, testi, loghi) sono di proprietà di <strong>Peppone Tek</strong> e sono protetti dalle leggi sul diritto d'autore. È vietata la riproduzione, distribuzione o modifica senza autorizzazione scritta.</p>
+  </section>
+
+  <section>
+    <h2>9. Limitazione di responsabilità</h2>
+    <p>Nei limiti consentiti dalla legge applicabile, il Fornitore non sarà responsabile per danni indiretti, incidentali o consequenziali derivanti dall'uso o dall'impossibilità di usare il Servizio, inclusi mancati guadagni, perdita di dati o sanzioni fiscali.</p>
+    <p>La responsabilità massima del Fornitore nei confronti dell'utente non potrà in ogni caso superare l'importo eventualmente pagato dall'utente per il Servizio negli ultimi 12 mesi.</p>
+  </section>
+
+  <section>
+    <h2>10. Modifiche ai termini</h2>
+    <p>Il Fornitore si riserva il diritto di modificare i presenti Termini in qualsiasi momento. Le modifiche sostanziali saranno comunicate tramite email o avviso in app almeno <strong>15 giorni prima</strong> dell'entrata in vigore. L'utilizzo continuato del Servizio dopo tale data costituisce accettazione dei nuovi Termini.</p>
+  </section>
+
+  <section>
+    <h2>11. Legge applicabile e foro competente</h2>
+    <p>I presenti Termini sono regolati dalla legge italiana. Per qualsiasi controversia derivante dall'uso del Servizio, le parti si impegnano a ricercare una soluzione amichevole. In mancanza, sarà competente il Foro di residenza del Fornitore.</p>
+  </section>
+
+  <section>
+    <h2>12. Contatti</h2>
+    <p>Per qualsiasi domanda relativa ai presenti Termini di Servizio scrivi a: <a href="mailto:peppone.tek@gmail.com">peppone.tek@gmail.com</a></p>
+  </section>
+</main>
+
+<footer>
+  © 2025 Peppone Tek · <a href="/index.html">ForfettarioApp</a> · <a href="/privacy.html">Privacy Policy</a>
+</footer>
+
+</body>
+</html>
