@@ -7,6 +7,7 @@
 <meta name="description" content="Gestisci fatturato, tasse INPS e imposta sostitutiva in pochi tap. ForfettarioApp è lo strumento definitivo per i professionisti in regime forfettario.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 /* ===== RESET & ROOT ===== */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -977,32 +978,60 @@ function togglePw(id,btn){
   btn.textContent=show?'🙈':'👁';
 }
 
-// ===== AUTH STUBS (da collegare a Supabase) =====
+// ===== SUPABASE INIT =====
+const SURL = 'https://kychcfbiyrcpoelfvaql.supabase.co';
+const SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5Y2hjZmJpeXJjcG9lbGZ2YXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjQyOTgsImV4cCI6MjA4NzAwMDI5OH0.t7tZUbhYayk1kJxRb03zJMkE5VOUS4iuRWqttVbOfOA';
+const sb = supabase.createClient(SURL, SKEY);
+
+// Se l'utente è già loggato → manda direttamente all'app
+(async function checkSession(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session?.user) window.location.replace('/app.html');
+})();
+
+// ===== AUTH REALE =====
 function showMsg(side,text,type){
   const el=document.getElementById('msg-'+side);
   el.textContent=text;
   el.className='auth-msg '+type;
 }
-function doLogin(){
+
+async function doLogin(){
   const email=document.getElementById('login-email').value.trim();
   const pw=document.getElementById('login-pw').value;
   if(!email||!pw){showMsg('login','Compila tutti i campi.','err');return;}
-  // TODO: sb.auth.signInWithPassword({ email, password: pw })
-  showMsg('login','Collegamento a Supabase non configurato in questa demo.','err');
+  showMsg('login','Accesso in corso…','ok');
+  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+  if(error){ showMsg('login', error.message, 'err'); return; }
+  window.location.replace('/app.html');
 }
-function doRegister(){
+
+async function doRegister(){
   const email=document.getElementById('reg-email').value.trim();
   const pw=document.getElementById('reg-pw').value;
   const pw2=document.getElementById('reg-pw2').value;
   if(!email||!pw||!pw2){showMsg('register','Compila tutti i campi.','err');return;}
   if(pw!==pw2){showMsg('register','Le password non coincidono.','err');return;}
   if(pw.length<8){showMsg('register','Password troppo corta (min. 8 caratteri).','err');return;}
-  // TODO: sb.auth.signUp({ email, password: pw })
-  showMsg('register','Collegamento a Supabase non configurato in questa demo.','err');
+  showMsg('register','Registrazione in corso…','ok');
+  const { data, error } = await sb.auth.signUp({ email, password: pw });
+  if(error){ showMsg('register', error.message, 'err'); return; }
+  if(data.user && !data.session){
+    showMsg('register','✅ Controlla la tua email per confermare l\'account.','ok');
+  } else {
+    window.location.replace('/app.html');
+  }
 }
-function doGoogle(){
-  // TODO: sb.auth.signInWithOAuth({ provider: 'google' })
-  alert('Integra Supabase per abilitare il login con Google.');
+
+async function doGoogle(){
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: 'https://tax-forfettario.vercel.app/app.html',
+      queryParams: { access_type: 'offline', prompt: 'select_account' }
+    }
+  });
+  if(error) showMsg('login', error.message, 'err');
 }
 
 // ===== SCROLL REVEAL =====
