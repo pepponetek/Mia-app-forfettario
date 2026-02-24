@@ -1094,7 +1094,10 @@ async function doRegister() {
   btn.textContent = 'Registrazione...'; btn.disabled = true;
   const { data, error } = await sb.auth.signUp({
     email, password: pw,
-    options: { data: { nome, cognome, ateco } }
+    options: {
+      data: { nome, cognome, ateco },
+      emailRedirectTo: window.location.origin + '/app.html'
+    }
   });
   btn.textContent = 'Crea account'; btn.disabled = false;
   if (error) { toast('Errore: ' + error.message, 'err'); return; }
@@ -1106,7 +1109,7 @@ async function doRegister() {
 async function doForgotPw() {
   const email = g('l-email').value.trim();
   if (!email) { toast('Inserisci prima la tua email', 'err'); return; }
-  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/app.html' });
   if (error) { toast('Errore: ' + error.message, 'err'); return; }
   toast('📧 Email di recupero inviata! Controlla la posta.', 'ok', 6000);
 }
@@ -3044,20 +3047,41 @@ async function wizComplete() {
     }
   }
 
-  // Ascolta logout e SIGNED_IN (callback OAuth Google)
+  // Ascolta INITIAL_SESSION (token da URL al primo caricamento), SIGNED_IN e logout.
+  // NOTA: Supabase v2 spara INITIAL_SESSION quando processa access_token dall'URL
+  //       (es. link di conferma email). SIGNED_IN viene sparato solo per login espliciti.
+  //       Entrambi devono avviare l'app.
   sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session?.user && !appStarted) {
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user && !appStarted) {
       await startApp(session.user);
     } else if (event === 'SIGNED_OUT') {
       window.location.replace('/index.html');
     }
   });
 
-  // Se è callback OAuth aspetta SIGNED_IN con timeout di sicurezza
+  // Se è callback OAuth/email (token nell'URL): aspetta INITIAL_SESSION o SIGNED_IN.
+  // Come sicurezza aggiuntiva, dopo 2s tenta getSession() direttamente.
   if (isOAuthCallback) {
+    // Fallback di sicurezza: se onAuthStateChange non ha già avviato l'app
+    // (es. race condition), getSession() la avvia direttamente.
+    setTimeout(async () => {
+      if (!appStarted) {
+        try {
+          const { data: { session } } = await sb.auth.getSession();
+          if (session?.user) {
+            await startApp(session.user);
+          } else {
+            window.location.replace('/index.html');
+          }
+        } catch(_) {
+          window.location.replace('/index.html');
+        }
+      }
+    }, 2000);
+    // Secondo fallback: dopo 8s se ancora nessuno ha avviato l'app, forza redirect
     setTimeout(() => {
       if (!appStarted) window.location.replace('/index.html');
-    }, 5000);
+    }, 8000);
     return;
   }
 
