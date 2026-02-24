@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Privacy Policy · ForfettarioApp</title>
+<title>Termini di Servizio · ForfettarioApp</title>
 <!-- ===== FAVICON & APP ICONS ===== -->
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -17,7 +17,7 @@
 :root{
   --bg:#0d1117;--s1:#161b22;--bd:#2a3140;
   --t1:#e6edf3;--t2:#8b949e;--t3:#6e7681;
-  --ac:#58a6ff;--ac2:#1f6feb;--r:10px;
+  --ac:#58a6ff;--ac2:#1f6feb;--gr:#3fb950;--ye:#d29922;--r:10px;
 }
 body{background:var(--bg);color:var(--t1);font-family:'DM Sans',sans-serif;font-size:16px;line-height:1.7;
   background-image:radial-gradient(ellipse 80% 40% at 50% -10%,rgba(31,111,235,.1),transparent)}
@@ -57,14 +57,23 @@ p{color:var(--t2);margin-bottom:12px}
 ul{color:var(--t2);padding-left:20px;margin-bottom:12px}
 ul li{margin-bottom:6px}
 strong{color:var(--t1)}
+a{color:var(--ac);text-decoration:none}
+a:hover{text-decoration:underline}
+
 .highlight{
   background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.18);
   border-radius:var(--r);padding:16px 20px;margin-bottom:20px;
 }
 .highlight p{margin:0;color:var(--t2)}
 .highlight strong{color:var(--ac)}
-a{color:var(--ac);text-decoration:none}
-a:hover{text-decoration:underline}
+
+.warn-box{
+  background:rgba(210,153,34,.06);border:1px solid rgba(210,153,34,.2);
+  border-radius:var(--r);padding:16px 20px;margin-bottom:20px;
+}
+.warn-box p{margin:0;color:var(--t2)}
+.warn-box strong{color:var(--ye)}
+
 footer{border-top:1px solid var(--bd);padding:30px clamp(20px,5vw,80px);
   text-align:center;font-size:12px;color:var(--t3)}
 footer a{color:var(--ac)}
@@ -82,102 +91,105 @@ footer a{color:var(--ac)}
 <main>
   <div class="doc-header">
     <div class="doc-label">Documento legale</div>
-    <h1>Privacy Policy</h1>
+    <h1>Termini di Servizio</h1>
     <div class="doc-meta">
-      Ultimo aggiornamento: <span>Febbraio 2025</span> · 
+      Ultimo aggiornamento: <span>Febbraio 2025</span> ·
       Versione: <span>1.0</span>
     </div>
   </div>
 
   <div class="highlight">
-    <p><strong>In sintesi:</strong> ForfettarioApp raccoglie solo i dati strettamente necessari al funzionamento del servizio. Non vendiamo né condividiamo i tuoi dati con terze parti a scopi commerciali.</p>
+    <p><strong>In sintesi:</strong> ForfettarioApp è uno strumento informativo di supporto alla gestione fiscale. I calcoli prodotti hanno valore indicativo e non sostituiscono la consulenza di un commercialista.</p>
   </div>
 
   <section>
-    <h2>1. Titolare del trattamento</h2>
-    <p>Il titolare del trattamento dei dati personali è <strong>Peppone Tek</strong>, raggiungibile all'indirizzo email <a href="/cdn-cgi/l/email-protection#34445144445b5a511a40515f745359555d581a575b59"><span class="__cf_email__" data-cfemail="aedecbdedec1c0cb80dacbc5eec9c3cfc7c280cdc1c3">[email&#160;protected]</span></a>.</p>
+    <h2>1. Accettazione dei termini</h2>
+    <p>Utilizzando ForfettarioApp (il "Servizio"), disponibile all'indirizzo <a href="https://tax-forfettario.vercel.app">tax-forfettario.vercel.app</a>, accetti integralmente i presenti Termini di Servizio. Se non accetti questi termini, ti chiediamo di non utilizzare il Servizio.</p>
+    <p>Il Servizio è fornito da <strong>Peppone Tek</strong> (il "Fornitore").</p>
   </section>
 
   <section>
-    <h2>2. Dati raccolti</h2>
-    <p>ForfettarioApp raccoglie le seguenti categorie di dati personali:</p>
+    <h2>2. Descrizione del servizio</h2>
+    <p>ForfettarioApp è un'applicazione web che permette ai professionisti in regime forfettario di:</p>
     <ul>
-      <li><strong>Dati di registrazione:</strong> indirizzo email e password (cifrata) forniti al momento della registrazione, oppure il profilo Google se utilizzi l'accesso con Google.</li>
-      <li><strong>Dati fiscali inseriti dall'utente:</strong> fatturato, codice ATECO, tipo di contribuzione INPS, anno fiscale e note inserite volontariamente dall'utente.</li>
-      <li><strong>Dati tecnici:</strong> indirizzo IP, tipo di browser, sistema operativo e pagine visitate, raccolti automaticamente per garantire il funzionamento del servizio.</li>
-    </ul>
-    <p>Non raccogliamo dati sensibili (sanitari, bancari, documenti d'identità) né dati di minori.</p>
-  </section>
-
-  <section>
-    <h2>3. Finalità del trattamento</h2>
-    <p>I dati raccolti sono utilizzati esclusivamente per:</p>
-    <ul>
-      <li>Permettere l'autenticazione e l'accesso al servizio</li>
-      <li>Salvare e recuperare i dati fiscali inseriti dall'utente</li>
-      <li>Inviare email transazionali (conferma registrazione, reset password)</li>
-      <li>Garantire la sicurezza e il corretto funzionamento dell'applicazione</li>
-      <li>Migliorare il servizio tramite analisi aggregate e anonimizzate</li>
+      <li>Calcolare imposta sostitutiva, contributi INPS e netto effettivo in base al fatturato inserito</li>
+      <li>Archiviare e consultare lo storico dei propri anni fiscali</li>
+      <li>Visualizzare grafici e statistiche sull'andamento fiscale</li>
+      <li>Generare ed esportare prospetti fiscali in formato PDF</li>
     </ul>
   </section>
 
   <section>
-    <h2>4. Base giuridica</h2>
-    <p>Il trattamento è basato su:</p>
+    <h2>3. Natura informativa del servizio</h2>
+    <div class="warn-box">
+      <p><strong>⚠️ Importante:</strong> ForfettarioApp è uno strumento di supporto informativo. I calcoli prodotti sono indicativi e basati sulle aliquote e coefficienti vigenti al momento dello sviluppo. Non costituiscono consulenza fiscale, tributaria o legale.</p>
+    </div>
+    <p>Il Fornitore non si assume responsabilità per:</p>
     <ul>
-      <li><strong>Esecuzione del contratto</strong> (Art. 6.1.b GDPR): i dati sono necessari per fornire il servizio richiesto.</li>
-      <li><strong>Legittimo interesse</strong> (Art. 6.1.f GDPR): per la sicurezza e il miglioramento del servizio.</li>
-      <li><strong>Consenso</strong> (Art. 6.1.a GDPR): per eventuali comunicazioni promozionali, se espressamente accettate.</li>
+      <li>Errori nei calcoli derivanti da dati inseriti in modo errato dall'utente</li>
+      <li>Variazioni normative successive all'ultimo aggiornamento dell'applicazione</li>
+      <li>Decisioni fiscali prese esclusivamente sulla base dei risultati dell'app</li>
+    </ul>
+    <p>Si raccomanda sempre di confrontare i risultati con un commercialista o consulente fiscale abilitato.</p>
+  </section>
+
+  <section>
+    <h2>4. Registrazione e account</h2>
+    <p>Per utilizzare le funzionalità del Servizio è necessario creare un account fornendo un indirizzo email valido e una password, oppure tramite accesso con Google.</p>
+    <p>L'utente è responsabile di:</p>
+    <ul>
+      <li>Mantenere riservate le proprie credenziali di accesso</li>
+      <li>Tutte le attività svolte tramite il proprio account</li>
+      <li>Notificare immediatamente al Fornitore qualsiasi accesso non autorizzato</li>
+    </ul>
+    <p>È consentito un solo account per persona. Account multipli possono essere sospesi.</p>
+  </section>
+
+  <section>
+    <h2>5. Uso accettabile</h2>
+    <p>L'utente si impegna a utilizzare il Servizio esclusivamente per scopi legittimi e personali. È vietato:</p>
+    <ul>
+      <li>Tentare di accedere ai dati di altri utenti</li>
+      <li>Utilizzare strumenti automatizzati (bot, scraper) per accedere al Servizio</li>
+      <li>Caricare contenuti illegali, offensivi o che violino diritti di terzi</li>
+      <li>Tentare di compromettere la sicurezza o il funzionamento del Servizio</li>
+      <li>Rivendere o sublicenziare l'accesso al Servizio a terzi</li>
     </ul>
   </section>
 
   <section>
-    <h2>5. Conservazione dei dati</h2>
-    <p>I dati vengono conservati per tutta la durata del rapporto contrattuale e per i successivi <strong>12 mesi</strong> dalla cancellazione dell'account, salvo obblighi di legge che richiedano una conservazione più lunga.</p>
-    <p>I dati fiscali inseriti sono conservati fino a quando l'utente non richiede la cancellazione del proprio account.</p>
+    <h2>6. Dati inseriti dall'utente</h2>
+    <p>I dati fiscali inseriti (fatturato, codice ATECO, ecc.) rimangono di <strong>esclusiva proprietà dell'utente</strong>. Il Fornitore non utilizza tali dati per scopi diversi dall'erogazione del Servizio.</p>
+    <p>L'utente può in qualsiasi momento richiedere la cancellazione del proprio account e di tutti i dati associati scrivendo a <a href="/cdn-cgi/l/email-protection#0e7e6b7e7e61606b207a6b654e69636f6762206d6163"><span class="__cf_email__" data-cfemail="bacadfcacad5d4df94cedfd1faddd7dbd3d694d9d5d7">[email&#160;protected]</span></a>.</p>
   </section>
 
   <section>
-    <h2>6. Condivisione con terze parti</h2>
-    <p>I dati possono essere condivisi esclusivamente con:</p>
-    <ul>
-      <li><strong>Supabase Inc.</strong> — fornitore del database e del servizio di autenticazione (server in Europa, conformi GDPR)</li>
-      <li><strong>Vercel Inc.</strong> — fornitore dell'infrastruttura di hosting</li>
-      <li><strong>Google LLC</strong> — solo se utilizzi il login con Google, nei limiti del consenso OAuth</li>
-    </ul>
-    <p>Non vendiamo, affittiamo o cediamo i tuoi dati a terze parti per scopi commerciali.</p>
+    <h2>7. Disponibilità del servizio</h2>
+    <p>Il Fornitore si impegna a garantire la disponibilità del Servizio, ma non può garantire un'operatività del 100%. Il Servizio potrebbe essere temporaneamente non disponibile per manutenzione, aggiornamenti o cause di forza maggiore.</p>
+    <p>Il Fornitore si riserva il diritto di modificare, sospendere o interrompere il Servizio, in tutto o in parte, con ragionevole preavviso agli utenti registrati.</p>
   </section>
 
   <section>
-    <h2>7. I tuoi diritti (GDPR)</h2>
-    <p>In qualità di interessato, hai il diritto di:</p>
-    <ul>
-      <li><strong>Accesso:</strong> ottenere una copia dei tuoi dati personali</li>
-      <li><strong>Rettifica:</strong> correggere dati inesatti o incompleti</li>
-      <li><strong>Cancellazione:</strong> richiedere la cancellazione dei tuoi dati ("diritto all'oblio")</li>
-      <li><strong>Portabilità:</strong> ricevere i tuoi dati in formato strutturato e leggibile</li>
-      <li><strong>Opposizione:</strong> opporti al trattamento per motivi legittimi</li>
-      <li><strong>Limitazione:</strong> richiedere la limitazione del trattamento</li>
-    </ul>
-    <p>Per esercitare i tuoi diritti, scrivi a <a href="/cdn-cgi/l/email-protection#23534653534c4d460d57464863444e424a4f0d404c4e"><span class="__cf_email__" data-cfemail="3a4a5f4a4a55545f144e5f517a5d575b535614595557">[email&#160;protected]</span></a>. Risponderemo entro 30 giorni.</p>
+    <h2>8. Proprietà intellettuale</h2>
+    <p>Tutti i contenuti del Servizio (codice, design, testi, loghi) sono di proprietà di <strong>Peppone Tek</strong> e sono protetti dalle leggi sul diritto d'autore. È vietata la riproduzione, distribuzione o modifica senza autorizzazione scritta.</p>
   </section>
 
   <section>
-    <h2>8. Cookie</h2>
-    <p>ForfettarioApp utilizza esclusivamente cookie tecnici e di sessione, necessari al funzionamento dell'autenticazione. Non utilizziamo cookie di profilazione o pubblicitari.</p>
+    <h2>9. Limitazione di responsabilità</h2>
+    <p>Nei limiti consentiti dalla legge applicabile, il Fornitore non sarà responsabile per danni indiretti, incidentali o consequenziali derivanti dall'uso o dall'impossibilità di usare il Servizio, inclusi mancati guadagni, perdita di dati o sanzioni fiscali.</p>
+    <p>La responsabilità massima del Fornitore nei confronti dell'utente non potrà in ogni caso superare l'importo eventualmente pagato dall'utente per il Servizio negli ultimi 12 mesi.</p>
   </section>
 
   <section>
-    <h2>9. Sicurezza</h2>
-    <p>Adottiamo misure tecniche e organizzative adeguate per proteggere i dati personali da accessi non autorizzati, tra cui cifratura dei dati in transito (HTTPS/TLS), hashing delle password e controllo degli accessi.</p>
+    <h2>10. Modifiche ai termini</h2>
+    <p>Il Fornitore si riserva il diritto di modificare i presenti Termini in qualsiasi momento. Le modifiche sostanziali saranno comunicate tramite email o avviso in app almeno <strong>15 giorni prima</strong> dell'entrata in vigore. L'utilizzo continuato del Servizio dopo tale data costituisce accettazione dei nuovi Termini.</p>
   </section>
 
   <section>
-    <h2>10. Modifiche alla Privacy Policy</h2>
-    <p>Ci riserviamo il diritto di modificare questa Privacy Policy. Le modifiche sostanziali saranno notificate tramite email o avviso in app. La data di "ultimo aggiornamento" in cima al documento sarà sempre aggiornata.</p>
+    <h2>11. Legge applicabile e foro competente</h2>
+    <p>I presenti Termini sono regolati dalla legge italiana. Per qualsiasi controversia derivante dall'uso del Servizio, le parti si impegnano a ricercare una soluzione amichevole. In mancanza, sarà competente il Foro di residenza del Fornitore.</p>
   </section>
 
   <section>
-    <h2>11. Contatti</h2>
-    <p>Per qualsiasi domanda relativa alla presente Privacy Policy o al trattamento dei tuoi dati personali, puoi contattarci a: <a href="/cdn-cgi/l/email-protection#4b3b2e3b3b24252e653f2e200b2c262a222765282426"><span class="__cf_email__" data-cfemail="ddadb8adadb2b3b8f3a9b8b69dbab0bcb4b1f3beb2b0">[email&#160;protected]</span></a>.</p>
-    <p>Hai anche il diritto di proporre reclamo all'autorità di controllo competente (in Italia: <str
+    <h2>12. Contatti</h2>
+    <p>Per qualsiasi domanda relativa ai presenti Termini di Servizio scrivi a: <a href="/cdn-cgi/l/email-protection#6b1b0e1b1b04050e451f0e002b0c060a020745080406"><span class="__cf_email__" data-cfemail="94e4f1e4e4fbfaf1bae0f1ffd4f3f9f5fdf8baf7fbf9">[email&#
