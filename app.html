@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8">
@@ -1592,9 +1592,11 @@ async function salvaAnno() {
   // ── Controllo wizard storico ─────────────────────────────
   // Se l'utente non ha ancora NESSUN anno salvato e sta cercando
   // di salvare l'anno corrente o uno futuro → apri wizard
+  // ECCEZIONE: se ha dichiarato "Primo anno attività" salta il wizard
   const annoNow = new Date().getFullYear();
   const anniEsistenti = Object.keys(_anni).length;
-  if (anniEsistenti === 0 && _last.anno >= annoNow) {
+  const isPrimoAnno = g('f-noaoc')?.checked;
+  if (anniEsistenti === 0 && _last.anno >= annoNow && !isPrimoAnno) {
     wizOpen(_last.anno);
     return; // salvaAnno verrà richiamato da wizComplete()
   }
