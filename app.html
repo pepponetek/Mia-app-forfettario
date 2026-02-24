@@ -1116,7 +1116,7 @@ async function doGoogleLogin() {
   const { error } = await sb.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: window.location.origin + '/app.html', // ← torna all'app dopo Google
+      redirectTo: window.location.origin, // ← torna alla radice, gestito dal boot
       queryParams: { access_type: 'offline', prompt: 'select_account' }
     }
   });
@@ -1127,56 +1127,57 @@ async function doGoogleLogin() {
 async function doLogout() {
   closeModal('modal-user');
   await sb.auth.signOut();
+  // Il reset e redirect viene gestito da onAuthStateChange -> resetApp()
 }
 
 /* ============================================================
    INIT APP
    ============================================================ */
-async function initApp(user) {
-  // Anti-doppio init: se stesso utente già inizializzato → skip
-  if (_ready && _user && _user.id === user.id) return;
+async function initAppData() {
+  // Anti-doppio init
+  if (_ready) return;
   _ready = true;
-  _user  = user;
-
-  g('auth-screen').style.display = 'none';
-  g('app').classList.add('show');
 
   // Carica profilo con retry (trigger potrebbe essere lento)
   let prof = null;
   for (let i = 0; i < 3; i++) {
-    const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+    const { data, error } = await sb.from('profiles').select('*').eq('id', _user.id).maybeSingle();
     if (!error && data) { prof = data; break; }
-    await new Promise(r => setTimeout(r, 800));
+    if (i < 2) await new Promise(r => setTimeout(r, 800));
   }
+  
   // Per utenti Google il nome arriva da user.user_metadata
-  const meta = user.user_metadata || {};
+  const meta = _user.user_metadata || {};
   if (!prof && meta.full_name) {
     const parts = meta.full_name.split(' ');
     const newProf = {
-      id: user.id,
+      id: _user.id,
       nome: parts[0] || '',
       cognome: parts.slice(1).join(' ') || '',
-      email: user.email || '',
+      email: _user.email || '',
       ruolo: 'cliente',
       ateco: ''
     };
-    await sb.from('profiles').upsert(newProf, { onConflict: 'id' });
+    // Non bloccare l'UI per questo upsert
+    sb.from('profiles').upsert(newProf, { onConflict: 'id' }).then(({ error }) => {
+      if (error) console.error('Profile upsert failed:', error);
+    });
     prof = newProf;
   }
-  _profile = prof || { id:user.id, nome: meta.given_name||'', cognome: meta.family_name||'', email:user.email||'', ruolo:'cliente', ateco:'' };
+  _profile = prof || { id:_user.id, nome: meta.given_name||'', cognome: meta.family_name||'', email:_user.email||'', ruolo:'cliente', ateco:'' };
 
   // UI utente
-  const nomeCompleto = [_profile.nome, _profile.cognome].filter(Boolean).join(' ') || user.email;
-  const iniziale     = (_profile.nome || user.email || '?').charAt(0).toUpperCase();
+  const nomeCompleto = [_profile.nome, _profile.cognome].filter(Boolean).join(' ') || _user.email;
+  const iniziale     = (_profile.nome || _user.email || '?').charAt(0).toUpperCase();
   const isAdmin      = _profile.ruolo === 'admin';
   const roleText     = isAdmin ? '👑 Admin' : 'Cliente';
   const roleClass    = isAdmin ? 'rbadge rb-admin' : 'rbadge rb-cliente';
 
   g('sb-name').textContent  = nomeCompleto;
-  g('sb-email').textContent = _profile.email || user.email;
+  g('sb-email').textContent = _profile.email || _user.email;
   g('mob-av').textContent   = iniziale;
   g('um-name').textContent  = nomeCompleto;
-  g('um-email').textContent = _profile.email || user.email;
+  g('um-email').textContent = _profile.email || _user.email;
   ['sb-role','um-role'].forEach(id => { g(id).textContent = roleText; g(id).className = roleClass; });
 
   if (isAdmin) g('nav-admin').style.display = 'flex';
@@ -1203,7 +1204,7 @@ function resetApp() {
   toast('Disconnesso · Arrivederci 👋', 'info', 1500);
   // Torna alla landing page dopo il toast
   setTimeout(() => {
-    window.location.replace('/index.html');
+    window.location.replace(window.location.origin);
   }, 1200);
 }
 
@@ -3013,7 +3014,6 @@ async function wizComplete() {
   const ls = document.getElementById('loading-screen');
   let appStarted = false;
 
-  // Rileva callback OAuth Google (token nell'URL)
   const isOAuthCallback = window.location.hash.includes('access_token') ||
                           window.location.search.includes('code=');
 
@@ -3023,32 +3023,23 @@ async function wizComplete() {
     setTimeout(() => { ls.classList.add('gone'); }, 400);
   }
 
-  async function startApp(user) {
+  function startApp(user) {
     if (appStarted) return;
     appStarted = true;
-    // Timeout di sicurezza: dopo 8s forza la visualizzazione dell'app comunque
-    const safetyTimer = setTimeout(() => {
-      console.warn('startApp timeout — forzo visualizzazione app');
-      try { g('auth-screen').style.display = 'none'; } catch(_){}
-      try { g('app').classList.add('show'); } catch(_){}
-      hideLs();
-    }, 8000);
-    try {
-      await initApp(user);
-    } catch(e) {
-      console.error('initApp error:', e);
-      try { g('auth-screen').style.display = 'none'; } catch(_){}
-      try { g('app').classList.add('show'); } catch(_){}
-    } finally {
-      clearTimeout(safetyTimer);
-      hideLs();
-    }
+    _user = user;
+
+    g('auth-screen').style.display = 'none';
+    g('app').classList.add('show');
+    hideLs();
+
+    // Carica i dati in background senza bloccare l'UI
+    initAppData();
   }
 
   // Ascolta logout, SIGNED_IN e INITIAL_SESSION (es. dopo conferma email)
   sb.auth.onAuthStateChange(async (event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user && !appStarted) {
-      await startApp(session.user);
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+      startApp(session.user);
     } else if (event === 'SIGNED_OUT') {
       resetApp();
     }
@@ -3059,22 +3050,18 @@ async function wizComplete() {
     setTimeout(() => {
       if (!appStarted) {
         console.warn('OAuth timeout o sessione non rilevata');
-        hideLs(); // Mostra auth screen invece di redirect
+        hideLs(); // Mostra auth screen invece di loop
       }
-    }, 5000);
+    }, 6000);
     return;
   }
 
-  // getSession con timeout 4 secondi — evita blocco su rete lenta
+  // Prova a ottenere la sessione all'avvio
   try {
-    const sessionPromise = sb.auth.getSession();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('timeout')), 4000)
-    );
-    const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
+    const { data: { session }, error } = await sb.auth.getSession();
     if (error) throw error;
     if (session?.user) {
-      await startApp(session.user);
+      startApp(session.user);
     } else {
       // Nessuna sessione: resta su auth screen (permette il login)
       hideLs();
