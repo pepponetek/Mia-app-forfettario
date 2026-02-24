@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ForfettarioApp · Peppone Tek — Il tuo regime forfettario, finalmente chiaro</title>
 <meta name="description" content="Gestisci fatturato, tasse INPS e imposta sostitutiva in pochi tap. ForfettarioApp è lo strumento definitivo per i professionisti in regime forfettario.">
+<!-- ===== FAVICON & APP ICONS ===== -->
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0d1117">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -560,7 +567,7 @@ footer{
   <div class="blob-tl"></div>
   <div class="blob-br"></div>
 
-  <div class="hero-badge" id="hero-anno-badge">🟢 Aggiornato anno fiscale 2025</div>
+  <div class="hero-badge">🟢 Aggiornato anno fiscale 2025</div>
 
   <h1>Il tuo regime forfettario,<br><span class="hl">finalmente chiaro.</span></h1>
 
@@ -586,7 +593,7 @@ footer{
         <div class="hp-dot" style="background:#d29922"></div>
         <div class="hp-dot" style="background:#3fb950"></div>
       </div>
-      <div class="hp-title" id="hp-anno-title">ForfettarioApp · Anno fiscale 2025</div>
+      <div class="hp-title">ForfettarioApp · Anno fiscale 2025</div>
     </div>
     <div class="hp-grid">
       <div class="hp-stat">
@@ -619,7 +626,7 @@ footer{
         <div class="value" style="font-size:15px;margin-top:4px">
           <span style="display:inline-block;padding:4px 10px;border-radius:999px;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);color:#3fb950;font-size:12px">✓ Definitivo</span>
         </div>
-        <div class="delta" id="hp-anno-delta">Anno 2025</div>
+        <div class="delta">Anno 2025</div>
       </div>
     </div>
   </div>
@@ -1130,17 +1137,6 @@ revealEls.forEach(el=>io.observe(el));
 
 // ===== KEYBOARD ESC =====
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
-
-// ===== ANNO FISCALE DINAMICO =====
-(function() {
-  const y = new Date().getFullYear();
-  const badge = document.getElementById('hero-anno-badge');
-  const title = document.getElementById('hp-anno-title');
-  const delta = document.getElementById('hp-anno-delta');
-  if (badge) badge.textContent = '🟢 Aggiornato anno fiscale ' + y;
-  if (title) title.textContent = 'ForfettarioApp · Anno fiscale ' + y;
-  if (delta) delta.textContent = 'Anno ' + y;
-})();
 </script>
 </body>
 </html>
