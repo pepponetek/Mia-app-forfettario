@@ -1024,6 +1024,19 @@ if(sb) {
   sb.auth.getSession().then(({ data: { session } }) => {
     if (session?.user) window.location.replace('/app.html');
   });
+
+  // CRITICO: getSession() sopra gira UNA VOLTA all'avvio, PRIMA che la SDK
+  // abbia elaborato il #access_token nell'URL (es. link di conferma email).
+  // onAuthStateChange invece ascolta in tempo reale:
+  // - INITIAL_SESSION: scatta quando la SDK processa il token dall'URL
+  // - SIGNED_IN: scatta dopo un login esplicito
+  // Senza questo, l'utente che clicca il link di conferma rimane bloccato
+  // sulla landing page anche se è correttamente loggato.
+  sb.auth.onAuthStateChange((event, session) => {
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+      window.location.replace('/app.html');
+    }
+  });
 }
 
 // ===== AUTH REALE =====
@@ -1059,7 +1072,16 @@ async function doRegister(){
   if(pw.length<8){showMsg('register','Password troppo corta (min. 8 caratteri).','err');return;}
   showMsg('register','Registrazione in corso…','ok');
   try {
-    const { data, error } = await sb.auth.signUp({ email, password: pw });
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password: pw,
+      options: {
+        // CRITICO: il link di conferma deve puntare ad app.html, non a index.html
+        // Senza questo, l'utente atterra sulla landing page dopo la conferma
+        // e la SDK processa il token ma nessuno lo gestisce → utente bloccato
+        emailRedirectTo: window.location.origin + '/app.html'
+      }
+    });
     if(error){ showMsg('register', error.message, 'err'); return; }
     if(data.user && !data.session){
       showMsg('register','✅ Controlla la tua email per confermare l\'account.','ok');
