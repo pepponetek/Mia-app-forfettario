@@ -1932,6 +1932,7 @@ function renderArchivio() {
         </div>
         <div class="ayc-right">
           ${diffH}
+          <button class="btn btn-xs no-print" style="background:linear-gradient(135deg,var(--pu-b),var(--pu));padding:6px 10px;font-size:11px" onclick="event.stopPropagation();archAnalizzaPDF(${d.anno})">🤖 PDF</button>
           <span class="rbadge rb-${s}">${s==='bozza'?'📝':s==='definitivo'?'✅':'🗄️'}</span>
           <span class="ayc-tot">${fmt(d.totale_oneri)}</span>
           <span style="color:var(--t3)">›</span>
@@ -1959,9 +1960,9 @@ function renderArchivio() {
         ${d.note ? `<div class="al al-i" style="margin-top:8px"><span class="ai">📋</span><span style="font-style:italic">${sanitizeHTML(d.note)}</span></div>` : ''}
         <div style="font-size:11px;color:var(--t3);margin-top:8px">☁️ Salvato il ${sal} · Stato: <strong>${s}</strong> · ${d.acconto_note}</div>
         <div class="btn-row">
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--pu-b),var(--pu))" onclick="archAnalizzaPDF(${d.anno})">🤖 Analizza Dichiarazione / F24</button>
           <button class="btn btn-sm btn-ol" onclick="exportPDF(${d.anno})">📄 PDF</button>
           <button class="btn btn-sm btn-ol" onclick="printAnno(${d.anno})">🖨️ Stampa</button>
-          <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--pu-b),var(--pu))" onclick="archAnalizzaPDF(${d.anno})">🤖 Analizza Dich.</button>
           ${s === 'bozza' ? `<button class="btn btn-sm btn-ye" onclick="apriAggiornaBozza('${d.id}',${d.anno})">🔄 Aggiorna Imponibile</button>` : ''}
           <button class="btn btn-sm btn-ol" style="color:var(--t3)" onclick="cambiaStato('${d.id}',${d.anno})">✏️ Stato</button>
           <button class="btn btn-sm btn-re btn-ol" onclick="richiediDel('${d.id}',${d.anno})">🗑️ Elimina</button>
