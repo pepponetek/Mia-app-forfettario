@@ -5,13 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ForfettarioApp · Peppone Tek — Il tuo regime forfettario, finalmente chiaro</title>
 <meta name="description" content="Gestisci fatturato, tasse INPS e imposta sostitutiva in pochi tap. ForfettarioApp è lo strumento definitivo per i professionisti in regime forfettario.">
-<!-- ===== FAVICON & APP ICONS ===== -->
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0d1117">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -567,7 +560,7 @@ footer{
   <div class="blob-tl"></div>
   <div class="blob-br"></div>
 
-  <div class="hero-badge">🟢 Aggiornato anno fiscale 2025</div>
+  <div class="hero-badge">🟢 Aggiornato anno fiscale <span class="dyn-year"></span></div>
 
   <h1>Il tuo regime forfettario,<br><span class="hl">finalmente chiaro.</span></h1>
 
@@ -593,7 +586,7 @@ footer{
         <div class="hp-dot" style="background:#d29922"></div>
         <div class="hp-dot" style="background:#3fb950"></div>
       </div>
-      <div class="hp-title">ForfettarioApp · Anno fiscale 2025</div>
+      <div class="hp-title">ForfettarioApp · Anno fiscale <span class="dyn-year"></span></div>
     </div>
     <div class="hp-grid">
       <div class="hp-stat">
@@ -626,7 +619,7 @@ footer{
         <div class="value" style="font-size:15px;margin-top:4px">
           <span style="display:inline-block;padding:4px 10px;border-radius:999px;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);color:#3fb950;font-size:12px">✓ Definitivo</span>
         </div>
-        <div class="delta">Anno 2025</div>
+        <div class="delta">Anno <span class="dyn-year"></span></div>
       </div>
     </div>
   </div>
@@ -645,7 +638,7 @@ footer{
     </div>
     <div class="stat-item">
       <div class="stat-num ye">100%</div>
-      <div class="stat-label">Normativa forfettaria 2025</div>
+      <div class="stat-label">normativa forfettaria <span class="dyn-year"></span></div>
     </div>
     <div class="stat-item">
       <div class="stat-num pu">PDF</div>
@@ -667,7 +660,7 @@ footer{
       <div class="feat-card ac-glow reveal">
         <div class="feat-ico ac">💰</div>
         <div class="feat-name">Calcolo tasse in tempo reale</div>
-        <div class="feat-desc">Inserisci il fatturato e ottieni istantaneamente imposta sostitutiva, contributi INPS e netto effettivo. Aggiornato con i coefficienti 2025.</div>
+        <div class="feat-desc">Inserisci il fatturato e ottieni istantaneamente imposta sostitutiva, contributi INPS e netto effettivo. Aggiornato con i coefficienti <span class="dyn-year"></span>.</div>
         <span class="feat-tag ac">Real-time</span>
       </div>
 
@@ -762,7 +755,7 @@ footer{
             <div class="term-label">prospetto_fiscale_2025.json</div>
           </div>
           <div class="term-body">
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">anno</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">2025</span></div>
+            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">anno</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val"><span class="dyn-year"></span></span></div>
             <div class="term-line"><span class="term-prompt">›</span><span class="term-key">ateco</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">"62.01.09 — Dev. Software"</span></div>
             <div class="term-line"><span class="term-prompt">›</span><span class="term-key">fatturato</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val gr">65.000 €</span></div>
             <hr class="term-divider">
@@ -907,7 +900,7 @@ footer{
 
   <!-- Copyright -->
   <div class="foot-copy" style="width:100%;text-align:center;padding-top:8px;border-top:1px solid var(--bd)">
-    © 2025 Peppone Tek · Tutti i diritti riservati ·
+    © <span class="dyn-year"></span> Peppone Tek · Tutti i diritti riservati ·
     Strumento informativo, non sostituisce la consulenza di un commercialista.
   </div>
 </footer>
@@ -1137,6 +1130,15 @@ revealEls.forEach(el=>io.observe(el));
 
 // ===== KEYBOARD ESC =====
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+</script>
+<script>
+  // Anno dinamico: aggiorna automaticamente ogni anno senza toccare il codice
+  (function() {
+    var year = new Date().getFullYear();
+    document.querySelectorAll(".dyn-year").forEach(function(el) {
+      el.textContent = year;
+    });
+  })();
 </script>
 </body>
 </html>
