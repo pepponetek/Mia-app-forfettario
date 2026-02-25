@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512"><svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg-main" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#161b22"></stop>
+      <stop offset="100%" stop-color="#0d1117"></stop>
+    </radialGradient>
+    <radialGradient id="blob-tl" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1f6feb" stop-opacity="0.55"></stop>
+      <stop offset="100%" stop-color="#1f6feb" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="blob-br" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3fb950" stop-opacity="0.45"></stop>
+      <stop offset="100%" stop-color="#3fb950" stop-opacity="0"></stop>
+    </radialGradient>
+    <linearGradient id="header-line" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#58a6ff"></stop>
+      <stop offset="100%" stop-color="#1f6feb"></stop>
+    </linearGradient>
+    <linearGradient id="receipt-border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#58a6ff"></stop>
+      <stop offset="100%" stop-color="#3fb950"></stop>
+    </linearGradient>
+    <linearGradient id="bar-cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#58a6ff"></stop>
+      <stop offset="100%" stop-color="#3fb950"></stop>
+    </linearGradient>
+  </defs>
+
+  <!-- Sfondo -->
+  <rect width="512" height="512" rx="90" fill="url(#bg-main)"></rect>
+
+  <!-- Blob luce top-left -->
+  <ellipse cx="60" cy="70" rx="130" ry="120" fill="url(#blob-tl)"></ellipse>
+
+  <!-- Blob luce bottom-right -->
+  <ellipse cx="460" cy="440" rx="120" ry="110" fill="url(#blob-br)"></ellipse>
+
+  <!-- Corpo scontrino -->
+  <rect x="138" y="78" width="236" height="270" rx="14" fill="#161b22" fill-opacity="0.85" stroke="url(#receipt-border)" stroke-width="2.5"></rect>
+
+  <!-- Zigzag bottom -->
+  <path d="M138 322
+    Q149 348 160 322 Q171 348 182 322 Q193 348 204 322
+    Q215 348 226 322 Q237 348 248 322 Q259 348 270 322
+    Q281 348 292 322 Q303 348 314 322 Q325 348 336 322
+    Q347 348 358 322 L374 322 L374 355
+    Q362 328 351 355 Q340 328 329 355 Q318 328 307 355
+    Q296 328 285 355 Q274 328 263 355 Q252 328 241 355
+    Q230 328 219 355 Q208 328 197 355 Q186 328 175 355
+    Q164 328 153 355 Q142 328 138 355 Z" fill="#161b22" fill-opacity="0.85" stroke="url(#receipt-border)" stroke-width="2"></path>
+
+  <!-- Header blu + dot verde -->
+  <rect x="162" y="105" width="148" height="13" rx="6.5" fill="url(#header-line)" opacity="0.95"></rect>
+  <circle cx="326" cy="111" r="10" fill="#3fb950"></circle>
+  <circle cx="326" cy="111" r="5" fill="#0d1117" opacity="0.4"></circle>
+
+  <!-- Separatore -->
+  <rect x="154" y="130" width="204" height="1.5" rx="1" fill="#2a3140"></rect>
+
+  <!-- Riga 1: grigio + verde -->
+  <rect x="162" y="148" width="88" height="11" rx="5.5" fill="#4a5568" opacity="0.8"></rect>
+  <rect x="268" y="148" width="76" height="11" rx="5.5" fill="#3fb950" opacity="0.9"></rect>
+
+  <!-- Riga 2: grigio + rosso -->
+  <rect x="162" y="173" width="96" height="11" rx="5.5" fill="#4a5568" opacity="0.7"></rect>
+  <rect x="276" y="173" width="68" height="11" rx="5.5" fill="#f85149" opacity="0.9"></rect>
+
+  <!-- Riga 3: grigio + giallo -->
+  <rect x="162" y="198" width="80" height="11" rx="5.5" fill="#4a5568" opacity="0.6"></rect>
+  <rect x="260" y="198" width="84" height="11" rx="5.5" fill="#d29922" opacity="0.9"></rect>
+
+  <!-- Separatore -->
+  <rect x="154" y="222" width="204" height="1.5" rx="1" fill="#2a3140"></rect>
+
+  <!-- Riga totale: cyan gradiente -->
+  <rect x="162" y="238" width="72" height="11" rx="5.5" fill="#4a5568" opacity="0.55"></rect>
+  <rect x="222" y="234" width="116" height="19" rx="9.5" fill="url(#bar-cyan)" opacity="0.95"></rect>
+
+  <!-- Riga finale piccola -->
+  <rect x="192" y="266" width="128" height="9" rx="4.5" fill="#2a3140" opacity="0.8"></rect>
+
+</svg></svg><style>@media (prefers-color-scheme: light) { :root { filter: none; } }
+@media (prefers-color-scheme: dark) { :root { filter: none; } }
+</style></svg>
