@@ -524,6 +524,20 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 .wiz-info{background:var(--pu-d);border:1px solid var(--pu-b);border-radius:8px;
   padding:10px 13px;margin-bottom:12px;font-size:11px;color:var(--pu);line-height:1.6}
 
+/* ── MODAL AI RISULTATO PDF ──────────────────────────────── */
+.ai-result-field{background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+  padding:11px 13px;margin-bottom:8px}
+.ai-result-field .arf-lbl{font-size:10px;color:var(--t3);font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.ai-result-field .arf-val{font-family:monospace;font-size:15px;font-weight:700;color:var(--t1)}
+.ai-result-field .arf-edit{width:100%;margin-top:6px;padding:8px 11px;background:var(--bg);
+  border:1px solid var(--bd);border-radius:6px;color:var(--t1);font-family:monospace;
+  font-size:14px;outline:none}
+.ai-result-field .arf-edit:focus{border-color:var(--ac)}
+.ai-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;
+  background:rgba(188,140,255,.1);border:1px solid var(--pu-b);color:var(--pu);
+  font-size:11px;font-weight:700;margin-bottom:14px}
+
 </style>
 </head>
 <body>
@@ -962,6 +976,48 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   </div>
 </div>
 
+<!-- MODAL AI — Risultati analisi PDF dichiarazione/F24 -->
+<div class="modal-bg" id="modal-ai-result">
+  <div class="modal-box" style="max-width:460px;max-height:90vh;overflow-y:auto">
+    <h3>🤖 Analisi AI completata</h3>
+    <div class="ai-badge" id="ai-doc-tipo">—</div>
+    <p style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.6">
+      Verifica i valori estratti dal PDF. Puoi modificarli prima di applicarli.
+      Solo i campi con valore &gt; 0 verranno aggiornati nel cloud.
+    </p>
+
+    <div class="ai-result-field" id="ai-f-fatturato" style="display:none">
+      <div class="arf-lbl">📊 Fatturato imponibile LM2 (€)</div>
+      <div class="arf-val" id="ai-v-fatturato">—</div>
+      <input type="number" class="arf-edit" id="ai-e-fatturato" min="0" step="0.01" placeholder="Modifica se necessario">
+    </div>
+
+    <div class="ai-result-field" id="ai-f-inps-versata" style="display:none">
+      <div class="arf-lbl">🏛️ INPS versata / F24 pagati nell'anno solare (€)</div>
+      <div class="arf-val" id="ai-v-inps-versata">—</div>
+      <input type="number" class="arf-edit" id="ai-e-inps-versata" min="0" step="0.01" placeholder="Modifica se necessario">
+    </div>
+
+    <div class="ai-result-field" id="ai-f-imposta" style="display:none">
+      <div class="arf-lbl">💰 Imposta sostitutiva dovuta LM11 (€)</div>
+      <div class="arf-val" id="ai-v-imposta">—</div>
+      <input type="number" class="arf-edit" id="ai-e-imposta" min="0" step="0.01" placeholder="Modifica se necessario">
+    </div>
+
+    <div id="ai-note-wrap" style="display:none">
+      <div style="font-size:11px;color:var(--t3);margin-bottom:12px;padding:8px 11px;background:var(--ye-d);border:1px solid var(--ye-b);border-radius:7px" id="ai-note-txt"></div>
+    </div>
+
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn btn-gr btn-sm" id="ai-btn-apply" onclick="confermaAiResult()">✅ Applica al cloud</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-ai-result')">Annulla</button>
+    </div>
+  </div>
+</div>
+
+<!-- Input file globale per analisi PDF dall'archivio -->
+<input type="file" id="arch-pdf-input" accept=".pdf" style="display:none" onchange="onArchPdfSelected(this)">
+
 <script>
 'use strict';
 
@@ -973,10 +1029,10 @@ const SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 const sb = supabase.createClient(SURL, SKEY);
 
 /* ============================================================
-   GEMINI AI — chiave API per parsing PDF dichiarazioni/F24
-   Sostituisci con la tua chiave da https://makersuite.google.com
+   EDGE FUNCTION URL — il parsing AI passa dal server Supabase.
+   La chiave Gemini è un segreto server, mai visibile nel browser.
    ============================================================ */
-const GEMINI_KEY = 'INSERISCI_QUI_LA_TUA_GEMINI_API_KEY';
+const EDGE_PDF_URL = `${SURL}/functions/v1/parse-tax-pdf`;
 
 /* ============================================================
    DATI FISCALI
@@ -1381,18 +1437,15 @@ function onAnnoChange() {
 }
 
 /* ============================================================
-   GEMINI AI — parsing PDF dichiarazione/F24 (plug-in helper)
-   Non interferisce con il caricamento normale dell'app.
+   GEMINI AI — parsing PDF tramite Supabase Edge Function (sicuro)
+   La chiave Gemini è sul server: non appare mai nel browser (F12).
    ============================================================ */
 async function parseTaxPDF(file) {
   if (!file || file.type !== 'application/pdf') {
     throw new Error('File non valido: carica un PDF.');
   }
-  if (GEMINI_KEY === 'INSERISCI_QUI_LA_TUA_GEMINI_API_KEY') {
-    throw new Error('Configura GEMINI_KEY nel codice per usare il parsing AI.');
-  }
 
-  // Converti PDF in Base64
+  // 1. Converti PDF in Base64
   const base64 = await new Promise((res, rej) => {
     const reader = new FileReader();
     reader.onload  = e => res(e.target.result.split(',')[1]);
@@ -1400,45 +1453,28 @@ async function parseTaxPDF(file) {
     reader.readAsDataURL(file);
   });
 
-  const prompt = `Analizza questo documento fiscale italiano e restituisci SOLO un oggetto JSON valido, senza testo aggiuntivo, con questi campi:
-{
-  "tipo": "dichiarazione" oppure "f24",
-  "anno": <anno fiscale come numero intero>,
-  "fatturato_lm2": <importo LM2 come numero, 0 se non presente>,
-  "inps_dedotta_lm7": <importo LM7 come numero, 0 se non presente>,
-  "imposta_dovuta_lm11": <importo LM11 come numero, 0 se non presente>,
-  "inps_versata_f24": <somma importi F24 con causale DPPI o P** versati nell'anno solare, 0 se non F24>,
-  "note": "<eventuali osservazioni brevi>"
-}
-Se il documento è un F24, somma tutti gli importi versati con causale DPPI/PXX e metti il totale in inps_versata_f24.`;
+  // 2. Recupera il JWT della sessione corrente
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('Sessione scaduta. Effettua di nuovo il login.');
 
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: 'application/pdf', data: base64 } }
-          ]
-        }]
-      })
-    }
-  );
+  // 3. Chiama la Edge Function Supabase (chiave Gemini è sul server)
+  const resp = await fetch(EDGE_PDF_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey':        SKEY
+    },
+    body: JSON.stringify({ pdf_base64: base64 })
+  });
 
-  if (!resp.ok) throw new Error(`Gemini API error: ${resp.status}`);
   const json = await resp.json();
 
-  const raw = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  // Rimuovi eventuali backtick JSON
-  const clean = raw.replace(/```json|```/g, '').trim();
-  try {
-    return JSON.parse(clean);
-  } catch {
-    throw new Error('Risposta AI non parsabile. Verifica il PDF o inserisci manualmente.');
+  if (!resp.ok) {
+    throw new Error(json?.error || `Errore server: ${resp.status}`);
   }
+
+  return json;  // { tipo, anno, fatturato_lm2, inps_dedotta_lm7, imposta_dovuta_lm11, inps_versata_f24, note }
 }
 
 /* ============================================================
@@ -1925,6 +1961,7 @@ function renderArchivio() {
         <div class="btn-row">
           <button class="btn btn-sm btn-ol" onclick="exportPDF(${d.anno})">📄 PDF</button>
           <button class="btn btn-sm btn-ol" onclick="printAnno(${d.anno})">🖨️ Stampa</button>
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--pu-b),var(--pu))" onclick="archAnalizzaPDF(${d.anno})">🤖 Analizza Dich.</button>
           ${s === 'bozza' ? `<button class="btn btn-sm btn-ye" onclick="apriAggiornaBozza('${d.id}',${d.anno})">🔄 Aggiorna Imponibile</button>` : ''}
           <button class="btn btn-sm btn-ol" style="color:var(--t3)" onclick="cambiaStato('${d.id}',${d.anno})">✏️ Stato</button>
           <button class="btn btn-sm btn-re btn-ol" onclick="richiediDel('${d.id}',${d.anno})">🗑️ Elimina</button>
@@ -1937,6 +1974,179 @@ function renderArchivio() {
 function togAyc(anno) {
   const el = g('ayc-b-' + anno);
   if (el) el.classList.toggle('open');
+}
+
+/* ============================================================
+   ANALISI PDF DICHIARAZIONE / F24 — dall'archivio
+   ============================================================ */
+let _aiAnno   = null; // anno target dell'analisi corrente
+let _aiResult = null; // risultato raw dalla Edge Function
+
+// 1. L'utente clicca "Analizza Dich." → apri file picker e ricorda l'anno
+function archAnalizzaPDF(anno) {
+  _aiAnno = anno;
+  const inp = g('arch-pdf-input');
+  inp.value = ''; // reset per permettere ri-selezione dello stesso file
+  inp.click();
+}
+
+// 2. File selezionato → mostra spinner, chiama parseTaxPDF, apri modal
+async function onArchPdfSelected(input) {
+  const file = input.files[0];
+  if (!file || _aiAnno === null) return;
+
+  const anno = _aiAnno;
+
+  // Feedback visivo — apri il corpo della card se non è aperto
+  const body = g('ayc-b-' + anno);
+  if (body && !body.classList.contains('open')) body.classList.add('open');
+
+  // Mostra toast di attesa
+  toast(`🤖 Analisi AI in corso per il ${anno}…`, 'info', 12000);
+
+  try {
+    const result = await parseTaxPDF(file);
+    _aiResult = result;
+    _aiAnno   = anno;
+    apriModalAiResult(anno, result);
+  } catch(err) {
+    toast('❌ ' + err.message, 'err', 6000);
+  }
+}
+
+// 3. Popola e apri il modal con i risultati
+function apriModalAiResult(anno, r) {
+  // Badge tipo documento
+  const tipoLabel = r.tipo === 'f24'
+    ? '📋 F24 rilevato'
+    : r.tipo === 'dichiarazione'
+      ? '📑 Dichiarazione rilevata'
+      : `📄 Documento (${r.tipo || 'sconosciuto'})`;
+  g('ai-doc-tipo').textContent = tipoLabel + ` · Anno ${r.anno || anno}`;
+
+  // Campo fatturato (solo se da dichiarazione con LM2)
+  const hasFatt = (r.fatturato_lm2 || 0) > 0;
+  g('ai-f-fatturato').style.display = hasFatt ? 'block' : 'none';
+  if (hasFatt) {
+    g('ai-v-fatturato').textContent  = fmt(r.fatturato_lm2);
+    g('ai-e-fatturato').value        = r.fatturato_lm2;
+  }
+
+  // Campo INPS versata (da F24 o LM7)
+  const inpsVal = (r.inps_versata_f24 || 0) > 0
+    ? r.inps_versata_f24
+    : (r.inps_dedotta_lm7 || 0) > 0
+      ? r.inps_dedotta_lm7
+      : 0;
+  const hasInps = inpsVal > 0;
+  g('ai-f-inps-versata').style.display = hasInps ? 'block' : 'none';
+  if (hasInps) {
+    g('ai-v-inps-versata').textContent  = fmt(inpsVal);
+    g('ai-e-inps-versata').value        = inpsVal;
+  }
+
+  // Campo imposta sostitutiva LM11
+  const hasImp = (r.imposta_dovuta_lm11 || 0) > 0;
+  g('ai-f-imposta').style.display = hasImp ? 'block' : 'none';
+  if (hasImp) {
+    g('ai-v-imposta').textContent  = fmt(r.imposta_dovuta_lm11);
+    g('ai-e-imposta').value        = r.imposta_dovuta_lm11;
+  }
+
+  // Note AI
+  const noteWrap = g('ai-note-wrap');
+  if (r.note) {
+    noteWrap.style.display = 'block';
+    g('ai-note-txt').textContent = '💬 ' + r.note;
+  } else {
+    noteWrap.style.display = 'none';
+  }
+
+  // Se nessun campo ha dati utili
+  if (!hasFatt && !hasInps && !hasImp) {
+    toast('⚠️ L\'AI non ha trovato dati fiscali nel PDF. Prova con una dichiarazione o un F24.', 'err', 6000);
+    return;
+  }
+
+  openModal('modal-ai-result');
+}
+
+// 4. Utente conferma → aggiorna Supabase con i valori (eventualmente corretti)
+async function confermaAiResult() {
+  if (_aiResult === null || _aiAnno === null) return;
+  const anno = _aiAnno;
+  const d    = _anni[anno];
+  if (!d) { toast('Anno non trovato', 'err'); return; }
+
+  // Leggi i valori dagli input modificabili
+  const fatt     = parseFloat(g('ai-e-fatturato')?.value)    || 0;
+  const inpsVers = parseFloat(g('ai-e-inps-versata')?.value) || 0;
+  const imposta  = parseFloat(g('ai-e-imposta')?.value)      || 0;
+
+  const updates = { updated_at: new Date().toISOString() };
+
+  // Aggiorna solo i campi presenti
+  if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
+  if (imposta  > 0) updates.imposta_sost = imposta;
+
+  // Se arriva il fatturato, ricalcola tutti i valori derivati
+  if (fatt > 0 && fatt !== d.fatturato) {
+    const gr    = GRUPPI[d.gruppo_idx];
+    const r_forf = fatt * gr.coeff;
+    let c_inps = 0;
+    const tipo = d.inps_tipo;
+    if (tipo === 'gs' || tipo === 'gs-pen') {
+      c_inps = r_forf * INPS_INFO[tipo].a;
+    } else if (tipo === 'art' || tipo === 'com') {
+      const info = INPS_INFO[tipo];
+      c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+    } else if (tipo === 'cassa') {
+      c_inps = r_forf * ((d.cassa_pct || 14.5) / 100);
+    }
+    const inpsPerDed = (d.deduci_inps && inpsVers > 0) ? inpsVers : c_inps;
+    const r_imp      = d.deduci_inps ? Math.max(0, r_forf - inpsPerDed) : r_forf;
+    const aliq       = imposta > 0 ? imposta / r_imp : d.aliquota;
+    const imp_sost   = imposta > 0 ? imposta : r_imp * d.aliquota;
+    const tot_oneri  = imp_sost + c_inps;
+    let acc1 = 0, acc2 = 0, acc_tot = 0;
+    if (imp_sost > S_ACC) {
+      acc_tot = imp_sost;
+      if (acc_tot > S_DUE) { acc1 = acc_tot * .4; acc2 = acc_tot * .6; }
+      else { acc2 = acc_tot; }
+    }
+    Object.assign(updates, {
+      fatturato: fatt, reddito_forf: r_forf,
+      contributi_inps: c_inps, reddito_imp: r_imp,
+      imposta_sost: imp_sost, totale_oneri: tot_oneri,
+      acconto_1: acc1, acconto_2: acc2, acconto_tot: acc_tot,
+      acconto_note: `Aggiornato via AI · ${new Date().toLocaleDateString('it-IT')}`
+    });
+  }
+
+  const btn = g('ai-btn-apply');
+  btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
+  setSync('busy', 'Aggiornamento AI...');
+
+  const { error } = await sb.from('anni_fiscali')
+    .update(updates)
+    .eq('id', d.id)
+    .eq('user_id', _user.id);
+
+  btn.textContent = '✅ Applica al cloud'; btn.disabled = false;
+
+  if (error) {
+    setSync('err', 'Errore');
+    toast('❌ Errore salvataggio: ' + error.message, 'err');
+    return;
+  }
+
+  Object.assign(_anni[anno], updates);
+  closeModal('modal-ai-result');
+  setSync('ok', 'Sincronizzato');
+  renderArchivio();
+  renderSidebar();
+  toast(`✅ Anno ${anno} aggiornato con i dati del PDF`, 'ok');
+  _aiAnno = null; _aiResult = null;
 }
 
 // Variabile temporanea per il modal cambio stato
