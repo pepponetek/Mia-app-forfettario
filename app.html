@@ -7,12 +7,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0d1117">
-<!-- ===== FAVICON & APP ICONS ===== -->
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.json">
 <title>ForfettarioApp · Peppone Tek</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -719,6 +713,14 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
             <div class="fg"><label class="cbg"><input type="checkbox" id="f-deduci" checked><span>Deduci INPS dal reddito (art.1 c.64 L.190/2014)</span></label></div>
             <div class="fg"><label class="cbg"><input type="checkbox" id="f-noaoc" onchange="onAnnoChange()"><span>Primo anno attività — nessun acconto dovuto</span></label></div>
           </div>
+          <div class="fg">
+            <label>INPS effettivamente versata nell'anno solare (F24 pagati) — opzionale</label>
+            <div class="ib" style="margin-bottom:8px;margin-top:0"><strong>💡 Principio di cassa:</strong> se conosci il totale degli F24 INPS pagati in questo anno solare (causale DPPI/PXX), inseriscilo qui per una deduzione esatta. Lascia vuoto per usare l'INPS stimata.</div>
+            <div class="iw"><span class="ipre">€</span>
+              <input type="number" id="f-inps-versata" placeholder="0.00 (opzionale)" min="0" step="0.01" inputmode="decimal">
+              <span class="isuf">F24</span>
+            </div>
+          </div>
           <div class="fg"><label>Note per il fascicolo (visibili in archivio e in stampa)</label>
             <textarea id="f-note" placeholder="Note, accordi con il commercialista, osservazioni..."></textarea>
           </div>
@@ -844,6 +846,18 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     <div class="wiz-body">
       <div class="wiz-info" id="wiz-info"></div>
       <div class="wiz-year-badge" id="wiz-year-label">Anno —</div>
+
+      <!-- CARICA PDF (AI Parsing) -->
+      <div class="fg" style="margin-bottom:10px">
+        <label>📄 Carica Dichiarazione o F24 (PDF) — AI compila i campi</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="file" id="wiz-pdf" accept=".pdf" style="display:none" onchange="wizParsePDF(this)">
+          <button class="btn btn-sm btn-ol" onclick="g('wiz-pdf').click()" style="flex-shrink:0">📤 Scegli PDF</button>
+          <span id="wiz-pdf-lbl" style="font-size:11px;color:var(--t3)">Nessun file scelto</span>
+          <div id="wiz-ai-spinner" style="display:none"><div class="spinner" style="width:16px;height:16px;border-width:2px"></div></div>
+        </div>
+      </div>
+
       <div class="fg">
         <label>Fatturato imponibile <span id="wiz-year-lbl2"></span> (€)</label>
         <div class="iw">
@@ -852,6 +866,24 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
                  inputmode="decimal" oninput="wizPreview()">
         </div>
       </div>
+
+      <!-- INPS VERSATA nell'anno solare -->
+      <div class="fg" style="margin-top:10px">
+        <label>INPS versata nell'anno solare (F24 pagati, €) — opzionale</label>
+        <div class="iw"><span class="ipre">€</span>
+          <input type="number" id="wiz-inps-versata" placeholder="0.00 (opzionale)" min="0" step="0.01" inputmode="decimal">
+          <span class="isuf">F24</span>
+        </div>
+      </div>
+
+      <!-- PRIMO ANNO toggle -->
+      <div class="fg" style="margin-top:10px">
+        <label class="cbg">
+          <input type="checkbox" id="wiz-primo-anno">
+          <span>Questo è il mio primo anno di attività — nessun acconto pregresso</span>
+        </label>
+      </div>
+
       <div class="fg" style="margin-top:10px">
         <label>Note (opzionale)</label>
         <input type="text" id="wiz-note" placeholder="Es: dati da 730, dichiarazione...">
@@ -939,6 +971,12 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 const SURL = 'https://kychcfbiyrcpoelfvaql.supabase.co';
 const SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5Y2hjZmJpeXJjcG9lbGZ2YXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjQyOTgsImV4cCI6MjA4NzAwMDI5OH0.t7tZUbhYayk1kJxRb03zJMkE5VOUS4iuRWqttVbOfOA';
 const sb = supabase.createClient(SURL, SKEY);
+
+/* ============================================================
+   GEMINI AI — chiave API per parsing PDF dichiarazioni/F24
+   Sostituisci con la tua chiave da https://makersuite.google.com
+   ============================================================ */
+const GEMINI_KEY = 'INSERISCI_QUI_LA_TUA_GEMINI_API_KEY';
 
 /* ============================================================
    DATI FISCALI
@@ -1343,6 +1381,67 @@ function onAnnoChange() {
 }
 
 /* ============================================================
+   GEMINI AI — parsing PDF dichiarazione/F24 (plug-in helper)
+   Non interferisce con il caricamento normale dell'app.
+   ============================================================ */
+async function parseTaxPDF(file) {
+  if (!file || file.type !== 'application/pdf') {
+    throw new Error('File non valido: carica un PDF.');
+  }
+  if (GEMINI_KEY === 'INSERISCI_QUI_LA_TUA_GEMINI_API_KEY') {
+    throw new Error('Configura GEMINI_KEY nel codice per usare il parsing AI.');
+  }
+
+  // Converti PDF in Base64
+  const base64 = await new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload  = e => res(e.target.result.split(',')[1]);
+    reader.onerror = () => rej(new Error('Errore lettura file.'));
+    reader.readAsDataURL(file);
+  });
+
+  const prompt = `Analizza questo documento fiscale italiano e restituisci SOLO un oggetto JSON valido, senza testo aggiuntivo, con questi campi:
+{
+  "tipo": "dichiarazione" oppure "f24",
+  "anno": <anno fiscale come numero intero>,
+  "fatturato_lm2": <importo LM2 come numero, 0 se non presente>,
+  "inps_dedotta_lm7": <importo LM7 come numero, 0 se non presente>,
+  "imposta_dovuta_lm11": <importo LM11 come numero, 0 se non presente>,
+  "inps_versata_f24": <somma importi F24 con causale DPPI o P** versati nell'anno solare, 0 se non F24>,
+  "note": "<eventuali osservazioni brevi>"
+}
+Se il documento è un F24, somma tutti gli importi versati con causale DPPI/PXX e metti il totale in inps_versata_f24.`;
+
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: 'application/pdf', data: base64 } }
+          ]
+        }]
+      })
+    }
+  );
+
+  if (!resp.ok) throw new Error(`Gemini API error: ${resp.status}`);
+  const json = await resp.json();
+
+  const raw = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  // Rimuovi eventuali backtick JSON
+  const clean = raw.replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    throw new Error('Risposta AI non parsabile. Verifica il PDF o inserisci manualmente.');
+  }
+}
+
+/* ============================================================
    CALCOLO FISCALE
    ============================================================ */
 function calcola() {
@@ -1395,7 +1494,12 @@ function calcola() {
     inps_desc = 'Nessun contributo'; inps_form = '—';
   }
 
-  const r_imp     = deduci ? Math.max(0, r_forf - c_inps) : r_forf;
+  // PRINCIPIO DI CASSA — usa INPS effettivamente versata se fornita (LM7 / F24 pagati)
+  // Altrimenti fallback all'INPS stimata per la deduzione
+  const inpsVersataInput = parseFloat(g('f-inps-versata')?.value) || 0;
+  const inpsPerDeduzione = (deduci && inpsVersataInput > 0) ? inpsVersataInput : c_inps;
+
+  const r_imp     = deduci ? Math.max(0, r_forf - inpsPerDeduzione) : r_forf;
   const imp_sost  = r_imp * aliq;
   const tot_oneri = imp_sost + c_inps;
 
@@ -1403,20 +1507,23 @@ function calcola() {
   const anniSalvati = Object.keys(_anni).length;
   const storicoOk   = anniSalvati >= 3;
 
-  // ACCONTI (metodo storico su anno corrente)
+  // ACCONTI — Metodo Storico Granitico (art.17 TUIR)
+  // Base acconti = imposta dovuta anno precedente (LM11 prev) se disponibile
+  // altrimenti usa imposta corrente (stima)
   let acc1 = 0, acc2 = 0, acc_tot = 0, acc_note = '';
-  const doAcc = !noAoc && imp_sost > S_ACC;
+  const baseAcconti = prevAnno ? prevAnno.imposta_sost : imp_sost;
+  const doAcc = !noAoc && baseAcconti > S_ACC;
   if (doAcc) {
-    acc_tot  = imp_sost;
+    acc_tot  = baseAcconti;
     acc_note = prevAnno
-      ? `Base storica: anno ${anno-1} — ${fmt(prevAnno.imposta_sost)}`
-      : `Base: stima anno ${anno}`;
+      ? `Base storica LM11 anno ${anno-1}: ${fmt(prevAnno.imposta_sost)}`
+      : `Base: stima anno ${anno} (nessun storico)`;
     if (acc_tot > S_DUE) { acc1 = acc_tot * .40; acc2 = acc_tot * .60; }
     else { acc2 = acc_tot; }
   } else {
     acc_note = noAoc
       ? 'Primo anno attività — nessun acconto'
-      : `Imp. sostitutiva ≤ €${S_ACC.toFixed(2)}: esonero`;
+      : `Imposta base ≤ €${S_ACC.toFixed(2)}: esonero da acconti`;
   }
 
   // Salva per il form di salvataggio (nomi = colonne DB)
@@ -1430,6 +1537,8 @@ function calcola() {
     inps_desc,
     deduci_inps:     deduci,
     mese_rif:        mese,
+    is_primo_anno:   noAoc,
+    inps_versata_anno_solare: inpsVersataInput > 0 ? inpsVersataInput : null,
     // valori calcolati
     fatturato:       fatt,
     reddito_forf:    r_forf,
@@ -1625,6 +1734,8 @@ async function salvaAnno() {
     inps_desc:       _last.inps_desc,
     deduci_inps:     _last.deduci_inps,
     mese_rif:        _last.mese_rif,
+    is_primo_anno:   _last.is_primo_anno   || false,
+    inps_versata_anno_solare: _last.inps_versata_anno_solare || null,
     note,
     fatturato:       _last.fatturato,
     reddito_forf:    _last.reddito_forf,
@@ -2845,11 +2956,48 @@ function wizRenderStep() {
     `L'anno sarà salvato come <strong style="color:var(--gr)">Definitivo</strong>.`;
 
   // Reset input
-  g('wiz-fatt').value = '';
-  g('wiz-note').value = '';
+  g('wiz-fatt').value          = '';
+  g('wiz-note').value          = '';
+  g('wiz-inps-versata').value  = '';
+  if (g('wiz-primo-anno')) g('wiz-primo-anno').checked = false;
+  if (g('wiz-pdf'))        g('wiz-pdf').value           = '';
+  if (g('wiz-pdf-lbl'))    g('wiz-pdf-lbl').textContent = 'Nessun file scelto';
   g('wiz-preview').style.display = 'none';
   g('wiz-btn-next').textContent  = idx < tot - 1 ? 'Salva e continua →' : 'Salva e chiudi ✓';
   g('wiz-fatt').focus();
+}
+
+/* Parsing AI del PDF nel Wizard */
+async function wizParsePDF(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const lbl     = g('wiz-pdf-lbl');
+  const spinner = g('wiz-ai-spinner');
+  lbl.textContent = file.name;
+  spinner.style.display = 'inline-block';
+
+  try {
+    const result = await parseTaxPDF(file);
+    spinner.style.display = 'none';
+
+    // Compila i campi in base al tipo documento
+    if (result.fatturato_lm2 > 0) {
+      g('wiz-fatt').value = result.fatturato_lm2;
+      wizPreview();
+    }
+    if (result.inps_versata_f24 > 0) {
+      g('wiz-inps-versata').value = result.inps_versata_f24;
+    } else if (result.inps_dedotta_lm7 > 0) {
+      g('wiz-inps-versata').value = result.inps_dedotta_lm7;
+    }
+    const anno = _wiz.steps[_wiz.stepIdx];
+    const noteAI = `AI: ${result.tipo||'doc'} anno ${result.anno||anno}` + (result.note ? ` — ${result.note}` : '');
+    g('wiz-note').value = noteAI;
+    toast(`✅ AI ha compilato i campi per l'anno ${result.anno || anno}`, 'ok');
+  } catch(err) {
+    spinner.style.display = 'none';
+    toast('❌ ' + err.message, 'err', 5000);
+  }
 }
 
 function wizPreview() {
@@ -2888,12 +3036,18 @@ function wizPreview() {
 }
 
 async function wizNext() {
+  const primoAnno = g('wiz-primo-anno')?.checked || false;
   const fatt = parseFloat(g('wiz-fatt').value);
-  if (!fatt || fatt <= 0)  { toast('Inserisci il fatturato per questo anno', 'err'); return; }
-  if (fatt > 9999999)      { toast('Fatturato non valido', 'err'); return; }
 
-  const anno  = _wiz.steps[_wiz.stepIdx];
-  const note  = g('wiz-note').value.trim();
+  // Se primo anno: non serve il fatturato (saltiamo con is_primo_anno=true, acconti=0)
+  if (!primoAnno) {
+    if (!fatt || fatt <= 0)  { toast('Inserisci il fatturato per questo anno', 'err'); return; }
+    if (fatt > 9999999)      { toast('Fatturato non valido', 'err'); return; }
+  }
+
+  const anno             = _wiz.steps[_wiz.stepIdx];
+  const note             = g('wiz-note').value.trim();
+  const inpsVersataWiz   = parseFloat(g('wiz-inps-versata')?.value) || 0;
 
   // Ricalcola con parametri ereditati
   const gr    = GRUPPI[_last.gruppo_idx];
@@ -2902,7 +3056,8 @@ async function wizNext() {
   const tipo  = _last.inps_tipo;
   const deduci= _last.deduci_inps;
 
-  const r_forf = fatt * coeff;
+  const fattCalc = fatt || 0;
+  const r_forf = fattCalc * coeff;
   let c_inps = 0, inps_desc = _last.inps_desc;
   if (tipo === 'gs' || tipo === 'gs-pen') {
     c_inps = r_forf * INPS_INFO[tipo].a;
@@ -2913,22 +3068,27 @@ async function wizNext() {
     const pct = (parseFloat(g('f-cassa')?.value) || 14.5) / 100;
     c_inps = r_forf * pct;
   }
-  const r_imp    = deduci ? Math.max(0, r_forf - c_inps) : r_forf;
+
+  // Principio di cassa: usa INPS versata se disponibile
+  const inpsPerDed = (deduci && inpsVersataWiz > 0) ? inpsVersataWiz : c_inps;
+  const r_imp    = deduci ? Math.max(0, r_forf - inpsPerDed) : r_forf;
   const imp_sost = r_imp * aliq;
   const tot_on   = imp_sost + c_inps;
 
-  // Acconti per l'anno successivo
+  // Acconti per l'anno successivo (metodo storico granitico)
   let acc1 = 0, acc2 = 0, acc_tot = 0, acc_note = 'Dati storici definitivi';
-  if (imp_sost > S_ACC) {
+  if (!primoAnno && imp_sost > S_ACC) {
     acc_tot = imp_sost;
     if (acc_tot > S_DUE) { acc1 = acc_tot * .4; acc2 = acc_tot * .6; }
     else { acc2 = acc_tot; }
+  } else if (primoAnno) {
+    acc_note = 'Primo anno attività — acconti azzerati';
   }
 
   const record = {
     user_id:         _user.id,
     anno,
-    stato:           'archiviato',  // anni precedenti → anno chiuso
+    stato:           'archiviato',
     ateco:           _last.ateco,
     gruppo_idx:      _last.gruppo_idx,
     gruppo_nome:     gr.name,
@@ -2937,9 +3097,11 @@ async function wizNext() {
     inps_tipo:       tipo,
     inps_desc,
     deduci_inps:     deduci,
-    mese_rif:        12,             // anno completo
+    mese_rif:        12,
+    is_primo_anno:   primoAnno,
+    inps_versata_anno_solare: inpsVersataWiz > 0 ? inpsVersataWiz : null,
     note:            note || '',
-    fatturato:       fatt,
+    fatturato:       fattCalc,
     reddito_forf:    r_forf,
     contributi_inps: c_inps,
     reddito_imp:     r_imp,
