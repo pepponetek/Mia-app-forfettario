@@ -1453,25 +1453,43 @@ async function parseTaxPDF(file) {
     reader.readAsDataURL(file);
   });
 
-  // 2. Recupera il JWT della sessione corrente
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error('Sessione scaduta. Effettua di nuovo il login.');
+  // 2. Forza il refresh del token — evita 401 da JWT scaduto
+  //    refreshSession() chiama il server e restituisce sempre un token fresco
+  let token = null;
+  try {
+    const { data: rd } = await sb.auth.refreshSession();
+    token = rd?.session?.access_token || null;
+  } catch(_) {}
+  if (!token) {
+    const { data: { session: s2 } } = await sb.auth.getSession();
+    token = s2?.access_token || null;
+  }
+  if (!token) throw new Error('Sessione scaduta — effettua di nuovo il login.');
 
-  // 3. Chiama la Edge Function Supabase (chiave Gemini è sul server)
+  // 3. Chiama la Edge Function Supabase (chiave Gemini sul server, mai visibile)
   const resp = await fetch(EDGE_PDF_URL, {
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
-      'Authorization': `Bearer ${session.access_token}`,
+      'Authorization': 'Bearer ' + token,
       'apikey':        SKEY
     },
     body: JSON.stringify({ pdf_base64: base64 })
   });
 
-  const json = await resp.json();
+  // Gestione robusta: Supabase gateway 401 restituisce {"msg":"..."} non {"error":"..."}
+  let json;
+  try {
+    json = await resp.json();
+  } catch(_) {
+    json = {};
+  }
 
   if (!resp.ok) {
-    throw new Error(json?.error || `Errore server: ${resp.status}`);
+    const msg = json?.error || json?.msg || json?.message || ('Errore server: ' + resp.status +
+      (resp.status === 401 ? ' — token scaduto, ricarica la pagina.' :
+       resp.status === 500 ? ' — controlla che la chiave Gemini sia impostata in Supabase.' : ''));
+    throw new Error(msg);
   }
 
   return json;  // { tipo, anno, fatturato_lm2, inps_dedotta_lm7, imposta_dovuta_lm11, inps_versata_f24, note }
