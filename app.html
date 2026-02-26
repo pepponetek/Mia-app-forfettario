@@ -1488,7 +1488,7 @@ async function parseTaxPDF(file) {
   if (!resp.ok) {
     const msg = json?.error || json?.msg || json?.message || ('Errore server: ' + resp.status +
       (resp.status === 401 ? ' — token scaduto, ricarica la pagina.' :
-       resp.status === 500 ? ' — controlla che la chiave Gemini sia impostata in Supabase.' : ''));
+       resp.status === 500 ? ' — controlla che ANTHROPIC_KEY sia impostata in Supabase → Edge Functions → Secrets.' : ''));
     throw new Error(msg);
   }
 
