@@ -2351,9 +2351,6 @@ async function downloadDoc(storagePath, nomeFile) {
   }
 }
 
-// Variabile per il modal eliminazione documento
-let _delDoc = null; // { id, storagePath, anno }
-
 // Apre il modal di conferma eliminazione documento
 function richiediDelDoc(docId, storagePath, anno, nomeFile) {
   _delDoc = { id: docId, storagePath, anno };
