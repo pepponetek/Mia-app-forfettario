@@ -11,11 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module" id="pdfjs-script"></script>
-<script>
-// PDF.js — worker path (necessario per la lettura asincrona)
-window.PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
-</script>
+
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -1453,32 +1449,48 @@ function onAnnoChange() {
 // Cache in memoria: chiave = hash(nome+size), valore = risultato
 const _pdfCache = new Map();
 
-async function extractPdfText(file) {
-  // Carica PDF.js dinamicamente se non ancora disponibile
+// URL fissi PDF.js 3.11.174 — versione stabile classic (non module)
+const PDFJS_LIB    = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+async function loadPdfjsLib() {
+  // Se già presente e worker già configurato, restituisce subito
+  if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions.workerSrc) return;
+
+  // Carica lo script principale
   if (!window.pdfjsLib) {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-      s.onload = () => {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        resolve();
-      };
-      s.onerror = () => reject(new Error('PDF.js non caricato. Controlla la connessione.'));
+      s.src = PDFJS_LIB;
+      s.onload  = resolve;
+      s.onerror = () => reject(new Error('PDF.js non caricabile. Controlla la connessione internet.'));
       document.head.appendChild(s);
     });
   }
 
+  // Imposta sempre il worker DOPO aver caricato la libreria
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+}
+
+async function extractPdfText(file) {
+  // Assicura che PDF.js sia caricato e il worker configurato
+  await loadPdfjsLib();
+
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  const pdf = await window.pdfjsLib.getDocument({
+    data: arrayBuffer,
+    useWorkerFetch: false,   // evita problemi CORS con service worker
+    isEvalSupported: false,  // sicurezza
+    useSystemFonts: true
+  }).promise;
 
   let fullText = '';
-  // Leggi tutte le pagine (una dichiarazione ha max 10-15 pagine rilevanti)
   const maxPages = Math.min(pdf.numPages, 20);
   for (let i = 1; i <= maxPages; i++) {
-    const page = await pdf.getPage(i);
-    const tc   = await page.getTextContent();
-    const pageText = tc.items.map(item => item.str).join(' ');
+    const page   = await pdf.getPage(i);
+    const tc     = await page.getTextContent();
+    const pageText = tc.items.map(item => item.str || '').join(' ');
     fullText += pageText + '\n';
   }
 
