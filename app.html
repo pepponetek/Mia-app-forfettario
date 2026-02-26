@@ -11,7 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -1438,82 +1438,44 @@ function onAnnoChange() {
 }
 
 /* ============================================================
-   GEMINI AI — parsing PDF ottimizzato
-   Flusso:
-     1. PDF.js estrae il testo sul browser (nessun dato binario inviato)
-     2. Cache in memoria: stesso file = 0 chiamate API
-     3. Edge Function riceve solo testo (~90% meno token)
-     4. Modello: gemini-2.0-flash-lite (30 RPM / 1500 RPD free)
+   GEMINI AI — parsing PDF tramite Supabase Edge Function (sicuro)
+   La chiave Gemini è sul server: non appare mai nel browser (F12).
    ============================================================ */
-
-// Cache in memoria: chiave = hash(nome+size), valore = risultato
-const _pdfCache = new Map();
-
-// PDF.js 2.16.105 — ultima versione che supporta disableWorker (senza worker, compatibile mobile)
-const PDFJS_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
-
-async function loadPdfjsLib() {
-  if (window.pdfjsLib) return; // già caricata
-  await new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = PDFJS_LIB;
-    s.onload  = resolve;
-    s.onerror = () => reject(new Error('PDF.js non caricabile. Controlla la connessione.'));
-    document.head.appendChild(s);
-  });
-  // Disabilita il worker — non necessario per PDF di dichiarazioni fiscali
-  // Elimina DEFINITIVAMENTE l'errore "No GlobalWorkerOptions.workerSrc specified"
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-}
-
-async function extractPdfText(file) {
-  await loadPdfjsLib();
-
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({
-    data:             new Uint8Array(arrayBuffer),
-    disableWorker:    true,   // esegue tutto nel thread principale — nessun worker richiesto
-    disableStream:    true,   // compatibilità massima mobile
-    isEvalSupported:  false,
-  }).promise;
-
-  let fullText = '';
-  const maxPages = Math.min(pdf.numPages, 20);
-  for (let i = 1; i <= maxPages; i++) {
-    const page     = await pdf.getPage(i);
-    const tc       = await page.getTextContent();
-    const pageText = tc.items.map(it => it.str || '').join(' ');
-    fullText += pageText + '\n';
-  }
-  return fullText.trim();
-}
-
 async function parseTaxPDF(file) {
   if (!file || file.type !== 'application/pdf') {
     throw new Error('File non valido: carica un PDF.');
   }
 
-  // Cache: evita chiamate ripetute sullo stesso file
-  const cacheKey = file.name + '_' + file.size;
-  if (_pdfCache.has(cacheKey)) {
-    toast('⚡ Risultato dalla cache — nessuna chiamata API', 'ok', 3000);
-    return _pdfCache.get(cacheKey);
-  }
-
-  // Estrai testo con PDF.js (browser-side, nessun dato binario in rete)
-  toast('📄 Estrazione testo PDF in corso…', 'info', 4000);
-  let pdfText;
+  // 1. Estrai il TESTO dal PDF nel browser con PDF.js
+  //    Inviamo solo testo (~5-20 KB) invece del binario base64 (~800 KB)
+  //    Risparmio token Gemini: ~98% — riduce consumo quota drasticamente
+  let pdf_text = '';
   try {
-    pdfText = await extractPdfText(file);
-  } catch(e) {
-    throw new Error('Impossibile leggere il PDF. Assicurati che sia un PDF digitale (non scansionato). Dettaglio: ' + e.message);
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    if (!pdfjsLib) throw new Error('PDF.js non caricato. Ricarica la pagina.');
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+    for (let p = 1; p <= pdfDoc.numPages; p++) {
+      const page    = await pdfDoc.getPage(p);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(i => i.str).join(' ');
+      pdf_text += pageText + '\n';
+    }
+  } catch (e) {
+    throw new Error('Errore estrazione testo PDF: ' + e.message +
+      '. Il PDF potrebbe essere una scansione (immagine) non leggibile.');
   }
 
-  if (!pdfText || pdfText.length < 30) {
-    throw new Error('Il PDF sembra una scansione fotografica: non contiene testo leggibile. Usa il PDF originale esportato dal software.');
+  if (!pdf_text || pdf_text.trim().length < 20) {
+    throw new Error('Nessun testo trovato nel PDF. Assicurati che non sia una scansione.');
   }
 
-  // Refresh token
+  // 2. Forza il refresh del token — evita 401 da JWT scaduto
+  //    refreshSession() chiama il server e restituisce sempre un token fresco
   let token = null;
   try {
     const { data: rd } = await sb.auth.refreshSession();
@@ -1525,7 +1487,7 @@ async function parseTaxPDF(file) {
   }
   if (!token) throw new Error('Sessione scaduta — effettua di nuovo il login.');
 
-  // Chiama Edge Function con il TESTO (non il PDF binario)
+  // 3. Chiama la Edge Function Supabase (chiave Gemini sul server, mai visibile)
   const resp = await fetch(EDGE_PDF_URL, {
     method: 'POST',
     headers: {
@@ -1533,22 +1495,25 @@ async function parseTaxPDF(file) {
       'Authorization': 'Bearer ' + token,
       'apikey':        SKEY
     },
-    body: JSON.stringify({ pdf_text: pdfText })
+    body: JSON.stringify({ pdf_text })
   });
 
+  // Gestione robusta: Supabase gateway 401 restituisce {"msg":"..."} non {"error":"..."}
   let json;
-  try { json = await resp.json(); } catch(_) { json = {}; }
+  try {
+    json = await resp.json();
+  } catch(_) {
+    json = {};
+  }
 
   if (!resp.ok) {
-    const msg = json?.error || json?.msg || ('Errore server: ' + resp.status +
-      (resp.status === 401 ? ' — ricarica la pagina.' :
-       resp.status === 500 ? ' — controlla GEMINI_KEY in Supabase → Edge Functions → Secrets.' : ''));
+    const msg = json?.error || json?.msg || json?.message || ('Errore server: ' + resp.status +
+      (resp.status === 401 ? ' — token scaduto, ricarica la pagina.' :
+       resp.status === 500 ? ' — controlla che GEMINI_KEY sia impostata in Supabase → Edge Functions → Secrets.' : ''));
     throw new Error(msg);
   }
 
-  // Salva in cache prima di restituire
-  _pdfCache.set(cacheKey, json);
-  return json;
+  return json;  // { tipo, anno, fatturato_lm2, inps_dedotta_lm7, imposta_dovuta_lm11, inps_versata_f24, note }
 }
 
 /* ============================================================
