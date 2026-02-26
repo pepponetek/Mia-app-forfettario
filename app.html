@@ -1950,7 +1950,6 @@ function renderArchivio() {
         </div>
         <div class="ayc-right">
           ${diffH}
-          <button class="btn btn-xs no-print" style="background:linear-gradient(135deg,var(--pu-b),var(--pu));padding:6px 10px;font-size:11px" onclick="event.stopPropagation();archAnalizzaPDF(${d.anno})">🤖 PDF</button>
           <span class="rbadge rb-${s}">${s==='bozza'?'📝':s==='definitivo'?'✅':'🗄️'}</span>
           <span class="ayc-tot">${fmt(d.totale_oneri)}</span>
           <span style="color:var(--t3)">›</span>
