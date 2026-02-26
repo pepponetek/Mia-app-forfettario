@@ -489,14 +489,52 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 
 /* ── DOCUMENTI FISCALI — sezione nell'archivio ──────────── */
 .docs-section{margin-top:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--bd);border-radius:8px}
-.docs-title{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
-.doc-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bd);font-size:12px}
+.docs-title{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.doc-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd);font-size:12px}
 .doc-row:last-child{border-bottom:none;padding-bottom:0}
 .doc-ico{font-size:16px;flex-shrink:0;width:22px;text-align:center}
 .doc-info{flex:1;min-width:0}
 .doc-name{color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .doc-meta{color:var(--t3);font-size:10px;margin-top:1px}
+/* Touch target minimo 44px per tutti i btn documenti */
 .doc-actions{display:flex;gap:4px;flex-shrink:0}
+.doc-actions .btn{min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center}
+@media(max-width:560px){
+  .doc-row{flex-wrap:wrap;gap:6px}
+  .doc-actions{width:100%;justify-content:flex-end}
+  .doc-actions .btn{flex:1;font-size:13px}
+}
+
+/* ── ARCHIVIO DOCUMENTI — view dedicata ─────────────────── */
+.doc-view-search{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+  color:var(--t1);padding:12px 14px;font-family:inherit;font-size:15px;outline:none;
+  margin-bottom:14px;min-height:44px}
+.doc-view-search:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(88,166,255,.12)}
+.doc-view-group{margin-bottom:12px}
+.doc-view-year{font-size:11px;font-weight:800;color:var(--t3);text-transform:uppercase;
+  letter-spacing:.07em;padding:8px 12px;background:var(--s2);border-radius:8px 8px 0 0;
+  border:1px solid var(--bd);border-bottom:none;display:flex;align-items:center;gap:6px}
+.doc-view-list{background:var(--s1);border:1px solid var(--bd);border-radius:0 0 8px 8px;overflow:hidden}
+.doc-view-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bd);font-size:13px}
+.doc-view-row:last-child{border-bottom:none}
+.doc-view-row:hover{background:var(--s2)}
+.doc-view-ico{font-size:18px;flex-shrink:0;width:24px;text-align:center}
+.doc-view-info{flex:1;min-width:0}
+.doc-view-name{color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.doc-view-meta{color:var(--t3);font-size:11px;margin-top:2px}
+.doc-view-actions{display:flex;gap:6px;flex-shrink:0}
+.doc-view-actions .btn{min-height:44px;padding:0 14px;display:flex;align-items:center;gap:4px}
+@media(max-width:560px){
+  .doc-view-row{flex-wrap:wrap;gap:8px}
+  .doc-view-actions{width:100%;justify-content:flex-end}
+  .doc-view-actions .btn{flex:1;justify-content:center}
+}
+/* Spinner durante upload/analisi PDF */
+.pdf-progress{display:none;align-items:center;gap:10px;padding:12px 14px;
+  background:var(--pu-d);border:1px solid var(--pu-b);border-radius:8px;
+  font-size:12px;color:var(--pu);margin-bottom:10px}
+.pdf-progress.show{display:flex}
+.pdf-progress .spinner{border-color:var(--pu-b);border-top-color:var(--pu)}
 
 /* ── ADMIN SEARCH ────────────────────────────────────── */
 .adm-search{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;
@@ -643,6 +681,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <button class="nav-btn" id="nav-calendario" onclick="showView('calendario')"><span class="ni">📅</span> Calendario</button>
       <button class="nav-btn" id="nav-confronto" onclick="showView('confronto')"><span class="ni">📊</span> Confronto anni</button>
       <button class="nav-btn" id="nav-f24" onclick="showView('f24')"><span class="ni">📑</span> F24 Prec.</button>
+      <button class="nav-btn" id="nav-documenti" onclick="showView('documenti')"><span class="ni">📎</span> Documenti</button>
       <button class="nav-btn" id="nav-admin" style="display:none" onclick="showView('admin')"><span class="ni">🛡️</span> Pannello Admin</button>
       <div class="sb-sect" style="margin-top:6px">Anni salvati</div>
       <div class="hist-list" id="hist-list"><div style="padding:8px 10px;font-size:11px;color:var(--t3)">Nessun anno</div></div>
@@ -819,6 +858,17 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <div id="f24-cnt"><div class="loading"><div class="spinner"></div><span>Caricamento...</span></div></div>
       </div>
 
+      <!-- ARCHIVIO DOCUMENTI -->
+      <div class="view" id="view-documenti">
+        <div class="ph"><div><h1>📎 Archivio Documenti</h1><p>PDF caricati · ricercabili per nome o anno</p></div></div>
+        <input class="doc-view-search" id="doc-search" type="text"
+               placeholder="🔍 Cerca per nome file o anno (es: 2024, dichiarazione...)"
+               oninput="filterDocumentiView(this.value)">
+        <div id="doc-view-cnt">
+          <div class="loading"><div class="spinner"></div><span>Caricamento documenti...</span></div>
+        </div>
+      </div>
+
       <!-- ADMIN -->
       <div class="view" id="view-admin">
         <div class="ph">
@@ -841,7 +891,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     <button class="bn-btn active" id="bn-calcolo" onclick="showView('calcolo')"><span class="bn-ico">✏️</span><span class="bn-lbl">Calcolo</span></button>
     <button class="bn-btn" id="bn-archivio" onclick="showView('archivio')"><span class="bn-ico">🗂️</span><span class="bn-lbl">Archivio</span></button>
     <button class="bn-btn" id="bn-grafici" onclick="showView('grafici')"><span class="bn-ico">📈</span><span class="bn-lbl">Grafici</span></button>
-    <button class="bn-btn" id="bn-calendario" onclick="showView('calendario')"><span class="bn-ico">📅</span><span class="bn-lbl">Scadenze</span></button>
+    <button class="bn-btn" id="bn-documenti" onclick="showView('documenti')"><span class="bn-ico">📎</span><span class="bn-lbl">Documenti</span></button>
     <button class="bn-btn" id="bn-profilo" onclick="openModal('modal-user')"><span class="bn-ico">👤</span><span class="bn-lbl">Profilo</span></button>
   </div></nav>
 </div>
@@ -1030,6 +1080,19 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 <!-- Input file globale per analisi PDF dall'archivio -->
 <input type="file" id="arch-pdf-input" accept=".pdf" style="display:none" onchange="onArchPdfSelected(this)">
 
+<!-- MODAL ELIMINA DOCUMENTO -->
+<div class="modal-bg" id="modal-del-doc">
+  <div class="modal-box">
+    <h3>🗑️ Elimina documento</h3>
+    <p>Sei sicuro di voler eliminare definitivamente <strong id="del-doc-name"></strong>?<br>
+       Il file sarà rimosso dal cloud e non sarà recuperabile.</p>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-re btn-sm" onclick="confDelDoc()">🗑️ Elimina definitivamente</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-del-doc')">Annulla</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -1104,7 +1167,8 @@ let _user    = null;
 let _profile = null;
 let _anni    = {};   // { anno(int): row_db }
 let _last    = null; // ultimo calcolo
-let _delId   = null; // UUID riga da eliminare
+let _delId   = null; // UUID riga anno da eliminare
+let _delDoc  = null; // { id, storagePath, anno } — documento da eliminare
 let _admData = [];   // per export CSV
 let _ready   = false;// anti-doppio init
 let _bozzaRow = null; // riga bozza da aggiornare
@@ -1456,71 +1520,128 @@ function onAnnoChange() {
    senza consumare quota Gemini (~98% risparmio token).
    ============================================================ */
 function tryParseRPF(text) {
-  // Riconoscimento documento RPF Modello Redditi Persone Fisiche
+  // Riconoscimento documento RPF
   const isRPF = /PERSONE\s+FISICHE/i.test(text) && /QUADRO\s+LM/i.test(text);
   if (!isRPF) return null;
 
-  // Converte stringa numero italiano (1.234,56 o 1.234) in float
+  // Utility: converti stringa numero italiano (1.234,56 o 1234) → float
+  function parseITA(str) {
+    if (!str) return 0;
+    // Rimuove separatori di migliaia (punto) e converte virgola decimale
+    return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+
+  // Cerca il codice ATECO: 6 cifre consecutive (es. 683200 o 62.09.09 normalizzato)
+  const atecoMatch = text.match(/\b(\d{2}[.\s]?\d{2}[.\s]?\d{2})\b/);
+  const ateco = atecoMatch ? atecoMatch[1].replace(/[.\s]/g, '') : null;
+
+  // Anno: cerca un anno fiscale 4 cifre nel range plausibile (2018-2035)
+  const annoMatch = text.match(/\b(20[12]\d)\b/);
+  const anno = annoMatch ? parseInt(annoMatch[1]) : null;
+
+  // Estrae tutti i numeri nel formato italiano con separatore migliaia
+  // Cattura: 1.234 / 12.345 / 123.456 / 1.234.567 (con o senza decimali)
+  const numPattern = /\b(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{4,}(?:,\d{1,2})?)\b/g;
+  const allNums = [];
+  let m;
+  while ((m = numPattern.exec(text)) !== null) {
+    const val = parseITA(m[1]);
+    if (val >= 100) allNums.push(val); // ignora numeri piccoli (codici, pagine, ecc.)
+  }
+
+  if (allNums.length < 2) return null;
+
+  // Strategia mapping:
+  // LM22 = fatturato: il valore più grande > 1.000
+  // LM35 = contributi INPS: tipicamente 25-35% del reddito forfettario (fatturato × coeff)
+  // LM39 = imposta sostitutiva: tipicamente 5-15% del fatturato
+  // Ordina decrescente e assegna
+  const sorted = [...allNums].sort((a, b) => b - a);
+
+  // LM22: fatturato = valore massimo (deve essere > 1.000)
+  const fatturato = sorted[0] > 1000 ? sorted[0] : null;
+  if (!fatturato) return null;
+
+  // Per LM35 e LM39: cerca nell'array ordinato i valori plausibili
+  // LM35 (contributi) plausibile: tra 10% e 40% del fatturato
+  const lm35Candidate = sorted.find(v => v !== fatturato && v >= fatturato * 0.05 && v <= fatturato * 0.45);
+
+  // LM39 (imposta) plausibile: tra 3% e 20% del fatturato, minore di contributi se presenti
+  const maxImposta = lm35Candidate ? lm35Candidate * 0.9 : fatturato * 0.2;
+  const lm39Candidate = sorted.find(v =>
+    v !== fatturato && v !== lm35Candidate &&
+    v >= fatturato * 0.03 && v <= maxImposta
+  );
+
+  // Verifica minima: almeno fatturato estratto
+  const result = {
+    tipo:               'dichiarazione',
+    anno:               anno,
+    ateco:              ateco,
+    fatturato_lm2:      fatturato,
+    inps_dedotta_lm7:   lm35Candidate || 0,
+    imposta_dovuta_lm11: lm39Candidate || 0,
+    inps_versata_f24:   0,
+    note:               `⚡ Estratto localmente da Modello RPF (no Gemini)` +
+                        (ateco ? ` · ATECO ${ateco}` : '') +
+                        (!lm35Candidate || !lm39Candidate
+                          ? ' · ⚠️ Verifica i campi LM35 e LM39: potrebbero richiedere correzione manuale.'
+                          : '')
+  };
+
+  console.log('[tryParseRPF] Risultato locale:', result);
+  return result;
+}
+
+/* ============================================================
+   ESTRAZIONE LOCALE F24 — parsing deterministico senza AI
+   Cerca: importo totale F24, anno di riferimento, INPS versata
+   ============================================================ */
+function tryParseF24(text) {
+  const isF24 = /MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO/i.test(text);
+  if (!isF24) return null;
+
   function parseITA(str) {
     if (!str) return 0;
     return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
   }
 
-  // Cerca il primo numero con PUNTO separatore migliaia (es. 34.827,00)
-  // dopo il label LM indicato. Questo pattern NON cattura codici ATECO (683200)
-  // né codici fiscali numerici (94038190719) perché privi di separatore.
-  function findAfterLabel(label, maxChars) {
-    maxChars = maxChars || 400;
-    const re = new RegExp(
-      label + '[\\s\\S]{0,' + maxChars + '}?(\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?)',
-      'i'
-    );
-    const m = text.match(re);
-    return m ? parseITA(m[1]) : 0;
-  }
-
-  // Anno fiscale: "PERIODO D'IMPOSTA YYYY" è più affidabile di un generico anno
+  // Anno di riferimento: cerca pattern espliciti nel modello F24
   const annoMatch =
-    text.match(/PERIODO\s+D.IMPOSTA\s+(20[12]\d)/i) ||
-    text.match(/\b(20[12]\d)\b/);
+    text.match(/ANNO\s+(?:DI\s+)?RIFERIMENTO[\s:]*(\d{4})/i) ||
+    text.match(/ANNO\s+RIF\.?\s*(\d{4})/i) ||
+    text.match(/COMPETENZA\s+(\d{4})/i) ||
+    text.match(/PERIODO\s+D[I']?\s*IMPOSTA[\s:]*(\d{4})/i);
   const anno = annoMatch ? parseInt(annoMatch[1]) : null;
 
-  // ATECO: cerca 6 cifre vicino a LM21 o "Codice attività"
-  const atecoMatch =
-    text.match(/LM21[\s\S]{0,120}?(\d{6})/) ||
-    text.match(/[Cc]odice\s+attivit[àa][\s\S]{0,60}?(\d{6})/);
-  const ateco = atecoMatch ? atecoMatch[1] : null;
+  // Importo totale da versare (formato italiano: 1.234,00)
+  const totMatch =
+    text.match(/TOTALE\s+(?:DA\s+VERSARE|DOVUTO|A\s+DEBITO)[\s:]*(\d{1,3}(?:\.\d{3})*,\d{2})/i) ||
+    text.match(/IMPORTO\s+A\s+DEBITO[\s:]*(\d{1,3}(?:\.\d{3})*,\d{2})/i) ||
+    text.match(/TOTALE[\s:]+(\d{1,3}(?:\.\d{3})*,\d{2})\b/i);
+  const importoTotale = totMatch ? parseITA(totMatch[1]) : 0;
 
-  // LM22 = componenti positivi = fatturato imponibile (Sezione III regime forfetario)
-  const fatturato = findAfterLabel('LM22');
-  if (fatturato < 100) return null;
+  // Cerca INPS versata (causali DPPI / GS / contributi previdenziali)
+  const inpsMatch = text.match(/(?:DPPI|GS|PXX|\bINPS\b)[\s\S]{0,80}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
+  const inpsF24   = inpsMatch ? parseITA(inpsMatch[1]) : 0;
 
-  // LM35 = contributi previdenziali dedotti
-  const inps_dedotta = findAfterLabel('LM35');
+  if (importoTotale < 10 && inpsF24 < 10) return null; // dati non trovati
 
-  // LM39 = imposta sostitutiva dovuta
-  const imposta = findAfterLabel('LM39');
-
-  const tuttiTrovati = inps_dedotta > 0 && imposta > 0;
   const result = {
-    tipo:                'dichiarazione',
+    tipo:                'f24',
     anno:                anno,
-    ateco:               ateco,
-    fatturato_lm2:       fatturato,
-    inps_dedotta_lm7:    inps_dedotta,
-    imposta_dovuta_lm11: imposta,
-    inps_versata_f24:    0,
-    note: '⚡ Estratto da Modello RPF (0 token AI)' +
-          (ateco ? ' · ATECO ' + ateco : '') +
-          ' · LM22=' + fatturato.toLocaleString('it-IT') +
-          (inps_dedotta > 0 ? ' LM35=' + inps_dedotta.toLocaleString('it-IT') : '') +
-          (imposta > 0     ? ' LM39=' + imposta.toLocaleString('it-IT') : '') +
-          (!tuttiTrovati
-            ? ' · ⚠️ Verifica LM35 e LM39: correzione manuale potrebbe essere necessaria.'
-            : '')
+    ateco:               null,
+    fatturato_lm2:       0,
+    inps_dedotta_lm7:    0,
+    imposta_dovuta_lm11: 0,
+    inps_versata_f24:    inpsF24 > 0 ? inpsF24 : (importoTotale > 0 ? importoTotale : 0),
+    note: `⚡ F24 estratto localmente (0 token AI)` +
+          (anno ? ` · Anno rif.: ${anno}` : ' · ⚠️ Anno non trovato: verifica manualmente') +
+          (importoTotale > 0 ? ` · Totale: ${importoTotale.toLocaleString('it-IT',{minimumFractionDigits:2})}` : '') +
+          (inpsF24 > 0 ? ` · INPS: ${inpsF24.toLocaleString('it-IT',{minimumFractionDigits:2})}` : '')
   };
 
-  console.log('[tryParseRPF] Risultato:', result);
+  console.log('[tryParseF24] Risultato:', result);
   return result;
 }
 
@@ -1537,7 +1658,6 @@ async function parseTaxPDF(file) {
   //    Inviamo solo testo (~5-20 KB) invece del binario base64 (~800 KB)
   //    Risparmio token Gemini: ~98% — riduce consumo quota drasticamente
   let pdf_text = '';
-  let _numPages = 0; // dichiarato FUORI dal try per essere accessibile a riga ~1618
   try {
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     if (!pdfjsLib) throw new Error('PDF.js non caricato. Ricarica la pagina.');
@@ -1546,7 +1666,7 @@ async function parseTaxPDF(file) {
 
     const arrayBuffer = await file.arrayBuffer();
     const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    _numPages = pdfDoc.numPages; // assegnato alla variabile esterna (dichiarata prima del try)
+    const _numPages = pdfDoc.numPages; // catturato prima del try-catch per uso successivo
 
     for (let p = 1; p <= _numPages; p++) {
       const page    = await pdfDoc.getPage(p);
@@ -1577,8 +1697,8 @@ async function parseTaxPDF(file) {
     throw new Error('Nessun testo trovato nel PDF. Assicurati che non sia una scansione.');
   }
 
-  // 1b. FIX RPF — tenta parsing locale PRIMA di chiamare Gemini.
-  //     Se il documento è un Modello Redditi PF, estrae i dati senza consumare quota AI.
+  // 1b. Layer parsing locale — tenta RPF prima, poi F24, poi Gemini come fallback
+  //     Ordine: RPF → F24 → Gemini (risparmio token AI in entrambi i casi locali)
   const rpfLocal = tryParseRPF(pdf_text);
   if (rpfLocal && rpfLocal.fatturato_lm2 > 0) {
     console.log('[parseTaxPDF] RPF locale riuscito — Gemini non chiamato.');
@@ -1586,7 +1706,15 @@ async function parseTaxPDF(file) {
     return rpfLocal;
   }
 
-  // 1c. FIX F24 ANNO — rileva se documento è un F24 per istruire il server
+  // 1c. Tenta parsing F24 locale prima di chiamare Gemini
+  const f24Local = tryParseF24(pdf_text);
+  if (f24Local && f24Local.inps_versata_f24 > 0) {
+    console.log('[parseTaxPDF] F24 locale riuscito — Gemini non chiamato.');
+    toast('⚡ F24 estratto localmente (0 token Gemini usati)', 'ok', 4000);
+    return f24Local;
+  }
+
+  // 1d. FIX F24 ANNO — rileva se documento è un F24 per istruire il server
   const isLikelyF24 = /F24|MODELLO\s+F24|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO/i.test(pdf_text);
 
   // 2. Forza il refresh del token — evita 401 da JWT scaduto
@@ -1958,6 +2086,9 @@ async function salvaAnno() {
   onAnnoChange();
   setSync('ok', 'Sincronizzato');
   toast(`✅ Anno ${_last.anno} salvato nel cloud (${stato})`, 'ok');
+
+  // CASCADE UPDATE — propaga gli acconti all'anno successivo (es. salvo 2024 → aggiorno acconti 2025)
+  await syncFutureYears(_last.anno);
 }
 
 /* ============================================================
@@ -1970,13 +2101,14 @@ function showView(name) {
   const nd = g('nav-' + name), nb = g('bn-' + name);
   if (nd) nd.classList.add('active');
   if (nb) nb.classList.add('active');
-  const titles = { calcolo:'Calcolo', archivio:'Archivio', confronto:'Confronto', admin:'Admin', grafici:'Statistiche', calendario:'Scadenze', f24:'F24 Prec.' };
+  const titles = { calcolo:'Calcolo', archivio:'Archivio', confronto:'Confronto', admin:'Admin', grafici:'Statistiche', calendario:'Scadenze', f24:'F24 Prec.', documenti:'Documenti' };
   g('mob-title').textContent = titles[name] || 'ForfettarioApp';
   if (name === 'archivio')   renderArchivio();
   if (name === 'grafici')    renderGrafici();
   if (name === 'calendario') renderCalendario();
   if (name === 'f24')        renderF24Precedenti();
   if (name === 'confronto')  { fillConfSelectors(); renderConfronto(); }
+  if (name === 'documenti')  renderDocumentiView();
   if (name === 'admin')      loadAdmin();
   window.scrollTo(0, 0);
 }
@@ -2119,12 +2251,16 @@ function renderArchivio() {
           </div>` : ''}
         <div style="font-size:11px;color:var(--t3);margin-top:8px">☁️ Salvato il ${sal} · Stato: <strong>${s}</strong> · ${d.acconto_note}</div>
         ${renderDocumentiAnno(d.anno)}
+        <div class="pdf-progress" id="pdf-prog-${d.anno}">
+          <div class="spinner"></div>
+          <span>Analisi PDF in corso… attendere</span>
+        </div>
         <div class="btn-row">
-          <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--pu-b),var(--pu))" onclick="archAnalizzaPDF(${d.anno})">🤖 Analizza Dichiarazione / F24</button>
-          <button class="btn btn-sm btn-ol" onclick="printAnno(${d.anno})">🖨️ Stampa</button>
-          ${s === 'bozza' ? `<button class="btn btn-sm btn-ye" onclick="apriAggiornaBozza('${d.id}',${d.anno})">🔄 Aggiorna Imponibile</button>` : ''}
-          <button class="btn btn-sm btn-ol" style="color:var(--t3)" onclick="cambiaStato('${d.id}',${d.anno})">✏️ Stato</button>
-          <button class="btn btn-sm btn-re btn-ol" onclick="richiediDel('${d.id}',${d.anno})">🗑️ Elimina</button>
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--pu-b),var(--pu));min-height:44px" onclick="archAnalizzaPDF(${d.anno})">🤖 Analizza Dichiarazione / F24</button>
+          <button class="btn btn-sm btn-ol" style="min-height:44px" onclick="printAnno(${d.anno})">🖨️ Stampa</button>
+          ${s === 'bozza' ? `<button class="btn btn-sm btn-ye" style="min-height:44px" onclick="apriAggiornaBozza('${d.id}',${d.anno})">🔄 Aggiorna Imponibile</button>` : ''}
+          <button class="btn btn-sm btn-ol" style="color:var(--t3);min-height:44px" onclick="cambiaStato('${d.id}',${d.anno})">✏️ Stato</button>
+          <button class="btn btn-sm btn-re btn-ol" style="min-height:44px" onclick="richiediDel('${d.id}',${d.anno})">🗑️ Elimina</button>
         </div>
       </div>
     </div>`;
@@ -2156,6 +2292,8 @@ async function loadDocumenti() {
       if (!_documenti[doc.anno]) _documenti[doc.anno] = [];
       _documenti[doc.anno].push(doc);
     });
+    // Se la view documenti è attiva aggiornala subito
+    if (g('view-documenti')?.classList.contains('active')) renderDocumentiView();
   } catch(e) {
     console.warn('[loadDocumenti] Eccezione:', e.message);
   }
@@ -2180,13 +2318,13 @@ function renderDocumentiAnno(anno) {
       </div>
       <div class="doc-actions">
         <button class="btn btn-xs btn-ol" onclick="downloadDoc('${doc.storage_path}','${sanitizeHTML(doc.nome_file)}')">⬇️ Scarica</button>
-        <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="deleteDoc('${doc.id}','${doc.storage_path}',${anno})">🗑️</button>
+        <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${doc.storage_path}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️</button>
       </div>
     </div>`;
   }).join('');
 
   return `<div class="docs-section">
-    <div class="docs-title">📎 Documenti caricati (${docs.length})</div>
+    <div class="docs-title"><span>📎 Documenti caricati (${docs.length})</span></div>
     ${rows}
   </div>`;
 }
@@ -2213,13 +2351,24 @@ async function downloadDoc(storagePath, nomeFile) {
   }
 }
 
-// Elimina documento da Storage + tabella
-async function deleteDoc(docId, storagePath, anno) {
-  if (!confirm('Eliminare questo documento? Operazione non reversibile.')) return;
+// Variabile per il modal eliminazione documento
+let _delDoc = null; // { id, storagePath, anno }
+
+// Apre il modal di conferma eliminazione documento
+function richiediDelDoc(docId, storagePath, anno, nomeFile) {
+  _delDoc = { id: docId, storagePath, anno };
+  g('del-doc-name').textContent = nomeFile;
+  openModal('modal-del-doc');
+}
+
+// Conferma ed esegue l'eliminazione documento
+async function confDelDoc() {
+  if (!_delDoc) return;
+  const { id: docId, storagePath, anno } = _delDoc;
 
   setSync('busy', 'Eliminazione...');
   try {
-    // 1. Elimina da Storage
+    // 1. Elimina da Storage (ignora errori di file non trovato)
     await sb.storage.from('documenti-fiscali').remove([storagePath]);
     // 2. Elimina dalla tabella
     const { error } = await sb.from('documenti_fiscali')
@@ -2232,13 +2381,21 @@ async function deleteDoc(docId, storagePath, anno) {
     if (_documenti[anno]) {
       _documenti[anno] = _documenti[anno].filter(d => d.id !== docId);
     }
+    _delDoc = null;
+    closeModal('modal-del-doc');
     setSync('ok', 'Sincronizzato');
     renderArchivio();
-    toast('🗑️ Documento eliminato', 'ok');
+    renderDocumentiView(); // aggiorna anche la view dedicata
+    toast('🗑️ Documento eliminato definitivamente', 'ok');
   } catch(e) {
     setSync('err', 'Errore');
     toast('❌ Errore eliminazione: ' + e.message, 'err');
   }
+}
+
+// Elimina documento (vecchia firma mantenuta per compatibilità — ora delega al modal)
+async function deleteDoc(docId, storagePath, anno) {
+  richiediDelDoc(docId, storagePath, anno, 'questo documento');
 }
 
 /* ============================================================
@@ -2269,15 +2426,21 @@ async function onArchPdfSelected(input) {
   const body = g('ayc-b-' + anno);
   if (body && !body.classList.contains('open')) body.classList.add('open');
 
+  // Mostra spinner nella card dell'anno
+  const progEl = g('pdf-prog-' + anno);
+  if (progEl) progEl.classList.add('show');
+
   // Mostra toast di attesa
   toast(`🤖 Analisi AI in corso per il ${anno}…`, 'info', 12000);
 
   try {
     const result = await parseTaxPDF(file);
+    if (progEl) progEl.classList.remove('show');
     _aiResult = result;
     _aiAnno   = anno;
     apriModalAiResult(anno, result);
   } catch(err) {
+    if (progEl) progEl.classList.remove('show');
     // FIX 4: messaggio guida per inserimento manuale
     const guida = `\n\n💡 Se il problema persiste: apri il PDF, individua i campi ` +
       `LM22 (fatturato), LM35 (INPS versata), LM39 (imposta sostitutiva) e ` +
@@ -2378,7 +2541,7 @@ async function confermaAiResult() {
   if (imposta  > 0) updates.imposta_sost = imposta;
 
   // Se arriva il fatturato, ricalcola tutti i valori derivati
-  if (fatt > 0) {
+  if (fatt > 0 && fatt !== d.fatturato) {
     const gr    = GRUPPI[d.gruppo_idx];
     const r_forf = fatt * gr.coeff;
     let c_inps = 0;
@@ -2562,8 +2725,101 @@ async function syncFutureYears(anno) {
   }
 }
 
-// Variabile temporanea per il modal cambio stato
-let _statoRow = null;
+/* ============================================================
+   ARCHIVIO DOCUMENTI — view dedicata con ricerca real-time
+   ============================================================ */
+function renderDocumentiView(queryFilter) {
+  const el = g('doc-view-cnt');
+  if (!el) return;
+
+  const q = (queryFilter || g('doc-search')?.value || '').trim().toLowerCase();
+
+  // Raccoglie tutti i documenti flat (sorted by year desc, then date desc)
+  let tuttiDocs = [];
+  Object.entries(_documenti)
+    .sort(([a],[b]) => parseInt(b) - parseInt(a))
+    .forEach(([anno, docs]) => {
+      docs.forEach(doc => tuttiDocs.push({ ...doc, anno: parseInt(anno) }));
+    });
+
+  // Filtra in base alla query
+  if (q) {
+    tuttiDocs = tuttiDocs.filter(doc =>
+      (doc.nome_file || '').toLowerCase().includes(q) ||
+      String(doc.anno).includes(q) ||
+      (doc.tipo_doc || '').toLowerCase().includes(q)
+    );
+  }
+
+  if (!tuttiDocs.length) {
+    el.innerHTML = `<div class="no-data-state">
+      <div class="nds-ico">📎</div>
+      <h3>${q ? 'Nessun risultato' : 'Nessun documento'}</h3>
+      <p>${q ? `Nessun file corrisponde a "<strong>${sanitizeHTML(q)}</strong>". Prova un altro termine.` : 'Carica i tuoi PDF fiscali dall\'Archivio anni → tasto "Analizza Dichiarazione / F24".'}</p>
+      ${!q ? '<button class="btn" style="margin-top:14px" onclick="showView(\'archivio\')">Vai all\'Archivio</button>' : ''}
+    </div>`;
+    return;
+  }
+
+  const icona = { dichiarazione:'📑', f24:'📋', sconosciuto:'📄' };
+
+  // Raggruppa per anno
+  const perAnno = {};
+  tuttiDocs.forEach(doc => {
+    if (!perAnno[doc.anno]) perAnno[doc.anno] = [];
+    perAnno[doc.anno].push(doc);
+  });
+
+  const totale = tuttiDocs.length;
+  let html = `<div class="al al-i" style="margin-bottom:12px">
+    <span class="ai">📎</span>
+    <span><strong>${totale} documento/i</strong>${q ? ` trovati per "<em>${sanitizeHTML(q)}</em>"` : ' in archivio'}. Clicca ⬇️ per scaricare.</span>
+  </div>`;
+
+  Object.entries(perAnno)
+    .sort(([a],[b]) => parseInt(b) - parseInt(a))
+    .forEach(([anno, docs]) => {
+      html += `<div class="doc-view-group">
+        <div class="doc-view-year">📅 Anno ${anno} <span style="color:var(--t3);font-weight:400">(${docs.length} file)</span></div>
+        <div class="doc-view-list">`;
+      docs.forEach(doc => {
+        const data    = new Date(doc.uploaded_at).toLocaleDateString('it-IT');
+        const dim     = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
+        const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
+        const ico     = icona[doc.tipo_doc] || '📄';
+        html += `<div class="doc-view-row">
+          <span class="doc-view-ico">${ico}</span>
+          <div class="doc-view-info">
+            <div class="doc-view-name">${sanitizeHTML(doc.nome_file)}</div>
+            <div class="doc-view-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
+          </div>
+          <div class="doc-view-actions">
+            <button class="btn btn-xs btn-ol" onclick="downloadDoc('${doc.storage_path}','${sanitizeHTML(doc.nome_file)}')">⬇️ Scarica</button>
+            <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${doc.storage_path}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️ Elimina</button>
+          </div>
+        </div>`;
+      });
+      html += '</div></div>';
+    });
+
+  el.innerHTML = html;
+}
+
+// Filtro real-time per la barra di ricerca documenti
+function filterDocumentiView(query) {
+  renderDocumentiView(query);
+}
+
+/* ============================================================
+   syncCascade(anno) — alias pubblico per aggiornamento manuale
+   Aggiorna istantaneamente gli acconti dell'anno N+1 su Supabase
+   quando l'utente modifica manualmente i dati di un anno N.
+   Wrapper di syncFutureYears con feedback UI dedicato.
+   ============================================================ */
+async function syncCascade(anno) {
+  toast(`🔄 Ricalcolo acconti ${anno + 1} in corso…`, 'info', 3000);
+  await syncFutureYears(anno);
+}
 
 function cambiaStato(rowId, anno) {
   const d = _anni[anno]; if (!d) return;
