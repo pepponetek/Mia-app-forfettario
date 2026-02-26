@@ -1456,76 +1456,71 @@ function onAnnoChange() {
    senza consumare quota Gemini (~98% risparmio token).
    ============================================================ */
 function tryParseRPF(text) {
-  // Riconoscimento documento RPF
+  // Riconoscimento documento RPF Modello Redditi Persone Fisiche
   const isRPF = /PERSONE\s+FISICHE/i.test(text) && /QUADRO\s+LM/i.test(text);
   if (!isRPF) return null;
 
-  // Utility: converti stringa numero italiano (1.234,56 o 1234) → float
+  // Converte stringa numero italiano (1.234,56 o 1.234) in float
   function parseITA(str) {
     if (!str) return 0;
-    // Rimuove separatori di migliaia (punto) e converte virgola decimale
     return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
   }
 
-  // Cerca il codice ATECO: 6 cifre consecutive (es. 683200 o 62.09.09 normalizzato)
-  const atecoMatch = text.match(/\b(\d{2}[.\s]?\d{2}[.\s]?\d{2})\b/);
-  const ateco = atecoMatch ? atecoMatch[1].replace(/[.\s]/g, '') : null;
-
-  // Anno: cerca un anno fiscale 4 cifre nel range plausibile (2018-2035)
-  const annoMatch = text.match(/\b(20[12]\d)\b/);
-  const anno = annoMatch ? parseInt(annoMatch[1]) : null;
-
-  // Estrae tutti i numeri nel formato italiano con separatore migliaia
-  // Cattura: 1.234 / 12.345 / 123.456 / 1.234.567 (con o senza decimali)
-  const numPattern = /\b(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{4,}(?:,\d{1,2})?)\b/g;
-  const allNums = [];
-  let m;
-  while ((m = numPattern.exec(text)) !== null) {
-    const val = parseITA(m[1]);
-    if (val >= 100) allNums.push(val); // ignora numeri piccoli (codici, pagine, ecc.)
+  // Cerca il primo numero con PUNTO separatore migliaia (es. 34.827,00)
+  // dopo il label LM indicato. Questo pattern NON cattura codici ATECO (683200)
+  // né codici fiscali numerici (94038190719) perché privi di separatore.
+  function findAfterLabel(label, maxChars) {
+    maxChars = maxChars || 400;
+    const re = new RegExp(
+      label + '[\\s\\S]{0,' + maxChars + '}?(\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?)',
+      'i'
+    );
+    const m = text.match(re);
+    return m ? parseITA(m[1]) : 0;
   }
 
-  if (allNums.length < 2) return null;
+  // Anno fiscale: "PERIODO D'IMPOSTA YYYY" è più affidabile di un generico anno
+  const annoMatch =
+    text.match(/PERIODO\s+D.IMPOSTA\s+(20[12]\d)/i) ||
+    text.match(/\b(20[12]\d)\b/);
+  const anno = annoMatch ? parseInt(annoMatch[1]) : null;
 
-  // Strategia mapping:
-  // LM22 = fatturato: il valore più grande > 1.000
-  // LM35 = contributi INPS: tipicamente 25-35% del reddito forfettario (fatturato × coeff)
-  // LM39 = imposta sostitutiva: tipicamente 5-15% del fatturato
-  // Ordina decrescente e assegna
-  const sorted = [...allNums].sort((a, b) => b - a);
+  // ATECO: cerca 6 cifre vicino a LM21 o "Codice attività"
+  const atecoMatch =
+    text.match(/LM21[\s\S]{0,120}?(\d{6})/) ||
+    text.match(/[Cc]odice\s+attivit[àa][\s\S]{0,60}?(\d{6})/);
+  const ateco = atecoMatch ? atecoMatch[1] : null;
 
-  // LM22: fatturato = valore massimo (deve essere > 1.000)
-  const fatturato = sorted[0] > 1000 ? sorted[0] : null;
-  if (!fatturato) return null;
+  // LM22 = componenti positivi = fatturato imponibile (Sezione III regime forfetario)
+  const fatturato = findAfterLabel('LM22');
+  if (fatturato < 100) return null;
 
-  // Per LM35 e LM39: cerca nell'array ordinato i valori plausibili
-  // LM35 (contributi) plausibile: tra 10% e 40% del fatturato
-  const lm35Candidate = sorted.find(v => v !== fatturato && v >= fatturato * 0.05 && v <= fatturato * 0.45);
+  // LM35 = contributi previdenziali dedotti
+  const inps_dedotta = findAfterLabel('LM35');
 
-  // LM39 (imposta) plausibile: tra 3% e 20% del fatturato, minore di contributi se presenti
-  const maxImposta = lm35Candidate ? lm35Candidate * 0.9 : fatturato * 0.2;
-  const lm39Candidate = sorted.find(v =>
-    v !== fatturato && v !== lm35Candidate &&
-    v >= fatturato * 0.03 && v <= maxImposta
-  );
+  // LM39 = imposta sostitutiva dovuta
+  const imposta = findAfterLabel('LM39');
 
-  // Verifica minima: almeno fatturato estratto
+  const tuttiTrovati = inps_dedotta > 0 && imposta > 0;
   const result = {
-    tipo:               'dichiarazione',
-    anno:               anno,
-    ateco:              ateco,
-    fatturato_lm2:      fatturato,
-    inps_dedotta_lm7:   lm35Candidate || 0,
-    imposta_dovuta_lm11: lm39Candidate || 0,
-    inps_versata_f24:   0,
-    note:               `⚡ Estratto localmente da Modello RPF (no Gemini)` +
-                        (ateco ? ` · ATECO ${ateco}` : '') +
-                        (!lm35Candidate || !lm39Candidate
-                          ? ' · ⚠️ Verifica i campi LM35 e LM39: potrebbero richiedere correzione manuale.'
-                          : '')
+    tipo:                'dichiarazione',
+    anno:                anno,
+    ateco:               ateco,
+    fatturato_lm2:       fatturato,
+    inps_dedotta_lm7:    inps_dedotta,
+    imposta_dovuta_lm11: imposta,
+    inps_versata_f24:    0,
+    note: '⚡ Estratto da Modello RPF (0 token AI)' +
+          (ateco ? ' · ATECO ' + ateco : '') +
+          ' · LM22=' + fatturato.toLocaleString('it-IT') +
+          (inps_dedotta > 0 ? ' LM35=' + inps_dedotta.toLocaleString('it-IT') : '') +
+          (imposta > 0     ? ' LM39=' + imposta.toLocaleString('it-IT') : '') +
+          (!tuttiTrovati
+            ? ' · ⚠️ Verifica LM35 e LM39: correzione manuale potrebbe essere necessaria.'
+            : '')
   };
 
-  console.log('[tryParseRPF] Risultato locale:', result);
+  console.log('[tryParseRPF] Risultato:', result);
   return result;
 }
 
@@ -1542,6 +1537,7 @@ async function parseTaxPDF(file) {
   //    Inviamo solo testo (~5-20 KB) invece del binario base64 (~800 KB)
   //    Risparmio token Gemini: ~98% — riduce consumo quota drasticamente
   let pdf_text = '';
+  let _numPages = 0; // dichiarato FUORI dal try per essere accessibile a riga ~1618
   try {
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     if (!pdfjsLib) throw new Error('PDF.js non caricato. Ricarica la pagina.');
@@ -1550,7 +1546,7 @@ async function parseTaxPDF(file) {
 
     const arrayBuffer = await file.arrayBuffer();
     const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const _numPages = pdfDoc.numPages; // catturato prima del try-catch per uso successivo
+    _numPages = pdfDoc.numPages; // assegnato alla variabile esterna (dichiarata prima del try)
 
     for (let p = 1; p <= _numPages; p++) {
       const page    = await pdfDoc.getPage(p);
@@ -2382,7 +2378,7 @@ async function confermaAiResult() {
   if (imposta  > 0) updates.imposta_sost = imposta;
 
   // Se arriva il fatturato, ricalcola tutti i valori derivati
-  if (fatt > 0 && fatt !== d.fatturato) {
+  if (fatt > 0) {
     const gr    = GRUPPI[d.gruppo_idx];
     const r_forf = fatt * gr.coeff;
     let c_inps = 0;
