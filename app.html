@@ -1979,7 +1979,6 @@ function renderArchivio() {
         <div style="font-size:11px;color:var(--t3);margin-top:8px">☁️ Salvato il ${sal} · Stato: <strong>${s}</strong> · ${d.acconto_note}</div>
         <div class="btn-row">
           <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--pu-b),var(--pu))" onclick="archAnalizzaPDF(${d.anno})">🤖 Analizza Dichiarazione / F24</button>
-          <button class="btn btn-sm btn-ol" onclick="exportPDF(${d.anno})">📄 PDF</button>
           <button class="btn btn-sm btn-ol" onclick="printAnno(${d.anno})">🖨️ Stampa</button>
           ${s === 'bozza' ? `<button class="btn btn-sm btn-ye" onclick="apriAggiornaBozza('${d.id}',${d.anno})">🔄 Aggiorna Imponibile</button>` : ''}
           <button class="btn btn-sm btn-ol" style="color:var(--t3)" onclick="cambiaStato('${d.id}',${d.anno})">✏️ Stato</button>
