@@ -1438,6 +1438,88 @@ function onAnnoChange() {
 }
 
 /* ============================================================
+   PRE-PARSER LOCALE — Modello Redditi Persone Fisiche (RPF)
+   Risolve il problema dei PDF a campi modulo in cui i valori
+   numerici vengono estratti separati dalle etichette (LM22, LM34…)
+   da PDF.js, rendendo impossibile a Gemini abbinarli.
+   Strategia: riconosce la sequenza ATECO→coeff→numeri nel Quadro LM
+   e mappa i valori alle variabili fiscali corrette senza bisogno
+   di chiamare la Edge Function Gemini.
+   ============================================================ */
+function tryParseRPFForm(rawText) {
+  // 1. Controlla che sia un Modello Redditi PF con regime forfetario
+  const isRPF = rawText.includes('PERSONE FISICHE') && rawText.includes('QUADRO LM');
+  const isForf = rawText.includes('forfetario') || rawText.includes('forfettario');
+  if (!isRPF || !isForf) return null;
+
+  // 2. Estrai anno d'imposta
+  const annoMatch = rawText.match(/Periodo d.imposta\s+(\d{4})/i);
+  const anno = annoMatch ? parseInt(annoMatch[1]) : null;
+
+  // 3. Analizza riga per riga
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l !== '');
+
+  // Helper: converte "34.827" o "2.021" → numero float
+  const itToNum = s => parseFloat(s.replace(/\./g, '').replace(',', '.'));
+
+  // Pattern numero italiano (es: "34.827", "2.021", "16.475")
+  const rxNum = /^\d{1,3}(?:\.\d{3})*(?:,\d{2})?$/;
+
+  // 4. Trova l'indice ATECO a 6 cifre (es: 683200)
+  //    Il PDF stampa sempre il codice ATECO come riga isolata
+  let atecoIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^[1-9]\d{5}$/.test(lines[i])) { atecoIdx = i; break; }
+  }
+  if (atecoIdx < 0) return null;
+
+  // 5. Raccogli i numeri significativi (> 1000) nelle 40 righe successive all'ATECO.
+  //    Struttura attesa nel Quadro LM forfetario:
+  //      [ateco] → [coeff%] → [fatturato/LM22] → [reddito_lordo/LM34]
+  //      → [contributi/LM35] → [reddito_netto/LM36] → [imposta/LM39]
+  const bigNums = [];
+  for (let i = atecoIdx + 1; i < Math.min(atecoIdx + 45, lines.length); i++) {
+    if (rxNum.test(lines[i])) {
+      const v = itToNum(lines[i]);
+      if (v > 1000) bigNums.push(v);
+    }
+  }
+  if (bigNums.length < 3) return null;
+
+  // 6. Deduplica mantenendo l'ordine di prima occorrenza
+  const seen = new Set();
+  const uniq = [];
+  for (const n of bigNums) {
+    if (!seen.has(n)) { seen.add(n); uniq.push(n); }
+  }
+
+  // 7. Mapping posizionale (basato sulla struttura del modello RPF):
+  //    uniq[0] = componenti positivi = FATTURATO (LM22)
+  //    uniq[1] = reddito lordo (LM34) — tipicamente fatturato × coefficiente
+  //    uniq[2] = contributi INPS deducibili (LM35)
+  //    uniq[3] = reddito netto (LM36/LM38)
+  //    uniq[4] = imposta sostitutiva (LM39) — se presente
+  //    Nota: uniq[1] può coincidere con uniq[0] se coeff=100%; in quel
+  //    caso l'array scala di uno.
+  const fatturato  = uniq[0] || 0;
+  const contributi = uniq[2] || uniq[1] || 0; // LM35: 3° elemento unico
+  // L'imposta è l'ultimo elemento < 20% del fatturato prima degli acconti
+  const imposta = uniq.find(n => n < fatturato * 0.20 && n > 50) || 0;
+
+  if (!fatturato) return null;
+
+  return {
+    tipo:                 'dichiarazione',
+    anno:                 anno,
+    fatturato_lm2:        fatturato,
+    inps_dedotta_lm7:     contributi,
+    imposta_dovuta_lm11:  imposta,
+    inps_versata_f24:     0,
+    note: `Estratto automaticamente da Modello Redditi PF ${anno || ''} (Regime Forfetario). Verifica i valori prima di confermare.`
+  };
+}
+
+/* ============================================================
    GEMINI AI — parsing PDF tramite Supabase Edge Function (sicuro)
    La chiave Gemini è sul server: non appare mai nel browser (F12).
    ============================================================ */
@@ -1473,6 +1555,13 @@ async function parseTaxPDF(file) {
   if (!pdf_text || pdf_text.trim().length < 20) {
     throw new Error('Nessun testo trovato nel PDF. Assicurati che non sia una scansione.');
   }
+
+  // 1b. Prova prima il pre-parser locale per Modello Redditi PF (RPF).
+  //     Questi PDF hanno i valori dei campi modulo separati dalle etichette
+  //     nel testo estratto → Gemini non riesce ad abbinarli.
+  //     Il pre-parser risolve questo problema senza consumare quota Gemini.
+  const localResult = tryParseRPFForm(pdf_text);
+  if (localResult) return localResult;
 
   // 2. Forza il refresh del token — evita 401 da JWT scaduto
   //    refreshSession() chiama il server e restituisce sempre un token fresco
