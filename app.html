@@ -1520,76 +1520,151 @@ function onAnnoChange() {
    senza consumare quota Gemini (~98% risparmio token).
    ============================================================ */
 function tryParseRPF(text) {
-  // Riconoscimento documento RPF
-  const isRPF = /PERSONE\s+FISICHE/i.test(text) && /QUADRO\s+LM/i.test(text);
+  /* ── STEP 0: Pre-elaborazione testo PDF.js ─────────────────────────────────
+     I moduli fiscali italiani (RPF) hanno celle individuali per ogni cifra.
+     PDF.js può estrarre "3 4 . 8 2 7 , 0 0" come caratteri separati da spazi.
+     Normalizziamo unendo le cifre adiacenti e correggendo i separatori.       */
+  let t = text
+    // Unisce run di singole cifre separate da spazio: "3 4 8 2 7" → "34827"
+    // Usa un loop per gestire sequenze di lunghezza variabile
+    .replace(/\b(\d)(?: (\d))+\b/g, m => m.replace(/ /g, ''))
+    // Corregge separatore migliaia con spazi: "34 . 827" → "34.827"
+    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')
+    // Corregge separatore decimale con spazi: "827 , 00" → "827,00"
+    .replace(/(\d{3}) , (\d{2})\b/g, '$1,$2')
+    // Unisce ancora eventuali residui dopo le sostituzioni precedenti
+    .replace(/\b(\d)(?: (\d))+\b/g, m => m.replace(/ /g, ''));
+
+  /* ── STEP 1: Riconoscimento documento RPF ──────────────────────────────────
+     Considera valido anche se manca uno dei token, per tollerare estratti
+     parziali (es. solo la sezione LM del modello, non il frontespizio).       */
+  const hasPersoneFisiche = /PERSONE\s*FISICHE/i.test(t);
+  const hasQuadroLM       = /QUADRO\s*LM/i.test(t);
+  const hasLMRow          = /\bLM2[2-9]\b|\bLM3[4-9]\b|\bLM4[0-9]\b/i.test(t);
+  const hasModelloRPF     = /MODELLO\s*RPF|MODELLO\s*REDDITI/i.test(t);
+  const hasPeriodoImposta = /PERIODO\s*D['']?\s*IMPOSTA\s*20\d{2}/i.test(t);
+
+  const isRPF = (hasPersoneFisiche || hasModelloRPF || hasPeriodoImposta) &&
+                (hasQuadroLM || hasLMRow);
   if (!isRPF) return null;
 
-  // Utility: converti stringa numero italiano (1.234,56 o 1234) → float
+  /* ── STEP 2: Utility ────────────────────────────────────────────────────── */
   function parseITA(str) {
     if (!str) return 0;
-    // Rimuove separatori di migliaia (punto) e converte virgola decimale
     return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
   }
 
-  // Cerca il codice ATECO: 6 cifre consecutive (es. 683200 o 62.09.09 normalizzato)
-  const atecoMatch = text.match(/\b(\d{2}[.\s]?\d{2}[.\s]?\d{2})\b/);
-  const ateco = atecoMatch ? atecoMatch[1].replace(/[.\s]/g, '') : null;
-
-  // Anno: cerca un anno fiscale 4 cifre nel range plausibile (2018-2035)
-  const annoMatch = text.match(/\b(20[12]\d)\b/);
+  /* ── STEP 3: Anno fiscale ──────────────────────────────────────────────────
+     Cerca prima "Periodo d'imposta 20XX", poi qualsiasi anno 4 cifre.         */
+  const annoMatch =
+    t.match(/[Pp]eriodo\s*d['']?\s*[Ii]mposta[\s:]*(\d{4})/i) ||
+    t.match(/\b(202[0-9])\b/);
   const anno = annoMatch ? parseInt(annoMatch[1]) : null;
 
-  // Estrae tutti i numeri nel formato italiano con separatore migliaia
-  // Cattura: 1.234 / 12.345 / 123.456 / 1.234.567 (con o senza decimali)
-  const numPattern = /\b(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{4,}(?:,\d{1,2})?)\b/g;
-  const allNums = [];
-  let m;
-  while ((m = numPattern.exec(text)) !== null) {
-    const val = parseITA(m[1]);
-    if (val >= 100) allNums.push(val); // ignora numeri piccoli (codici, pagine, ecc.)
+  /* ── STEP 4: Codice ATECO ─────────────────────────────────────────────────
+     Prima cerca near "Codice attività" oppure LM21/LM22.
+     Formati validi: 683200, 68.32.00, 62.09.01                               */
+  const atecoMatchDirect =
+    t.match(/[Cc]odice\s+attivit[àa]\s+([0-9]{6})/i) ||
+    t.match(/LM2[12][^\n]{0,10}?([0-9]{6})/i) ||
+    t.match(/\b([6-9][0-9]{5})\b/);  // ATECO tipicamente inizia con 6x-9x
+  const ateco = atecoMatchDirect
+    ? atecoMatchDirect[1].replace(/[.\s]/g, '')
+    : (() => {
+        // fallback: trova qualsiasi sequenza di 6 cifre (es. 683200)
+        const m = t.match(/\b([0-9]{2}[.\s]?[0-9]{2}[.\s]?[0-9]{2})\b/);
+        return m ? m[1].replace(/[.\s]/g, '') : null;
+      })();
+
+  /* ── STEP 5: Estrazione diretta per etichetta LM ────────────────────────
+     Scansiona il testo nei 200 caratteri DOPO ogni label LM.
+     Cattura sia "12.345,00" sia "12345" (senza decimali).                     */
+  function extractAfterLabel(label) {
+    // Cerca il primo numero valido entro 200 char dall'etichetta
+    const re = new RegExp(
+      label + '[\\s\\S]{0,200}?(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{5,8}(?:,\\d{2})?)',
+      'i'
+    );
+    const m = t.match(re);
+    return m ? parseITA(m[1]) : 0;
   }
 
-  if (allNums.length < 2) return null;
+  // QUADRO LM – Regime Forfetario (sezione III)
+  const lm22 = extractAfterLabel('LM22');  // componenti positivi = fatturato lordo
+  const lm34 = extractAfterLabel('LM34');  // reddito lordo (fatturato × coeff)
+  const lm35 = extractAfterLabel('LM35');  // contributi previdenziali (INPS) dedotti
+  const lm38 = extractAfterLabel('LM38');  // reddito al netto delle perdite
+  const lm39 = extractAfterLabel('LM39');  // imposta sostitutiva dovuta
 
-  // Strategia mapping:
-  // LM22 = fatturato: il valore più grande > 1.000
-  // LM35 = contributi INPS: tipicamente 25-35% del reddito forfettario (fatturato × coeff)
-  // LM39 = imposta sostitutiva: tipicamente 5-15% del fatturato
-  // Ordina decrescente e assegna
-  const sorted = [...allNums].sort((a, b) => b - a);
+  /* ── STEP 6: Determinazione fatturato ──────────────────────────────────────
+     Priorità: LM22 > numero più grande nell'intero testo.                    */
+  let fatturato = lm22 > 100 ? lm22 : 0;
 
-  // LM22: fatturato = valore massimo (deve essere > 1.000)
-  const fatturato = sorted[0] > 1000 ? sorted[0] : null;
-  if (!fatturato) return null;
+  if (fatturato < 100) {
+    // Fallback generico: estrai tutti i numeri in formato italiano
+    const numPat = /\b(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{4,}(?:,\d{1,2})?)\b/g;
+    const allNums = [];
+    let nm;
+    while ((nm = numPat.exec(t)) !== null) {
+      const v = parseITA(nm[1]);
+      // Esclude codici (anno, ATECO, ecc.) e numeri troppo grandi (> 3M)
+      if (v >= 1000 && v <= 3000000) allNums.push(v);
+    }
+    if (allNums.length === 0) return null;
+    const sorted = [...allNums].sort((a, b) => b - a);
+    fatturato = sorted[0];
+  }
 
-  // Per LM35 e LM39: cerca nell'array ordinato i valori plausibili
-  // LM35 (contributi) plausibile: tra 10% e 40% del fatturato
-  const lm35Candidate = sorted.find(v => v !== fatturato && v >= fatturato * 0.05 && v <= fatturato * 0.45);
+  if (!fatturato || fatturato < 100) return null;
 
-  // LM39 (imposta) plausibile: tra 3% e 20% del fatturato, minore di contributi se presenti
-  const maxImposta = lm35Candidate ? lm35Candidate * 0.9 : fatturato * 0.2;
-  const lm39Candidate = sorted.find(v =>
-    v !== fatturato && v !== lm35Candidate &&
-    v >= fatturato * 0.03 && v <= maxImposta
-  );
+  /* ── STEP 7: Contributi INPS e imposta sostitutiva ─────────────────────────
+     Se l'estrazione diretta LM35/LM39 ha funzionato, usali.
+     Altrimenti applica euristica con soglie più ampie (inps fino al 65%).    */
+  let inps    = lm35 > 0 ? lm35 : 0;
+  let imposta = lm39 > 0 ? lm39 : 0;
 
-  // Verifica minima: almeno fatturato estratto
+  if (inps === 0 || imposta === 0) {
+    // Fallback: raccoglie tutti i numeri plausibili
+    const numPat2 = /\b(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{4,}(?:,\d{1,2})?)\b/g;
+    const pool = [];
+    let nm2;
+    while ((nm2 = numPat2.exec(t)) !== null) {
+      const v = parseITA(nm2[1]);
+      if (v >= 100 && v < fatturato) pool.push(v);
+    }
+    const sortedPool = [...new Set(pool)].sort((a, b) => b - a);
+
+    if (inps === 0) {
+      // INPS: fra il 5% e il 65% del fatturato (forfetari GS ~25-30%, artigiani ~23-24%)
+      inps = sortedPool.find(v => v >= fatturato * 0.05 && v <= fatturato * 0.65) || 0;
+    }
+    if (imposta === 0) {
+      // Imposta sostitutiva: fra il 2% e il 20% del fatturato
+      const maxImp = inps > 0 ? inps * 0.95 : fatturato * 0.2;
+      imposta = sortedPool.find(v =>
+        v !== inps && v >= fatturato * 0.02 && v <= maxImp
+      ) || 0;
+    }
+  }
+
+  /* ── STEP 8: Risultato finale ───────────────────────────────────────────── */
   const result = {
     tipo:               'dichiarazione',
     anno:               anno,
     ateco:              ateco,
     fatturato_lm2:      fatturato,
-    inps_dedotta_lm7:   lm35Candidate || 0,
-    imposta_dovuta_lm11: lm39Candidate || 0,
+    inps_dedotta_lm7:   inps,
+    imposta_dovuta_lm11: imposta,
     inps_versata_f24:   0,
-    note:               `⚡ Estratto localmente da Modello RPF (no Gemini)` +
-                        (ateco ? ` · ATECO ${ateco}` : '') +
-                        (!lm35Candidate || !lm39Candidate
-                          ? ' · ⚠️ Verifica i campi LM35 e LM39: potrebbero richiedere correzione manuale.'
-                          : '')
+    note: '⚡ Estratto localmente da Modello RPF (0 token AI)' +
+          (ateco ? ` · ATECO ${ateco}` : '') +
+          (anno  ? ` · Anno ${anno}`   : '') +
+          (!inps || !imposta
+            ? ' · ⚠️ Verifica INPS e imposta: potrebbero richiedere correzione manuale.'
+            : '')
   };
 
-  console.log('[tryParseRPF] Risultato locale:', result);
+  console.log('[tryParseRPF] Risultato:', result);
   return result;
 }
 
@@ -2375,15 +2450,18 @@ async function confDelDoc() {
       .eq('user_id', _user.id);
     if (error) throw error;
 
-    // 3. Aggiorna cache locale
+    // 3. Aggiorna cache locale e ricarica da DB per coerenza
     if (_documenti[anno]) {
       _documenti[anno] = _documenti[anno].filter(d => d.id !== docId);
     }
+    // Ricarica anche da DB per avere stato consistente (gestisce doc con id null)
+    loadDocumenti().then(() => {
+      renderArchivio();
+      renderDocumentiView();
+    });
     _delDoc = null;
     closeModal('modal-del-doc');
     setSync('ok', 'Sincronizzato');
-    renderArchivio();
-    renderDocumentiView(); // aggiorna anche la view dedicata
     toast('🗑️ Documento eliminato definitivamente', 'ok');
   } catch(e) {
     setSync('err', 'Errore');
@@ -2629,16 +2707,8 @@ async function confermaAiResult() {
           dimensione:   _aiFile.size
         });
         if (!dbErr) {
-          // Aggiorna cache locale
-          if (!_documenti[anno]) _documenti[anno] = [];
-          _documenti[anno].unshift({
-            id: null, // verrà aggiornato al prossimo loadDocumenti
-            nome_file:    _aiFile.name,
-            storage_path: path,
-            tipo_doc:     _aiResult?.tipo || 'sconosciuto',
-            dimensione:   _aiFile.size,
-            uploaded_at:  new Date().toISOString()
-          });
+          // Aggiorna cache locale con ID reale via ricarica DB
+          await loadDocumenti();
           // Ricarica l'archivio per mostrare il file appena caricato
           renderArchivio();
           toast(`📎 PDF "${_aiFile.name}" salvato nei documenti dell'anno ${anno}`, 'ok', 4000);
