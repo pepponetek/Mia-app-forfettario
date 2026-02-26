@@ -13,7 +13,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
-/* --- CSS CORE & REATTIVITÀ MOBILE --- */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
   --bg:#0d1117;--s1:#161b22;--s2:#1c2330;
@@ -23,253 +22,3851 @@
   --gr:#3fb950;--gr-d:#1e3a2a;--gr-b:#238636;
   --ye:#d29922;--ye-d:#2e2414;--ye-b:#9e6a03;
   --re:#f85149;--re-d:#3a1a1a;--re-b:#8b1a1a;
+  --pu:#bc8cff;--pu-d:rgba(188,140,255,.08);--pu-b:#6e40c9;
   --r:10px;
   --safe-b:env(safe-area-inset-bottom,0px);
   --safe-t:env(safe-area-inset-top,0px);
 }
-body{background:var(--bg);color:var(--t1);font-family:-apple-system,system-ui,sans-serif;font-size:15px;min-height:100vh;overflow-x:hidden}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--t1);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  font-size:15px;min-height:100vh;overflow-x:hidden;
+  background-image:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(31,111,235,.12),transparent),
+    radial-gradient(ellipse 60% 40% at 80% 80%,rgba(63,185,80,.06),transparent);}
 
-/* SIDEBAR & NAV */
-.sidebar{width:240px;position:fixed;top:0;left:0;bottom:0;background:var(--s1);border-right:1px solid var(--bd);z-index:200;display:flex;flex-direction:column}
-.content{margin-left:240px;padding:24px 22px 80px;flex:1}
+/* LOADING GUARD — mostrato durante il check sessione all'avvio */
+#loading-screen{
+  position:fixed;inset:0;z-index:9999;
+  background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  transition:opacity .3s ease;
+}
+#loading-screen.hidden{opacity:0;pointer-events:none;visibility:hidden}
+#loading-screen.gone{display:none}
+#loading-screen .ls-ico{font-size:48px;animation:lsPulse 1.5s ease-in-out infinite}
+#loading-screen .ls-spinner{
+  width:36px;height:36px;border-radius:50%;
+  border:3px solid var(--bd2);border-top-color:var(--ac);
+  animation:spin .8s linear infinite;
+}
+#loading-screen .ls-txt{font-size:13px;color:var(--t3)}
+@keyframes lsPulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* AUTH */
+#auth-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:20px;padding-bottom:calc(20px + var(--safe-b));}
+.auth-logo{text-align:center;margin-bottom:28px;}
+.auth-logo span{font-size:52px;display:block;margin-bottom:10px;}
+.auth-logo h1{font-size:26px;font-weight:800;letter-spacing:-.02em;}
+.auth-logo p{font-size:13px;color:var(--t2);margin-top:4px;}
+.auth-box{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:24px;width:100%;max-width:400px;}
+.auth-tabs{display:flex;margin-bottom:22px;background:var(--s2);border-radius:8px;padding:3px;}
+.auth-tab{flex:1;padding:9px;border:none;background:none;color:var(--t2);font-size:14px;font-weight:500;border-radius:6px;cursor:pointer;transition:background .15s,color .15s;}
+.auth-tab.active{background:var(--ac2);color:#fff;}
+.auth-sect{display:none}.auth-sect.active{display:block}
+.pw-wrap{position:relative}
+.pw-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--t3);font-size:16px;padding:4px;line-height:1;}
+
+/* APP */
+#app{display:none;min-height:100vh}
+#app.show{display:flex;flex-direction:column}
+.app-body{display:flex;flex:1;min-height:0}
+
+/* SIDEBAR */
+.sidebar{width:230px;flex-shrink:0;background:var(--s1);border-right:1px solid var(--bd);
+  position:fixed;top:0;left:0;bottom:0;z-index:200;display:flex;flex-direction:column;overflow-y:auto;}
+.sb-logo{padding:18px 14px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px;}
+.sb-logo .ico{font-size:26px;flex-shrink:0}
+.sb-logo h2{font-size:15px;font-weight:800}
+.sb-logo p{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-top:1px}
+.sb-user{padding:10px 12px;border-bottom:1px solid var(--bd);background:var(--s2)}
+.sb-user .uname{font-size:13px;font-weight:700;color:var(--t1)}
+.sb-user .uemail{font-size:11px;color:var(--t2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-sect{padding:10px 12px 3px;font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.09em;font-weight:700}
+.nav-btn{display:flex;align-items:center;gap:9px;padding:10px 12px;margin:2px 6px;border-radius:8px;
+  cursor:pointer;font-size:13px;color:var(--t2);border:none;background:none;
+  width:calc(100% - 12px);text-align:left;transition:background .12s,color .12s}
+.nav-btn:hover{background:var(--s2);color:var(--t1)}
+.nav-btn.active{background:rgba(31,111,235,.18);color:var(--ac);font-weight:700}
+.nav-btn .ni{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.hist-list{padding:4px 6px;flex:1;overflow-y:auto}
+.hist-btn{display:flex;align-items:center;justify-content:space-between;gap:5px;
+  padding:7px 10px;margin:2px 0;border-radius:7px;cursor:pointer;border:none;background:none;
+  width:100%;text-align:left;color:var(--t2);font-size:12px;transition:background .12s}
+.hist-btn:hover{background:var(--s2)}
+.hist-btn .hy{font-family:monospace;font-weight:700;font-size:13px}
+.rbadge{font-size:10px;padding:2px 7px;border-radius:9px;font-weight:700;border:1px solid;flex-shrink:0}
+.rb-bozza{color:var(--ye);border-color:var(--ye-b);background:var(--ye-d)}
+.rb-definitivo{color:var(--gr);border-color:var(--gr-b);background:var(--gr-d)}
+.rb-archiviato{color:var(--t3);border-color:var(--bd2);background:var(--s2)}
+.rb-admin{color:var(--ye);border-color:var(--ye-b);background:var(--ye-d)}
+.rb-cliente{color:var(--ac);border-color:var(--ac2);background:rgba(31,111,235,.1)}
+.sb-footer{padding:10px 8px;border-top:1px solid var(--bd)}
+.sb-fbtn{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:7px;
+  border:none;background:none;cursor:pointer;color:var(--t2);font-size:12px;width:100%;transition:background .12s,color .12s}
+.sb-fbtn:hover{background:var(--s2);color:var(--t1)}
+
+/* CONTENT */
+.content{margin-left:230px;flex:1;min-width:0;padding:24px 22px 80px}
+
+/* MOBILE HEADER */
+.mob-hdr{display:none;position:sticky;top:0;z-index:150;
+  background:rgba(13,17,23,.92);border-bottom:1px solid var(--bd);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  padding:12px 16px;padding-top:calc(12px + var(--safe-t));
+  align-items:center;justify-content:space-between}
+.mob-title{font-size:17px;font-weight:800;letter-spacing:-.01em}
+.mob-right{display:flex;align-items:center;gap:8px}
+.mob-av{width:32px;height:32px;border-radius:50%;background:var(--ac2);color:#fff;
+  font-size:13px;font-weight:700;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.sync-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--t3);
+  padding:3px 8px;border-radius:6px;background:var(--s2);border:1px solid var(--bd)}
+.sdot{width:6px;height:6px;border-radius:50%;background:var(--gr);flex-shrink:0}
+.sdot.busy{background:var(--ye);animation:pulse 1s infinite}
+.sdot.err{background:var(--re)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* BOTTOM NAV */
+.bot-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:300;
+  background:rgba(22,27,34,.96);border-top:1px solid var(--bd);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  padding-bottom:var(--safe-b)}
+.bot-nav-inner{display:flex}
+.bn-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:8px 4px;gap:3px;border:none;background:none;cursor:pointer;
+  color:var(--t3);transition:color .15s;min-height:52px}
+.bn-btn:active{background:var(--s2)}
+.bn-btn.active{color:var(--ac)}
+.bn-ico{font-size:20px;line-height:1}
+.bn-lbl{font-size:10px;font-weight:700;letter-spacing:.02em}
+
+/* RESPONSIVE */
 @media(max-width:768px){
-    .sidebar{display:none}
-    .content{margin-left:0;padding:15px 15px 100px}
+  .sidebar{display:none!important}
+  .mob-hdr{display:flex}
+  .bot-nav{display:block}
+  .content{margin-left:0;padding:14px 14px calc(72px + var(--safe-b))}
+  body{font-size:14px}
 }
 
-/* DASHBOARD CARDS */
-.card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:18px;margin-bottom:15px}
-.sg{display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;margin-bottom:15px}
-.sc{background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);padding:15px}
-.sc .sl{font-size:11px;color:var(--t3);text-transform:uppercase;font-weight:700}
-.sc .sv{font-size:18px;font-weight:800;font-family:monospace;margin-top:4px}
+/* VIEWS */
+.view{display:none}.view.active{display:block}
 
-/* DOCUMENTI TAB */
-.doc-item{display:flex;align-items:center;justify-content:space-between;background:var(--s2);padding:12px;border-radius:8px;margin-bottom:8px;border:1px solid var(--bd)}
-.doc-info{display:flex;align-items:center;gap:12px}
-.doc-ico{font-size:24px}
-.doc-name{font-weight:600;font-size:14px}
-.doc-meta{font-size:11px;color:var(--t3)}
+/* PAGE HEADER */
+.ph{margin-bottom:20px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.ph h1{font-size:clamp(20px,4vw,24px);font-weight:800;letter-spacing:-.02em}
+.ph p{color:var(--t2);font-size:12px;margin-top:3px}
 
-/* TOAST & LOADER */
-#toasts{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px}
-.toast{padding:12px 20px;border-radius:10px;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,0.5)}
-.toast-ok{background:var(--gr-d);color:var(--gr);border:1px solid var(--gr-b)}
-.toast-err{background:var(--re-d);color:var(--re);border:1px solid var(--re-b)}
+/* CARD */
+.card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:18px;margin-bottom:12px}
+@media(max-width:768px){.card{padding:14px;border-radius:12px}}
+.card-t{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;
+  letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:7px}
+.card-t .step{width:19px;height:19px;border-radius:50%;background:var(--ac2);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
 
-/* HELPERS */
-.hidden{display:none!important}
-.flex-col{display:flex;flex-direction:column}
+/* FORM */
+.fg{margin-bottom:12px}
+label{display:block;font-size:12px;color:var(--t2);margin-bottom:4px;font-weight:600}
+.iw{position:relative}
+.iw .ipre{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--t3);font-family:monospace;font-size:15px;pointer-events:none}
+.iw .isuf{position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:11px;pointer-events:none}
+input[type=text],input[type=email],input[type=password],input[type=number],select,textarea{
+  width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;color:var(--t1);
+  padding:11px 13px;font-family:inherit;font-size:16px;outline:none;
+  transition:border-color .15s,box-shadow .15s;-webkit-appearance:none;appearance:none}
+input[type=number]{padding-left:26px;padding-right:44px;font-family:monospace}
+input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(88,166,255,.12)}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='%238b949e' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 11px center;background-size:18px;padding-right:36px}
+select option{background:var(--s2)}
+textarea{resize:vertical;min-height:68px;font-size:14px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+@media(max-width:560px){.g2,.g3{grid-template-columns:1fr;gap:8px}}
+.cbg{display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 0}
+.cbg input[type=checkbox]{width:18px;height:18px;cursor:pointer;accent-color:var(--ac);flex-shrink:0;padding:0}
+.cbg span{font-size:13px;color:var(--t2);line-height:1.4}
+
+/* INFO / ALERT */
+.ib{padding:10px 13px;border-radius:8px;background:rgba(88,166,255,.06);
+  border:1px solid rgba(88,166,255,.2);font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:12px}
+.ib strong{color:var(--ac)}
+.al{padding:11px 13px;border-radius:8px;font-size:12px;line-height:1.6;margin-bottom:9px;
+  display:flex;gap:8px;align-items:flex-start}
+.al .ai{flex-shrink:0;font-size:13px;margin-top:1px}
+.al-i{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);color:var(--t2)}
+.al-w{background:var(--ye-d);border:1px solid var(--ye-b);color:var(--ye)}
+.al-d{background:var(--re-d);border:1px solid var(--re-b);color:var(--re)}
+.al-o{background:var(--gr-d);border:1px solid var(--gr-b);color:var(--gr)}
+.al-p{background:var(--pu-d);border:1px solid var(--pu-b);color:var(--pu)}
+.ateco-ok{margin-top:6px;padding:9px 11px;background:var(--gr-d);border:1px solid var(--gr-b);border-radius:8px;font-size:12px;line-height:1.5;display:none}
+.ateco-ok.show{display:block}.ateco-ok strong{color:var(--gr)}
+.ateco-ko{margin-top:6px;padding:9px 11px;background:var(--ye-d);border:1px solid var(--ye-b);border-radius:8px;font-size:12px;color:var(--ye);display:none}
+.ateco-ko.show{display:block}
+
+/* BUTTONS */
+.btn{background:linear-gradient(135deg,var(--ac2),var(--ac));color:#fff;border:none;cursor:pointer;
+  padding:13px 20px;border-radius:9px;font-family:inherit;font-weight:700;font-size:15px;
+  transition:opacity .15s,transform .1s;letter-spacing:.01em}
+.btn:hover{opacity:.88}.btn:active{transform:scale(.98);opacity:.8}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-full{width:100%}.btn-sm{padding:9px 15px;font-size:13px}.btn-xs{padding:6px 11px;font-size:12px;border-radius:7px}
+.btn-ol{background:none;border:1px solid var(--bd2);color:var(--t2)}
+.btn-ol:hover{border-color:var(--t2);color:var(--t1)}
+.btn-gr{background:linear-gradient(135deg,var(--gr-b),var(--gr))}
+.btn-ye{background:linear-gradient(135deg,var(--ye-b),var(--ye));color:#000}
+.btn-re{background:linear-gradient(135deg,var(--re-b),var(--re))}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+@media(max-width:560px){.btn-row{flex-direction:column}.btn-row .btn{width:100%}}
+
+/* BREAKDOWN TABLE */
+.bdt{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
+.bdr{display:flex;justify-content:space-between;align-items:center;
+  padding:10px 14px;border-bottom:1px solid var(--bd);font-size:13px;gap:8px}
+.bdr:last-child{border-bottom:none}.bdr:hover{background:var(--s2)}
+.bdr .bl{color:var(--t2);display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.bdr .bl .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.bdr .br{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.bdr .bf{font-family:monospace;font-size:11px;color:var(--t3)}
+.bdr .bv{font-family:monospace;font-weight:700;color:var(--t1);white-space:nowrap}
+.bdr.tot{background:var(--s2);border-top:2px solid var(--bd2);font-weight:700}
+.bdr.tot .bv{color:var(--re);font-size:14px}
+@media(max-width:560px){.bdr .bf{display:none}}
+
+/* STAT GRID */
+.sg{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:12px}
+.sg2{grid-template-columns:1fr 1fr}.sg4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:680px){.sg,.sg4{grid-template-columns:1fr 1fr}}
+@media(max-width:380px){.sg{grid-template-columns:1fr}}
+.sc{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:12px}
+.sc .sl{font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.sc .sv{font-family:monospace;font-size:16px;font-weight:700;color:var(--t1)}
+.sc .sv.big{font-size:19px}.sc .ss{font-size:10px;color:var(--t3);margin-top:2px}
+.sc.ac{border-color:var(--ac2);background:rgba(31,111,235,.06)}
+.sc.gc{border-color:var(--gr-b);background:var(--gr-d)}
+.sc.rc{border-color:var(--re-b);background:var(--re-d)}
+.sc.yc{border-color:var(--ye-b);background:var(--ye-d)}
+.sc.pc{border-color:var(--pu-b);background:var(--pu-d)}
+
+/* TOTALE BOX */
+.tot-box{background:linear-gradient(135deg,rgba(31,111,235,.12),rgba(63,185,80,.06));
+  border:1px solid var(--ac2);border-radius:12px;padding:16px;text-align:center;margin-bottom:12px}
+.tot-box .ttl{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.tot-box .tv{font-family:monospace;font-size:clamp(26px,6vw,34px);color:var(--t1);font-weight:700;margin:4px 0}
+.tot-box .ts{font-size:12px;color:var(--t2)}
+
+/* PERCENT BARS */
+.pb{margin-bottom:7px}
+.pbl{display:flex;justify-content:space-between;font-size:12px;color:var(--t2);margin-bottom:4px}
+.pbt{height:6px;background:var(--s2);border-radius:3px;overflow:hidden}
+.pbf{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+
+/* TIMELINE */
+.tli{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px}
+.tldw{display:flex;flex-direction:column;align-items:center}
+.tld{width:30px;height:30px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+  background:var(--s2);border:2px solid var(--bd2);color:var(--t2)}
+.tld.active{border-color:var(--ac);color:var(--ac);background:rgba(88,166,255,.1)}
+.tld.warn{border-color:var(--ye);color:var(--ye);background:var(--ye-d)}
+.tld.danger{border-color:var(--re);color:var(--re);background:var(--re-d)}
+.tld.ok{border-color:var(--gr);color:var(--gr);background:var(--gr-d)}
+.tlline{width:2px;flex:1;background:var(--bd);margin:3px 0;min-height:12px}
+.tlc{flex:1;padding-bottom:5px}
+.tlc .tldate{font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.tlc .tltitle{font-size:13px;color:var(--t1);font-weight:700;margin:2px 0}
+.tlc .tlamount{font-family:monospace;font-size:17px;color:var(--t1);font-weight:700}
+.tlc .tldesc{font-size:11px;color:var(--t2);margin-top:2px;line-height:1.5}
+
+/* ARCHIVE */
+.ayc{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:10px;overflow:hidden}
+.ayc-h{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer;gap:10px;user-select:none}
+.ayc-h:hover,.ayc-h:active{background:var(--s2)}
+.ayc-left{display:flex;align-items:center;gap:12px;min-width:0}
+.ayc-yr{font-size:22px;font-weight:800;letter-spacing:-.02em;flex-shrink:0}
+.ayc-meta .m1{font-size:11px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ayc-meta .m2{font-size:12px;color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ayc-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.ayc-tot{font-family:monospace;font-size:16px;font-weight:700}
+.ayc-body{display:none;padding:0 15px 14px;border-top:1px solid var(--bd)}
+.ayc-body.open{display:block}
+.mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:12px 0}
+@media(max-width:560px){.mini-grid{grid-template-columns:1fr 1fr}}
+.mini-stat{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:9px 11px}
+.mini-stat .ml{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;font-weight:700}
+.mini-stat .mv{font-family:monospace;font-size:13px;font-weight:700}
+
+/* DIFF BADGE */
+.diff{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-family:monospace;
+  padding:2px 6px;border-radius:8px;border:1px solid;font-weight:700}
+.diff-up{color:var(--re);border-color:var(--re-b);background:var(--re-d)}
+.diff-dn{color:var(--gr);border-color:var(--gr-b);background:var(--gr-d)}
+.diff-eq{color:var(--t3);border-color:var(--bd2);background:var(--s2)}
+
+/* ADMIN TABLE */
+.tbl-wrap{overflow-x:auto;border-radius:var(--r);border:1px solid var(--bd)}
+table.admin{width:100%;border-collapse:collapse;font-size:13px}
+table.admin th{background:var(--s2);padding:10px 12px;text-align:left;font-size:11px;
+  font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;
+  border-bottom:2px solid var(--bd2);white-space:nowrap}
+table.admin td{padding:10px 12px;border-bottom:1px solid var(--bd);color:var(--t2)}
+table.admin tr:last-child td{border-bottom:none}
+table.admin tr:hover td{background:var(--s2)}
+table.admin .nc{color:var(--t1);font-weight:700}
+table.admin .mo{font-family:monospace;font-size:12px}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;
+  display:none;align-items:center;justify-content:center;padding:20px}
+.modal-bg.open{display:flex}
+.modal-box{background:var(--s1);border:1px solid var(--bd2);border-radius:14px;padding:22px;max-width:380px;width:100%}
+.modal-box h3{font-size:18px;font-weight:800;margin-bottom:7px}
+.modal-box p{color:var(--t2);font-size:13px;line-height:1.6;margin-bottom:16px}
+
+/* TOAST */
+#toasts{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;
+  display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;
+  box-shadow:0 8px 24px rgba(0,0,0,.4);animation:toastIn .25s ease;
+  pointer-events:auto;width:max-content;max-width:calc(100vw - 32px)}
+.toast-ok{background:var(--gr-d);border:1px solid var(--gr-b);color:var(--gr)}
+.toast-err{background:var(--re-d);border:1px solid var(--re-b);color:var(--re)}
+.toast-info{background:var(--s1);border:1px solid var(--bd2);color:var(--t1)}
+@keyframes toastIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+/* MISC */
+.prev-banner{background:var(--pu-d);border:1px solid var(--pu-b);border-radius:9px;
+  padding:11px 13px;margin-bottom:12px;display:none;align-items:flex-start;gap:8px}
+.prev-banner.show{display:flex}
+.prev-banner p{font-size:12px;color:var(--pu);line-height:1.6}
+.prev-banner strong{color:#d9c4ff}
+.sep{height:1px;background:var(--bd);margin:18px 0}
+.stit{font-size:16px;font-weight:800;color:var(--t1);margin-bottom:12px;padding-top:6px;
+  border-top:1px solid var(--bd);display:flex;align-items:center;gap:8px}
+.loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:32px;color:var(--t2);font-size:13px}
+.spinner{width:20px;height:20px;border:2px solid var(--bd2);border-top-color:var(--ac);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fnote{text-align:center;font-size:11px;color:var(--t3);margin-top:24px;line-height:1.7;padding:0 10px}
+code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4px;font-size:12px}
+
+/* Print — gestito da printAnno() */
+
+/* GRAFICI */
+.chart-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:18px;margin-bottom:12px}
+.chart-card .chart-t{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px}
+.chart-wrap{position:relative;height:220px}
+.no-data-state{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:48px 20px;text-align:center}
+.no-data-state .nds-ico{font-size:44px;margin-bottom:12px}
+.no-data-state h3{font-size:18px;font-weight:800;margin-bottom:6px}
+.no-data-state p{color:var(--t2);font-size:13px;max-width:280px;line-height:1.6}
+
+/* CALENDARIO */
+.cal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+@media(max-width:680px){.cal-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:400px){.cal-grid{grid-template-columns:1fr}}
+.cal-month{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);overflow:hidden}
+.cal-month-h{padding:10px 12px;background:var(--s2);font-size:11px;font-weight:800;
+  text-transform:uppercase;letter-spacing:.07em;color:var(--t3)}
+.cal-month.has-events .cal-month-h{background:rgba(88,166,255,.12);color:var(--ac);border-bottom:1px solid rgba(88,166,255,.2)}
+.cal-event{padding:8px 12px;border-bottom:1px solid var(--bd);font-size:11px;line-height:1.5}
+.cal-event:last-child{border-bottom:none}
+.cal-event .ce-date{font-size:10px;color:var(--t3);font-weight:700;margin-bottom:2px}
+.cal-event .ce-title{color:var(--t1);font-weight:700}
+.cal-event .ce-amt{font-family:monospace;color:var(--gr);font-size:12px;font-weight:700}
+.cal-event .ce-desc{color:var(--t2);font-size:10px;margin-top:2px}
+.cal-empty{padding:12px;font-size:11px;color:var(--t3);text-align:center}
+.cal-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.cal-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--t2)}
+.cal-legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* ADMIN DETAIL */
+.adm-user-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:8px;overflow:hidden}
+.adm-user-h{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;gap:8px}
+.adm-user-h:hover{background:var(--s2)}
+.adm-user-info{flex:1;min-width:0}
+.adm-user-name{font-size:13px;font-weight:700;color:var(--t1)}
+.adm-user-meta{font-size:11px;color:var(--t2);margin-top:2px;font-family:monospace}
+.adm-user-body{display:none;padding:12px 14px;border-top:1px solid var(--bd);background:var(--s2)}
+.adm-user-body.open{display:block}
+.adm-anni-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:7px;margin-top:10px}
+.adm-anno-item{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:10px 12px}
+.adm-anno-item .aa-y{font-size:18px;font-weight:800;letter-spacing:-.02em}
+.adm-anno-item .aa-v{font-family:monospace;font-size:12px;font-weight:700;margin-top:4px}
+.adm-anno-item .aa-l{font-size:10px;color:var(--t3);margin-bottom:1px;text-transform:uppercase;letter-spacing:.05em}
+.adm-search{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+  color:var(--t1);padding:10px 13px;font-family:inherit;font-size:14px;outline:none;margin-bottom:12px}
+.adm-search:focus{border-color:var(--ac)}
+
+/* ── GOOGLE LOGIN ─────────────────────────────────────── */
+.auth-divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--t3);font-size:12px}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--bd)}
+.btn-google{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;
+  padding:11px;border-radius:9px;border:1px solid var(--bd2);background:var(--s2);
+  color:var(--t1);font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s;margin-bottom:4px}
+.btn-google:hover{background:var(--bd);border-color:var(--t3)}
+.btn-google svg{width:18px;height:18px;flex-shrink:0}
+
+/* ── VINCOLI TEMPORALI ───────────────────────────────── */
+.past-banner{background:var(--re-d);border:1px solid var(--re-b);border-radius:9px;
+  padding:10px 13px;margin-bottom:12px;font-size:12px;color:var(--re);display:none;line-height:1.6}
+.past-banner.show{display:block}
+
+/* ── AVVISO STORICO ──────────────────────────────────── */
+.storico-warn{background:var(--ye-d);border:1px solid var(--ye-b);border-radius:10px;
+  padding:12px 14px;margin-bottom:14px}
+.storico-warn h4{color:var(--ye);font-size:13px;font-weight:800;margin-bottom:3px}
+.storico-warn p{color:var(--ye);font-size:11px;line-height:1.6;opacity:.88}
+
+/* ── ARCHIVIO MINI GRAFICO ───────────────────────────── */
+.arch-bars{margin:10px 0 8px}
+.arch-bar-row{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:5px}
+.arch-bar-lbl{width:70px;color:var(--t3);flex-shrink:0;text-align:right}
+.arch-bar-track{flex:1;height:7px;background:var(--s2);border-radius:4px;overflow:hidden}
+.arch-bar-fill{height:100%;border-radius:4px;transition:width .5s}
+.arch-bar-val{width:80px;font-family:monospace;font-size:10px;color:var(--t2)}
+.arch-diff-badge{font-size:10px;font-family:monospace;font-weight:700;
+  padding:2px 7px;border-radius:6px;border:1px solid;display:inline-flex;align-items:center;gap:3px}
+
+/* ── F24 ANNI PRECEDENTI ─────────────────────────────── */
+.f24-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
+.f24-card-h{background:var(--s2);padding:12px 16px;display:flex;align-items:center;
+  justify-content:space-between;border-bottom:1px solid var(--bd)}
+.f24-card-h .f24y{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.f24-card-body{padding:14px 16px}
+
+/* ── MODAL AGGIORNA BOZZA ───────────────────────────── */
+.modal-box.wide{max-width:440px}
+
+/* ── ADMIN SOLO ANAGRAFICA ───────────────────────────── */
+.adm-cl-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);
+  margin-bottom:6px;padding:13px 15px;display:flex;align-items:center;gap:12px}
+.adm-cl-av{width:38px;height:38px;border-radius:50%;background:var(--ac2);color:#fff;
+  font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.adm-cl-info{flex:1;min-width:0}
+.adm-cl-name{font-size:13px;font-weight:700;color:var(--t1)}
+.adm-cl-meta{font-size:11px;color:var(--t2);margin-top:2px;line-height:1.5}
+
+/* ── PRINT — singolo anno ────────────────────────────── */
+@media print{
+  /* Nascondi tutto il chrome */
+  .sidebar,.bot-nav,.mob-hdr,#toasts,.no-print,.btn-row,
+  .ph,.prev-banner,.past-banner,.storico-warn,
+  .adm-search,#adm-stats,.fnote{display:none!important}
+
+  #app.show{display:block!important}
+  .content{margin-left:0!important;padding:8mm!important}
+  body{background:#fff!important;color:#000!important;font-size:12px!important}
+
+  /* Colori card in bianco */
+  .card,.bdt,.sc,.mini-stat,.ayc-body,.mini-stat{
+    background:#fff!important;border:1px solid #ccc!important;break-inside:avoid}
+  .ayc{border:1px solid #ccc!important;margin-bottom:8px!important;background:#fff!important}
+  .ayc-yr,.ayc-tot{color:#000!important}
+  .rbadge{border:1px solid #ccc!important;color:#000!important;background:#f5f5f5!important}
+  .diff{border:1px solid #ccc!important;color:#000!important;background:#f5f5f5!important}
+  .mini-stat .mv,.bv,.tlamount{color:#000!important}
+
+  /* Per default: nascondi tutte le view e tutti i card archivio */
+  .view{display:none!important}
+  .ayc{display:none!important}
+  .ayc-body{display:none!important}
+
+  /* Modalità stampa ARCHIVIO singolo anno */
+  body.print-archivio #view-archivio{display:block!important}
+  body.print-archivio .ayc.print-target{display:block!important}
+  body.print-archivio .ayc.print-target .ayc-body{display:block!important}
+  body.print-archivio .ayc-h{display:flex!important}
+
+  /* Modalità stampa CALCOLO corrente */
+  body.print-calcolo #view-calcolo{display:block!important}
+  body.print-calcolo #ris-wrap{display:block!important}
+  body.print-calcolo .card{display:block!important}
+}
+
+/* ── DOCUMENTI FISCALI — sezione nell'archivio ──────────── */
+.docs-section{margin-top:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--bd);border-radius:8px}
+.docs-title{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.doc-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bd);font-size:12px}
+.doc-row:last-child{border-bottom:none;padding-bottom:0}
+.doc-ico{font-size:16px;flex-shrink:0;width:22px;text-align:center}
+.doc-info{flex:1;min-width:0}
+.doc-name{color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-meta{color:var(--t3);font-size:10px;margin-top:1px}
+.doc-actions{display:flex;gap:4px;flex-shrink:0}
+
+/* ── ADMIN SEARCH ────────────────────────────────────── */
+.adm-search{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+  color:var(--t1);padding:10px 13px;font-family:inherit;font-size:14px;outline:none;margin-bottom:12px}
+.adm-search:focus{border-color:var(--ac)}
+
+
+/* ── WIZARD STORICO ──────────────────────────────────────────── */
+.wiz-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;
+  display:none;align-items:center;justify-content:center;padding:16px}
+.wiz-overlay.open{display:flex}
+.wiz-box{background:var(--s1);border:1px solid var(--bd2);border-radius:16px;
+  width:100%;max-width:480px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)}
+.wiz-head{padding:20px 22px 14px;border-bottom:1px solid var(--bd);background:var(--s2)}
+.wiz-head h2{font-size:18px;font-weight:800;margin-bottom:4px}
+.wiz-head p{font-size:12px;color:var(--t2);line-height:1.5}
+.wiz-steps{display:flex;gap:6px;padding:14px 22px 0}
+.wiz-step-dot{flex:1;height:4px;border-radius:2px;background:var(--bd2);transition:background .3s}
+.wiz-step-dot.done{background:var(--gr)}
+.wiz-step-dot.active{background:var(--ac)}
+.wiz-body{padding:18px 22px}
+.wiz-year-badge{display:inline-flex;align-items:center;gap:7px;
+  background:rgba(31,111,235,.12);border:1px solid rgba(31,111,235,.3);
+  color:var(--ac);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;margin-bottom:14px}
+.wiz-preview{background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+  padding:11px 13px;margin:12px 0;font-size:12px}
+.wiz-preview .wp-row{display:flex;justify-content:space-between;align-items:center;
+  padding:3px 0;border-bottom:1px solid var(--bd)}
+.wiz-preview .wp-row:last-child{border-bottom:none;font-weight:700;color:var(--re)}
+.wiz-preview .wp-lbl{color:var(--t2)}
+.wiz-preview .wp-val{font-family:monospace;font-weight:700;color:var(--t1)}
+.wiz-foot{display:flex;gap:8px;padding:0 22px 18px;flex-wrap:wrap}
+.wiz-skip{background:none;border:1px solid var(--bd2);color:var(--t3);
+  font-size:12px;padding:8px 14px;border-radius:7px;cursor:pointer;
+  transition:color .15s,border-color .15s}
+.wiz-skip:hover{color:var(--t2);border-color:var(--t2)}
+.wiz-info{background:var(--pu-d);border:1px solid var(--pu-b);border-radius:8px;
+  padding:10px 13px;margin-bottom:12px;font-size:11px;color:var(--pu);line-height:1.6}
+
+/* ── MODAL AI RISULTATO PDF ──────────────────────────────── */
+.ai-result-field{background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+  padding:11px 13px;margin-bottom:8px}
+.ai-result-field .arf-lbl{font-size:10px;color:var(--t3);font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.ai-result-field .arf-val{font-family:monospace;font-size:15px;font-weight:700;color:var(--t1)}
+.ai-result-field .arf-edit{width:100%;margin-top:6px;padding:8px 11px;background:var(--bg);
+  border:1px solid var(--bd);border-radius:6px;color:var(--t1);font-family:monospace;
+  font-size:14px;outline:none}
+.ai-result-field .arf-edit:focus{border-color:var(--ac)}
+.ai-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;
+  background:rgba(188,140,255,.1);border:1px solid var(--pu-b);color:var(--pu);
+  font-size:11px;font-weight:700;margin-bottom:14px}
+
 </style>
 </head>
 <body>
 
-<div id="app" class="show">
-    <div class="sidebar">
-        <div style="padding:20px; border-bottom:1px solid var(--bd)">
-            <h2>ForfettarioApp</h2>
-            <p style="font-size:11px; color:var(--t3)">Smart Tax Engine</p>
-        </div>
-        <nav style="padding:10px">
-            <div class="nav-btn active" onclick="showView('dashboard')">📊 Dashboard</div>
-            <div class="nav-btn" onclick="showView('documenti')">📁 Documenti PDF</div>
-            <div class="nav-btn" onclick="showView('calcolo')">➕ Nuovo Calcolo</div>
-        </nav>
-    </div>
-
-    <div class="content">
-        <div id="view-dashboard" class="view active">
-            <div class="ph">
-                <h1>Dashboard Fiscale</h1>
-                <p id="dash-year-label">Riepilogo anno 2024</p>
-            </div>
-            
-            <div class="sg">
-                <div class="sc ac">
-                    <div class="sl">Fatturato Lordo</div>
-                    <div id="dash-fatturato" class="sv">€ 0,00</div>
-                </div>
-                <div class="sc pc">
-                    <div class="sl">Contributi INPS</div>
-                    <div id="dash-inps" class="sv">€ 0,00</div>
-                </div>
-                <div class="sc rc">
-                    <div class="sl">Imposta Sost.</div>
-                    <div id="dash-imposta" class="sv">€ 0,00</div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>Carica Documento (RPF o F24)</h3>
-                <p style="font-size:12px; color:var(--t2); margin-bottom:15px">Il sistema estrarrà automaticamente i dati LM22, LM35 e LM39.</p>
-                <input type="file" id="pdf-upload" accept=".pdf" style="display:none" onchange="handleFileUpload(this)">
-                <button class="btn btn-full" onclick="document.getElementById('pdf-upload').click()">🚀 Seleziona PDF</button>
-            </div>
-        </div>
-
-        <div id="view-documenti" class="view hidden">
-            <div class="ph">
-                <h1>I Tuoi Documenti</h1>
-                <input type="text" id="doc-search" placeholder="Cerca per nome o anno..." class="adm-search" oninput="renderDocumenti()">
-            </div>
-            <div id="docs-list">
-                </div>
-        </div>
-    </div>
+<!-- LOADING GUARD — visibile durante il check sessione, poi sparisce -->
+<div id="loading-screen">
+  <div class="ls-ico">🧾</div>
+  <div class="ls-spinner"></div>
+  <div class="ls-txt">Verifica sessione in corso…</div>
 </div>
 
 <div id="toasts"></div>
 
-<script>
-/* --- CONFIGURAZIONE & LOGICA CORE --- */
-const pdfjsLib = window['pdfjs-dist/build/pdf'];
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+<!-- AUTH -->
+<div id="auth-screen">
+  <div class="auth-logo">
+    <span>🧾</span><h1>ForfettarioApp</h1><p>Regime Forfettario · <strong style="color:var(--ac)">Peppone Tek</strong></p>
+  </div>
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchTab('login',this)">Accedi</button>
+      <button class="auth-tab" onclick="switchTab('register',this)">Registrati</button>
+    </div>
+    <!-- LOGIN -->
+    <div class="auth-sect active" id="auth-login">
+      <button class="btn-google" onclick="doGoogleLogin()">
+        <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-4z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A12 12 0 0124 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20H42V20H24v8h11.3a12 12 0 01-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-4z"/></svg>
+        Continua con Google
+      </button>
+      <div class="auth-divider">oppure con email</div>
+      <div class="fg"><label>Email</label><input type="email" id="l-email" placeholder="nome@email.com" autocomplete="email" inputmode="email"></div>
+      <div class="fg"><label>Password</label>
+        <div class="pw-wrap"><input type="password" id="l-pw" placeholder="••••••••" autocomplete="current-password">
+        <button type="button" class="pw-eye" onclick="togglePw('l-pw',this)">👁</button></div>
+      </div>
+      <div class="fg" style="margin-top:6px"><button class="btn btn-full" id="btn-login" onclick="doLogin()">Accedi</button></div>
+      <div style="text-align:center;margin-top:12px">
+        <button type="button" style="background:none;border:none;color:var(--t2);font-size:12px;cursor:pointer;text-decoration:underline" onclick="doForgotPw()">Password dimenticata?</button>
+      </div>
+    </div>
+    <!-- REGISTER -->
+    <div class="auth-sect" id="auth-register">
+      <button class="btn-google" onclick="doGoogleLogin()">
+        <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-4z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A12 12 0 0124 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20H42V20H24v8h11.3a12 12 0 01-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-4z"/></svg>
+        Registrati con Google
+      </button>
+      <div class="auth-divider">oppure con email</div>
+      <div class="g2">
+        <div class="fg"><label>Nome *</label><input type="text" id="r-nome" placeholder="Mario" autocomplete="given-name"></div>
+        <div class="fg"><label>Cognome *</label><input type="text" id="r-cognome" placeholder="Rossi" autocomplete="family-name"></div>
+      </div>
+      <div class="fg"><label>Email *</label><input type="email" id="r-email" placeholder="nome@email.com" autocomplete="email" inputmode="email"></div>
+      <div class="fg"><label>Password * (min. 6 caratteri)</label>
+        <div class="pw-wrap"><input type="password" id="r-pw" placeholder="••••••••" autocomplete="new-password">
+        <button type="button" class="pw-eye" onclick="togglePw('r-pw',this)">👁</button></div>
+      </div>
+      <div class="fg"><label>Codice ATECO (opzionale)</label>
+        <input type="text" id="r-ateco" placeholder="es. 68.32.00" maxlength="10" oninput="lookupAteco(this.value,'r-ok','r-ko',null,null)">
+        <div class="ateco-ok" id="r-ok"></div>
+        <div class="ateco-ko" id="r-ko">Codice non trovato.</div>
+      </div>
+      <div class="fg" style="margin-top:6px"><button class="btn btn-full" id="btn-reg" onclick="doRegister()">Crea account</button></div>
+      <div class="al al-i" style="margin-top:10px;font-size:11px"><span class="ai">🔒</span><span>I tuoi dati sono sicuri e visibili solo a te.</span></div>
+    </div>
+  </div>
+</div>
 
-let _user = null;
-let _anniData = {}; // Archivio dati da Supabase
+<!-- APP -->
+<div id="app">
+  <!-- MOBILE HEADER -->
+  <div class="mob-hdr" id="mob-hdr">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:20px">🧾</span>
+      <span class="mob-title" id="mob-title">Calcolo</span>
+    </div>
+    <div class="mob-right">
+      <div class="sync-badge"><div class="sdot" id="sdot-top"></div><span id="slbl-top">Pronto</span></div>
+      <button class="mob-av" id="mob-av" onclick="openModal('modal-user')">?</button>
+    </div>
+  </div>
 
-// 1. FUNZIONE DI PRE-PARSING LOCALE (DETERMINISTICA)
-async function tryParseRPFLocally(text) {
-    const isRPF = text.includes("PERSONE FISICHE") && text.includes("QUADRO LM");
-    if (!isRPF) return null;
+  <div class="app-body">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sb-logo"><span class="ico">🧾</span><div><h2>ForfettarioApp</h2><p>Peppone Tek</p></div></div>
+      <div class="sb-user"><div class="uname" id="sb-name">—</div><div class="uemail" id="sb-email">—</div><span class="rbadge" id="sb-role">—</span></div>
+      <div class="sb-sect">Menu</div>
+      <button class="nav-btn active" id="nav-calcolo" onclick="showView('calcolo')"><span class="ni">✏️</span> Nuovo calcolo</button>
+      <button class="nav-btn" id="nav-archivio" onclick="showView('archivio')"><span class="ni">🗂️</span> Archivio anni</button>
+      <button class="nav-btn" id="nav-grafici" onclick="showView('grafici')"><span class="ni">📈</span> Statistiche</button>
+      <button class="nav-btn" id="nav-calendario" onclick="showView('calendario')"><span class="ni">📅</span> Calendario</button>
+      <button class="nav-btn" id="nav-confronto" onclick="showView('confronto')"><span class="ni">📊</span> Confronto anni</button>
+      <button class="nav-btn" id="nav-f24" onclick="showView('f24')"><span class="ni">📑</span> F24 Prec.</button>
+      <button class="nav-btn" id="nav-admin" style="display:none" onclick="showView('admin')"><span class="ni">🛡️</span> Pannello Admin</button>
+      <div class="sb-sect" style="margin-top:6px">Anni salvati</div>
+      <div class="hist-list" id="hist-list"><div style="padding:8px 10px;font-size:11px;color:var(--t3)">Nessun anno</div></div>
+      <div class="sb-footer">
+        <div class="sync-badge" id="sync-sb" style="margin-bottom:8px;width:100%;justify-content:center"><div class="sdot" id="sdot-sb"></div><span id="slbl-sb">Pronto</span></div>
+        <button class="sb-fbtn" onclick="exportJSON()"><span>⬇</span> Esporta backup JSON</button>
+        <button class="sb-fbtn" onclick="document.getElementById('imp-file').click()"><span>⬆</span> Importa backup JSON</button>
+        <input type="file" id="imp-file" accept=".json" style="display:none" onchange="importJSON(event)">
+        <button class="sb-fbtn" onclick="doLogout()" style="color:var(--re)"><span>🚪</span> Disconnetti</button>
+      </div>
+    </aside>
 
-    console.log("Rilevato Modello Redditi - Avvio estrazione locale...");
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    
-    // Trova l'ATECO (6 cifre isolate)
-    const atecoIdx = lines.findIndex(l => /^\d{6}$/.test(l));
-    if (atecoIdx === -1) return null;
+    <!-- CONTENT -->
+    <main class="content">
 
-    // Estrai i numeri con punto (formato 34.827)
-    const values = [];
-    for (let i = atecoIdx; i < atecoIdx + 60; i++) {
-        if (lines[i] && lines[i].includes('.') && /^[0-9.]+$/.test(lines[i])) {
-            const val = parseFloat(lines[i].replace(/\./g, ''));
-            if (!isNaN(val) && val > 100) values.push(val);
-        }
-    }
-
-    // Mapping logico basato sulla struttura fiscale
-    return {
-        tipo: 'RPF',
-        fatturato: values[0] || 0,   // LM22
-        contributi: values[2] || 0,  // LM35
-        imposta: values[values.length - 1] || 0, // LM39 (solitamente l'ultimo valore numerico del quadro)
-        anno: 2024 // Basato sull'esempio RPF25
-    };
-}
-
-// 2. GESTIONE CARICAMENTO PDF
-async function handleFileUpload(input) {
-    const file = input.files[0];
-    if (!file) return;
-
-    toast("⏳ Analisi PDF in corso...", "info");
-
-    try {
-        const text = await extractTextFromPDF(file);
-        const localData = await tryParseRPFLocally(text);
-
-        if (localData) {
-            await saveDataWithCascade(localData.anno, localData);
-            toast("✅ Dichiarazione RPF caricata correttamente!", "ok");
-        } else {
-            // Se fallisce il parsing locale, potresti integrare Gemini qui
-            toast("⚠️ Formato non riconosciuto. Inserisci i dati manualmente.", "err");
-        }
-    } catch (e) {
-        toast("❌ Errore durante l'elaborazione", "err");
-        console.error(e);
-    }
-}
-
-// 3. LOGICA DI PROPAGAZIONE (CASCADE)
-async function saveDataWithCascade(year, data) {
-    // Salvataggio Anno Corrente
-    const updates = {
-        fatturato: data.fatturato,
-        contributi_inps: data.contributi,
-        imposta_sost: data.imposta,
-        updated_at: new Date().toISOString()
-    };
-
-    // Salvataggio nel database (Esempio Supabase)
-    // await sb.from('anni_fiscali').upsert({ id: `user_id_${year}`, ...updates });
-
-    // PROPAGAZIONE: Calcola acconti per l'anno successivo (Year + 1)
-    if (data.imposta > 0) {
-        const nextYear = year + 1;
-        const acconti = {
-            acconto_1: data.imposta * 0.40,
-            acconto_2: data.imposta * 0.60,
-            acconto_note: `Generato da imposta ${year}`
-        };
-        console.log(`Propagazione acconti al ${nextYear}:`, acconti);
-        // await sb.from('anni_fiscali').upsert({ id: `user_id_${nextYear}`, ...acconti });
-    }
-
-    refreshDashboard();
-}
-
-// 4. ESTRAZIONE TESTO PDF.JS
-async function extractTextFromPDF(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-    let fullText = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        fullText += content.items.map(item => item.str).join('\n') + '\n';
-    }
-    return fullText;
-}
-
-// 5. RENDERING DOCUMENTI (Con Ricerca)
-function renderDocumenti() {
-    const list = document.getElementById('docs-list');
-    const search = document.getElementById('doc-search').value.toLowerCase();
-    
-    // Esempio dati
-    const mockDocs = [
-        { name: "Dichiarazione_2024.pdf", type: "RPF", date: "20/02/2025" },
-        { name: "F24_Giugno.pdf", type: "F24", date: "15/06/2024" }
-    ];
-
-    list.innerHTML = mockDocs
-        .filter(d => d.name.toLowerCase().includes(search))
-        .map(d => `
-            <div class="doc-item">
-                <div class="doc-info">
-                    <span class="doc-ico">📄</span>
-                    <div>
-                        <div class="doc-name">${d.name}</div>
-                        <div class="doc-meta">${d.type} • Caricato il ${d.date}</div>
-                    </div>
-                </div>
-                <button class="btn btn-xs btn-re" onclick="deleteDoc('${d.name}')">Elimina</button>
+      <!-- CALCOLO -->
+      <div class="view active" id="view-calcolo">
+        <div class="ph"><div><h1>Nuovo calcolo anno fiscale</h1><p>Inserisci i dati · sincronizzato con il cloud</p></div></div>
+        <div class="prev-banner" id="prev-banner"><span style="font-size:16px;flex-shrink:0">🔗</span><p id="prev-txt"></p></div>
+        <div class="past-banner" id="past-banner">🗄️ <strong>Anno Completo e Archiviato:</strong> hai selezionato un anno fiscale già concluso. Il mese è fissato a Dicembre e lo stato sarà automaticamente "Archiviato". Spunta "1° Anno attività" se vuoi inserire un mese specifico.</div>
+        <!-- STEP 1 -->
+        <div class="card">
+          <div class="card-t"><span class="step">1</span> Anno fiscale, ATECO e regime</div>
+          <div class="ib"><strong>💡 Ricorda:</strong> inserisci il tuo codice ATECO (es. <code>68.32.00</code> per amm. condominio). L'app riconosce automaticamente gruppo, coefficiente e INPS.</div>
+          <div class="g3">
+            <div class="fg"><label>Anno fiscale</label>
+              <select id="f-anno" onchange="onAnnoChange()">
+                <option value="2020">2020</option><option value="2021">2021</option><option value="2022">2022</option>
+                <option value="2023">2023</option><option value="2024" selected>2024</option>
+                <option value="2025">2025</option><option value="2026">2026</option>
+              </select>
             </div>
-        `).join('');
+            <div class="fg"><label>Codice ATECO</label>
+              <input type="text" id="f-ateco" placeholder="es. 68.32.00" maxlength="10" autocomplete="off"
+                     oninput="lookupAteco(this.value,'f-aok','f-ako','f-gruppo','f-inps')">
+            </div>
+            <div class="fg"><label>Aliquota imposta sostitutiva</label>
+              <select id="f-aliq"><option value="0.15">15% — ordinario</option><option value="0.05">5% — avvio (primi 5 anni)</option></select>
+            </div>
+          </div>
+          <div class="ateco-ok" id="f-aok"></div>
+          <div class="ateco-ko" id="f-ako">Codice non trovato — seleziona il gruppo manualmente.</div>
+          <div class="g2" style="margin-top:8px">
+            <div class="fg"><label>Gruppo di appartenenza</label>
+              <select id="f-gruppo" onchange="onGruppoChange()">
+                <option value="">— seleziona —</option>
+                <option value="0">Industrie alimentari e bevande (40%)</option>
+                <option value="1">Commercio ingrosso e dettaglio (40%)</option>
+                <option value="2">Commercio ambulante alimentare (40%)</option>
+                <option value="3">Commercio ambulante altri prod. (54%)</option>
+                <option value="4">Costruzioni e attività immobiliari (86%)</option>
+                <option value="5">Intermediari del commercio (62%)</option>
+                <option value="6">Alloggio e ristorazione (40%)</option>
+                <option value="7">Professionali, scientifiche, sanitarie (78%)</option>
+                <option value="8">Altre attività economiche (67%)</option>
+              </select>
+            </div>
+            <div class="fg"><label>Gestione previdenziale INPS</label>
+              <select id="f-inps" onchange="onInpsTipoChange()">
+                <option value="gs">Gestione Separata INPS (26,07%)</option>
+                <option value="gs-pen">Gest. Separata pensionato/altra gest. (24%)</option>
+                <option value="art">Artigiani INPS</option>
+                <option value="com">Commercianti INPS</option>
+                <option value="cassa">Cassa Professionale (aliquota manuale)</option>
+                <option value="none">Nessun contributo obbligatorio</option>
+              </select>
+            </div>
+          </div>
+          <div class="fg" id="cassa-row" style="display:none"><label>Aliquota cassa professionale (%)</label>
+            <div class="iw"><input type="number" id="f-cassa" value="14.5" min="0" max="50" step="0.1" style="padding-left:12px"><span class="isuf">%</span></div>
+          </div>
+        </div>
+        <!-- STEP 2 -->
+        <div class="card">
+          <div class="card-t"><span class="step">2</span> Fatturato, mese e opzioni</div>
+          <div class="ib"><strong>⚠️ Inserisci l'imponibile:</strong> totale fatture senza IVA e senza la marca da bollo da €2 (neutra fiscalmente).</div>
+          <div class="g2">
+            <div class="fg"><label>Fatturato imponibile anno (€)</label>
+              <div class="iw"><span class="ipre">€</span>
+                <input type="number" id="f-fatt" placeholder="0.00" min="0" max="999999" step="0.01" inputmode="decimal">
+                <span class="isuf">imp.</span>
+              </div>
+            </div>
+            <div class="fg" id="mese-wrap"><label>Mese di riferimento (per proiezione)</label>
+              <select id="f-mese">
+                <option value="1">Gennaio</option><option value="2">Febbraio</option><option value="3">Marzo</option>
+                <option value="4">Aprile</option><option value="5">Maggio</option><option value="6">Giugno</option>
+                <option value="7">Luglio</option><option value="8">Agosto</option><option value="9">Settembre</option>
+                <option value="10">Ottobre</option><option value="11">Novembre</option><option value="12">Dicembre</option>
+              </select>
+            </div>
+          </div>
+          <div class="g2">
+            <div class="fg"><label class="cbg"><input type="checkbox" id="f-deduci" checked><span>Deduci INPS dal reddito (art.1 c.64 L.190/2014)</span></label></div>
+            <div class="fg"><label class="cbg"><input type="checkbox" id="f-noaoc" onchange="onAnnoChange()"><span>Primo anno attività — nessun acconto dovuto</span></label></div>
+          </div>
+          <div class="fg">
+            <label>INPS effettivamente versata nell'anno solare (F24 pagati) — opzionale</label>
+            <div class="ib" style="margin-bottom:8px;margin-top:0"><strong>💡 Principio di cassa:</strong> se conosci il totale degli F24 INPS pagati in questo anno solare (causale DPPI/PXX), inseriscilo qui per una deduzione esatta. Lascia vuoto per usare l'INPS stimata.</div>
+            <div class="iw"><span class="ipre">€</span>
+              <input type="number" id="f-inps-versata" placeholder="0.00 (opzionale)" min="0" step="0.01" inputmode="decimal">
+              <span class="isuf">F24</span>
+            </div>
+          </div>
+          <div class="fg"><label>Note per il fascicolo (visibili in archivio e in stampa)</label>
+            <textarea id="f-note" placeholder="Note, accordi con il commercialista, osservazioni..."></textarea>
+          </div>
+        </div>
+        <button class="btn btn-full" style="font-size:16px;padding:15px" onclick="calcola()">🔢 Calcola imposte, contributi e acconti</button>
+        <!-- RISULTATI -->
+        <div id="ris-wrap" style="display:none">
+          <div class="sep"></div>
+          <div class="stit">📊 Parametri applicati</div><div class="bdt" id="r-params"></div>
+          <div id="r-proj-wrap" style="display:none"><div class="stit" style="margin-top:16px">📈 Proiezione fine anno</div><div id="r-proj"></div></div>
+          <div class="stit" style="margin-top:16px">🧮 Calcolo dettagliato</div><div class="bdt" id="r-calc"></div>
+          <div id="r-tot"></div>
+          <div class="card" style="margin-top:0"><div class="card-t">📉 Incidenza sul fatturato</div><div id="r-bars"></div></div>
+          <div id="r-lim"></div>
+          <div class="stit" style="margin-top:16px">📅 Scadenzario saldi e acconti</div>
+          <div id="r-scad"></div>
+          <div class="card" style="background:linear-gradient(135deg,rgba(31,111,235,.08),rgba(63,185,80,.04));border-color:var(--ac2)">
+            <div class="card-t">☁️ Salva nel registro cloud</div>
+            <p style="font-size:13px;color:var(--t2);margin-bottom:12px;line-height:1.6">Salvando costruisci lo storico fiscale: gli acconti saranno calcolati sui dati reali degli anni precedenti. I dati sono protetti e visibili solo a te.</p>
+            <div class="fg"><label>Stato del calcolo</label>
+              <select id="f-stato">
+                <option value="bozza">📝 Bozza — dati provvisori</option>
+                <option value="definitivo">✅ Definitivo</option>
+                <option value="archiviato">🗄️ Archiviato — anno chiuso</option>
+              </select>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-gr" id="btn-salva" onclick="salvaAnno()">☁️ Salva nel cloud</button>
+              <button class="btn btn-ol" onclick="exportPDF(null)">📄 Esporta PDF</button>
+              <button class="btn btn-ol" onclick="printAnno(null)">🖨️ Stampa fascicolo</button>
+            </div>
+          </div>
+          <div class="fnote">⚠️ Strumento informativo · L.190/2014 e succ. modifiche · Aliquote INPS 2024 · Consulta sempre il tuo commercialista.</div>
+        </div>
+      </div>
+
+      <!-- ARCHIVIO -->
+      <div class="view" id="view-archivio">
+        <div class="ph"><div><h1>Archivio anni fiscali</h1><p>Storico cloud · clicca su un anno per i dettagli</p></div><button class="btn btn-sm" onclick="showView('calcolo')">+ Nuovo calcolo</button></div>
+        <div id="arch-cnt"><div class="loading"><div class="spinner"></div><span>Caricamento dal cloud...</span></div></div>
+      </div>
+
+      <!-- GRAFICI -->
+      <div class="view" id="view-grafici">
+        <div class="ph"><div><h1>📈 Statistiche & Grafici</h1><p>Andamento fiscale negli anni</p></div></div>
+        <div id="grafici-cnt"><div class="no-data-state"><div class="nds-ico">📊</div><h3>Caricamento...</h3></div></div>
+      </div>
+
+      <!-- CALENDARIO -->
+      <div class="view" id="view-calendario">
+        <div class="ph"><div><h1>📅 Calendario Scadenze</h1><p>Scadenzario anno corrente · anni archiviati esclusi</p></div></div>
+        <div id="cal-cnt"><div class="no-data-state"><div class="nds-ico">📅</div><h3>Nessun dato</h3><p>Salva almeno un anno fiscale per vedere le scadenze.</p></div></div>
+      </div>
+
+      <!-- CONFRONTO -->
+      <div class="view" id="view-confronto">
+        <div class="ph"><div><h1>Confronto anni fiscali</h1><p>Analizza l'andamento fiscale tra due anni</p></div></div>
+        <div class="card"><div class="card-t">Seleziona gli anni da confrontare</div>
+          <div class="g2">
+            <div class="fg"><label>Anno A (riferimento)</label><select id="c-a" onchange="renderConfronto()"><option value="">— seleziona —</option></select></div>
+            <div class="fg"><label>Anno B (confronto)</label><select id="c-b" onchange="renderConfronto()"><option value="">— seleziona —</option></select></div>
+          </div>
+        </div>
+        <div id="conf-cnt"></div>
+      </div>
+
+      <!-- F24 ANNI PRECEDENTI -->
+      <div class="view" id="view-f24">
+        <div class="ph"><div><h1>📑 F24 Anni Precedenti</h1><p>Dettaglio imposte anni archiviati · confronto immediato</p></div></div>
+        <div id="f24-cnt"><div class="loading"><div class="spinner"></div><span>Caricamento...</span></div></div>
+      </div>
+
+      <!-- ADMIN -->
+      <div class="view" id="view-admin">
+        <div class="ph">
+          <div><h1>🛡️ Pannello Amministratore</h1><p>Anagrafica clienti · Peppone Tek</p></div>
+          <button class="btn btn-sm btn-gr" onclick="exportCSV()">📊 Esporta CSV</button>
+        </div>
+        <div class="sg sg4" id="adm-stats" style="margin-bottom:14px"></div>
+        <div class="card">
+          <div class="card-t">Clienti registrati — solo dati anagrafici</div>
+          <input class="adm-search" id="adm-search" type="text" placeholder="🔍 Cerca per nome, email o ATECO..." oninput="filterAdmin(this.value)">
+          <div id="adm-tbl"><div class="loading"><div class="spinner"></div><span>Caricamento...</span></div></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bot-nav"><div class="bot-nav-inner">
+    <button class="bn-btn active" id="bn-calcolo" onclick="showView('calcolo')"><span class="bn-ico">✏️</span><span class="bn-lbl">Calcolo</span></button>
+    <button class="bn-btn" id="bn-archivio" onclick="showView('archivio')"><span class="bn-ico">🗂️</span><span class="bn-lbl">Archivio</span></button>
+    <button class="bn-btn" id="bn-grafici" onclick="showView('grafici')"><span class="bn-ico">📈</span><span class="bn-lbl">Grafici</span></button>
+    <button class="bn-btn" id="bn-calendario" onclick="showView('calendario')"><span class="bn-ico">📅</span><span class="bn-lbl">Scadenze</span></button>
+    <button class="bn-btn" id="bn-profilo" onclick="openModal('modal-user')"><span class="bn-ico">👤</span><span class="bn-lbl">Profilo</span></button>
+  </div></nav>
+</div>
+
+<!-- MODAL UTENTE -->
+<div class="modal-bg" id="modal-user">
+  <div class="modal-box">
+    <h3 id="um-name">—</h3><p id="um-email" style="color:var(--t2);font-size:13px;margin-bottom:6px"></p>
+    <span class="rbadge" id="um-role"></span><div style="height:16px"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-ol btn-sm btn-full" onclick="exportJSON();closeModal('modal-user')">⬇ Esporta backup JSON</button>
+      <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user');document.getElementById('imp-file').click()">⬆ Importa backup JSON</button>
+      <button class="btn btn-re btn-sm btn-full" onclick="doLogout()">🚪 Disconnetti</button>
+      <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user')" style="color:var(--t3)">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- WIZARD STORICO ANNI PRECEDENTI -->
+<div class="wiz-overlay" id="wiz-overlay">
+  <div class="wiz-box">
+    <div class="wiz-head">
+      <h2>📅 Inserisci gli anni precedenti</h2>
+      <p>Prima di salvare il tuo primo anno, inserisci i dati degli anni fiscali precedenti.<br>
+         Saranno salvati automaticamente come <strong>Definitivi</strong> per costruire lo storico.</p>
+    </div>
+    <div class="wiz-steps" id="wiz-steps-bar"></div>
+    <div class="wiz-body">
+      <div class="wiz-info" id="wiz-info"></div>
+      <div class="wiz-year-badge" id="wiz-year-label">Anno —</div>
+
+      <!-- CARICA PDF (AI Parsing) -->
+      <div class="fg" style="margin-bottom:10px">
+        <label>📄 Carica Dichiarazione o F24 (PDF) — AI compila i campi</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="file" id="wiz-pdf" accept=".pdf" style="display:none" onchange="wizParsePDF(this)">
+          <button class="btn btn-sm btn-ol" onclick="g('wiz-pdf').click()" style="flex-shrink:0">📤 Scegli PDF</button>
+          <span id="wiz-pdf-lbl" style="font-size:11px;color:var(--t3)">Nessun file scelto</span>
+          <div id="wiz-ai-spinner" style="display:none"><div class="spinner" style="width:16px;height:16px;border-width:2px"></div></div>
+        </div>
+      </div>
+
+      <div class="fg">
+        <label>Fatturato imponibile <span id="wiz-year-lbl2"></span> (€)</label>
+        <div class="iw">
+          <span class="ipre">€</span>
+          <input type="number" id="wiz-fatt" placeholder="0.00" min="0" step="0.01"
+                 inputmode="decimal" oninput="wizPreview()">
+        </div>
+      </div>
+
+      <!-- INPS VERSATA nell'anno solare -->
+      <div class="fg" style="margin-top:10px">
+        <label>INPS versata nell'anno solare (F24 pagati, €) — opzionale</label>
+        <div class="iw"><span class="ipre">€</span>
+          <input type="number" id="wiz-inps-versata" placeholder="0.00 (opzionale)" min="0" step="0.01" inputmode="decimal">
+          <span class="isuf">F24</span>
+        </div>
+      </div>
+
+      <!-- PRIMO ANNO toggle -->
+      <div class="fg" style="margin-top:10px">
+        <label class="cbg">
+          <input type="checkbox" id="wiz-primo-anno">
+          <span>Questo è il mio primo anno di attività — nessun acconto pregresso</span>
+        </label>
+      </div>
+
+      <div class="fg" style="margin-top:10px">
+        <label>Note (opzionale)</label>
+        <input type="text" id="wiz-note" placeholder="Es: dati da 730, dichiarazione...">
+      </div>
+      <!-- Anteprima calcolo in tempo reale -->
+      <div class="wiz-preview" id="wiz-preview" style="display:none">
+        <div class="wp-row"><span class="wp-lbl">Reddito forfettario</span><span class="wp-val" id="wp-redd">—</span></div>
+        <div class="wp-row"><span class="wp-lbl">Contributi INPS</span><span class="wp-val" id="wp-inps">—</span></div>
+        <div class="wp-row"><span class="wp-lbl">Imposta sostitutiva</span><span class="wp-val" id="wp-imp">—</span></div>
+        <div class="wp-row"><span class="wp-lbl">Netto disponibile</span><span class="wp-val" id="wp-netto" style="color:var(--gr)">—</span></div>
+        <div class="wp-row"><span class="wp-lbl">Totale oneri</span><span class="wp-val" id="wp-tot">—</span></div>
+      </div>
+    </div>
+    <div class="wiz-foot">
+      <button class="btn btn-gr" id="wiz-btn-next" onclick="wizNext()" style="flex:1">
+        Salva e continua →
+      </button>
+      <button class="wiz-skip" onclick="wizSkipStep()" id="wiz-btn-skip">
+        Salta questo anno
+      </button>
+      <button class="wiz-skip" onclick="wizAbort()" style="width:100%;text-align:center;margin-top:4px">
+        Sono al primo anno di attività — salta tutto
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CAMBIO STATO -->
+<div class="modal-bg" id="modal-stato">
+  <div class="modal-box">
+    <h3>✏️ Cambia stato anno</h3>
+    <p id="stato-desc" style="color:var(--t2);font-size:13px;margin-bottom:16px">Seleziona il nuovo stato per questo anno fiscale.</p>
+    <div class="fg">
+      <label>Nuovo stato</label>
+      <select id="stato-select" style="font-size:14px">
+        <option value="bozza">📝 Bozza — dati provvisori</option>
+        <option value="archiviato">🗄️ Archiviato — anno chiuso</option>
+      </select>
+    </div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-gr btn-sm" onclick="confCambiaStato()">💾 Salva stato</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-stato')">Annulla</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AGGIORNA BOZZA -->
+<div class="modal-bg" id="modal-bozza">
+  <div class="modal-box wide">
+    <h3>🔄 Aggiorna Imponibile</h3>
+    <p id="bozza-desc" style="color:var(--t2);font-size:13px;line-height:1.6;margin-bottom:14px">Inserisci il nuovo fatturato imponibile. Tutti i valori verranno ricalcolati e salvati nel cloud.</p>
+    <div class="fg"><label>Nuovo fatturato imponibile (€)</label>
+      <div class="iw"><span class="ipre">€</span>
+        <input type="number" id="bozza-fatt" placeholder="0.00" min="0" step="0.01" inputmode="decimal" style="padding-left:26px">
+      </div>
+    </div>
+    <div class="fg"><label>Aggiornamento note (opzionale)</label>
+      <textarea id="bozza-note" placeholder="Es: dati aggiornati a giugno..." style="min-height:50px"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-gr btn-sm" onclick="confAggiornaBozza()">🔄 Ricalcola e Salva</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-bozza')">Annulla</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ELIMINA -->
+<div class="modal-bg" id="modal-del">
+  <div class="modal-box">
+    <h3>Elimina anno</h3>
+    <p>Sei sicuro di voler eliminare l'anno <strong id="del-lbl"></strong>? L'operazione elimina i dati dal cloud ed è irreversibile.</p>
+    <div class="btn-row">
+      <button class="btn btn-re btn-sm" onclick="confDel()">🗑️ Elimina definitivamente</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-del')">Annulla</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AI — Risultati analisi PDF dichiarazione/F24 -->
+<div class="modal-bg" id="modal-ai-result">
+  <div class="modal-box" style="max-width:460px;max-height:90vh;overflow-y:auto">
+    <h3>🤖 Analisi AI completata</h3>
+    <div class="ai-badge" id="ai-doc-tipo">—</div>
+    <p style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.6">
+      Verifica i valori estratti dal PDF. Puoi modificarli prima di applicarli.
+      Solo i campi con valore &gt; 0 verranno aggiornati nel cloud.
+    </p>
+
+    <div class="ai-result-field" id="ai-f-fatturato" style="display:none">
+      <div class="arf-lbl">📊 Fatturato imponibile LM2 (€)</div>
+      <div class="arf-val" id="ai-v-fatturato">—</div>
+      <input type="number" class="arf-edit" id="ai-e-fatturato" min="0" step="0.01" placeholder="Modifica se necessario">
+    </div>
+
+    <div class="ai-result-field" id="ai-f-inps-versata" style="display:none">
+      <div class="arf-lbl">🏛️ INPS versata / F24 pagati nell'anno solare (€)</div>
+      <div class="arf-val" id="ai-v-inps-versata">—</div>
+      <input type="number" class="arf-edit" id="ai-e-inps-versata" min="0" step="0.01" placeholder="Modifica se necessario">
+    </div>
+
+    <div class="ai-result-field" id="ai-f-imposta" style="display:none">
+      <div class="arf-lbl">💰 Imposta sostitutiva dovuta LM11 (€)</div>
+      <div class="arf-val" id="ai-v-imposta">—</div>
+      <input type="number" class="arf-edit" id="ai-e-imposta" min="0" step="0.01" placeholder="Modifica se necessario">
+    </div>
+
+    <div id="ai-note-wrap" style="display:none">
+      <div style="font-size:11px;color:var(--t3);margin-bottom:12px;padding:8px 11px;background:var(--ye-d);border:1px solid var(--ye-b);border-radius:7px" id="ai-note-txt"></div>
+    </div>
+
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn btn-gr btn-sm" id="ai-btn-apply" onclick="confermaAiResult()">✅ Applica al cloud</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-ai-result')">Annulla</button>
+    </div>
+  </div>
+</div>
+
+<!-- Input file globale per analisi PDF dall'archivio -->
+<input type="file" id="arch-pdf-input" accept=".pdf" style="display:none" onchange="onArchPdfSelected(this)">
+
+<script>
+'use strict';
+
+/* ============================================================
+   SUPABASE
+   ============================================================ */
+const SURL = 'https://kychcfbiyrcpoelfvaql.supabase.co';
+const SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5Y2hjZmJpeXJjcG9lbGZ2YXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjQyOTgsImV4cCI6MjA4NzAwMDI5OH0.t7tZUbhYayk1kJxRb03zJMkE5VOUS4iuRWqttVbOfOA';
+const sb = supabase.createClient(SURL, SKEY);
+
+/* ============================================================
+   EDGE FUNCTION URL — il parsing AI passa dal server Supabase.
+   La chiave Gemini è un segreto server, mai visibile nel browser.
+   ============================================================ */
+const EDGE_PDF_URL = `${SURL}/functions/v1/parse-tax-pdf`;
+
+/* ============================================================
+   DATI FISCALI
+   ============================================================ */
+const GRUPPI = [
+  { name:'Industrie alimentari e delle bevande',           coeff:.40, pre:['10','11'],                                                                         inps:'art' },
+  { name:"Commercio all'ingrosso e al dettaglio",           coeff:.40, pre:['45','46','47'], ex:['47.81','47.82','47.83','47.84','47.85','47.86','47.87','47.88','47.89'], inps:'com' },
+  { name:'Commercio ambulante alimentare',                   coeff:.40, pre:['47.81'],                                                                          inps:'com' },
+  { name:'Commercio ambulante altri prodotti',               coeff:.54, pre:['47.82','47.83','47.84','47.85','47.86','47.87','47.88','47.89'],                  inps:'com' },
+  { name:'Costruzioni e attività immobiliari',               coeff:.86, pre:['41','42','43','68'],                                                              inps:'gs'  },
+  { name:'Intermediari del commercio',                       coeff:.62, pre:['46.1'],                                                                           inps:'com' },
+  { name:'Alloggio e ristorazione',                          coeff:.40, pre:['55','56'],                                                                        inps:'art' },
+  { name:'Professionali, scientifiche, tecniche, sanitarie', coeff:.78, pre:['64','65','66','69','70','71','72','73','74','75','85','86','87','88'],             inps:'gs'  },
+  { name:'Altre attività economiche',                        coeff:.67, pre:['01','02','03','05','06','07','08','09','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','35','36','37','38','39','49','50','51','52','53','58','59','60','61','62','63','77','78','79','80','81','82','84','90','91','92','93','94','95','96','97','98'], inps:'gs' }
+];
+
+const ATECO_DB = {
+  '68.32':{'g':4,'d':'Amministratore di condomini e gestione beni immobili per conto terzi'},
+  '68.32.00':{'g':4,'d':'Amministratore di condomini e gestione beni immobili per conto terzi'},
+  '68.10':{'g':4,'d':'Compravendita di beni immobili in proprio'},
+  '68.20':{'g':4,'d':'Affitto e gestione di immobili propri o in leasing'},
+  '69.10':{'g':7,'d':'Attività degli studi legali'},
+  '69.20':{'g':7,'d':'Contabilità, controllo e revisione contabile'},
+  '74.90':{'g':7,'d':'Altre attività professionali, scientifiche e tecniche'},
+  '62.01':{'g':8,'d':'Produzione di software non connessa all\'edizione'},
+  '62.09':{'g':8,'d':'Altre attività dei servizi di information technology'},
+  '73.11':{'g':7,'d':'Agenzie pubblicitarie'},
+  '86.21':{'g':7,'d':'Medici di medicina generale'},
+  '86.22':{'g':7,'d':'Medici specialisti'},
+  '85.59':{'g':7,'d':'Altri servizi di istruzione n.c.a.'},
+  '56.10':{'g':6,'d':'Ristoranti e attività di ristorazione mobile'},
+  '41.20':{'g':4,'d':'Costruzione di edifici residenziali e non residenziali'},
+  '43.21':{'g':4,'d':'Installazione di impianti elettrici'},
+  '43.22':{'g':4,'d':'Installazione di impianti idraulici e di riscaldamento'},
+  '96.02':{'g':8,'d':'Acconciatori e istituti di bellezza'},
+  '47.11':{'g':1,'d':'Supermercati e ipermercati'},
+  '46.90':{'g':1,'d':"Commercio all'ingrosso non specializzato"}
+};
+
+const INPS_INFO = {
+  'gs':    { a:.2607,   desc:'Gestione Separata INPS — 26,07%' },
+  'gs-pen':{ a:.24,     desc:'Gest. Separata pensionato/altra gest. — 24%' },
+  'art':   { fisso:4208.40, ae:.24,   min:17504, desc:'Artigiani INPS' },
+  'com':   { fisso:4292.42, ae:.2448, min:17504, desc:'Commercianti INPS' },
+  'cassa': { desc:'Cassa Professionale' },
+  'none':  { a:0, desc:'Nessun contributo obbligatorio' }
+};
+
+const LIMITE   = 85000;
+const S_ACC    = 51.65;
+const S_DUE    = 257.52;
+
+/* ============================================================
+   STATO
+   ============================================================ */
+let _user    = null;
+let _profile = null;
+let _anni    = {};   // { anno(int): row_db }
+let _last    = null; // ultimo calcolo
+let _delId   = null; // UUID riga da eliminare
+let _admData = [];   // per export CSV
+let _ready   = false;// anti-doppio init
+let _bozzaRow = null; // riga bozza da aggiornare
+
+/* ============================================================
+   UTILITY
+   ============================================================ */
+const fmt  = n => '€' + Number(n).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtP = n => Number(n).toLocaleString('it-IT',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+
+function pbar(lbl, v, tot, col) {
+  const p = tot > 0 ? Math.min((v/tot)*100, 100) : 0;
+  return `<div class="pb">
+    <div class="pbl"><span>${lbl}</span><span>${fmtP(p)}</span></div>
+    <div class="pbt"><div class="pbf" style="width:${p}%;background:${col}"></div></div>
+  </div>`;
 }
 
-// 6. UTILS UI
-function showView(viewId) {
-    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
-    document.getElementById('view-' + viewId).classList.remove('hidden');
-    if (viewId === 'documenti') renderDocumenti();
+function tline(dc, ic, date, title, amount, desc, hasLine) {
+  return `<div class="tli">
+    <div class="tldw"><div class="tld ${dc}">${ic}</div>${hasLine?'<div class="tlline"></div>':''}</div>
+    <div class="tlc">
+      <div class="tldate">${date}</div>
+      <div class="tltitle">${title}</div>
+      <div class="tlamount">${amount}</div>
+      <div class="tldesc">${desc}</div>
+    </div>
+  </div>`;
 }
 
-function toast(msg, type) {
-    const t = document.createElement('div');
-    t.className = `toast toast-${type}`;
-    t.textContent = msg;
-    document.getElementById('toasts').appendChild(t);
-    setTimeout(() => t.remove(), 4000);
+function toast(msg, type='info', dur=3500) {
+  const w = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = `toast toast-${type==='ok'?'ok':type==='err'?'err':'info'}`;
+  el.textContent = msg;
+  w.appendChild(el);
+  setTimeout(() => el.remove(), dur);
 }
 
-function refreshDashboard() {
-    // Inserire qui la logica per aggiornare i numeri della dashboard dai dati Supabase
-    console.log("Dashboard aggiornata.");
+function setSync(state, lbl) {
+  ['sdot-top','sdot-sb'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'sdot' + (state==='busy'?' busy':state==='err'?' err':'');
+  });
+  ['slbl-top','slbl-sb'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = lbl;
+  });
 }
+
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function g(id) { return document.getElementById(id); }
+
+/* ============================================================
+   AUTH UI
+   ============================================================ */
+function switchTab(tab, btn) {
+  document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.auth-sect').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  g('auth-' + tab).classList.add('active');
+}
+
+function togglePw(inputId, btn) {
+  const inp = g(inputId);
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+}
+
+/* ============================================================
+   AUTH LOGIC
+   ============================================================ */
+async function doLogin() {
+  const email = g('l-email').value.trim();
+  const pw    = g('l-pw').value;
+  if (!email || !pw) { toast('Compila email e password', 'err'); return; }
+  const btn = g('btn-login');
+  btn.textContent = 'Accesso...'; btn.disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+  btn.textContent = 'Accedi'; btn.disabled = false;
+  if (error) toast('Errore: ' + error.message, 'err');
+  // initApp viene chiamato da onAuthStateChange
+}
+
+async function doRegister() {
+  const nome    = g('r-nome').value.trim();
+  const cognome = g('r-cognome').value.trim();
+  const email   = g('r-email').value.trim();
+  const pw      = g('r-pw').value;
+  const ateco   = g('r-ateco').value.trim();
+  if (!nome || !cognome || !email || !pw) { toast('Compila tutti i campi obbligatori (*)', 'err'); return; }
+  if (pw.length < 6) { toast('Password: minimo 6 caratteri', 'err'); return; }
+  if (!validateEmail(email)) { toast('Inserisci una email valida (es. nome@dominio.it)', 'err'); return; }
+  if (nome.length < 2) { toast('Il nome deve avere almeno 2 caratteri', 'err'); return; }
+  const btn = g('btn-reg');
+  btn.textContent = 'Registrazione...'; btn.disabled = true;
+  const { data, error } = await sb.auth.signUp({
+    email, password: pw,
+    options: { data: { nome, cognome, ateco } }
+  });
+  btn.textContent = 'Crea account'; btn.disabled = false;
+  if (error) { toast('Errore: ' + error.message, 'err'); return; }
+  if (data.user && !data.session) {
+    toast('✅ Registrazione completata! Controlla la tua email per confermare.', 'ok', 8000);
+  }
+}
+
+async function doForgotPw() {
+  const email = g('l-email').value.trim();
+  if (!email) { toast('Inserisci prima la tua email', 'err'); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+  if (error) { toast('Errore: ' + error.message, 'err'); return; }
+  toast('📧 Email di recupero inviata! Controlla la posta.', 'ok', 6000);
+}
+
+async function doGoogleLogin() {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin, // ← torna alla radice, gestito dal boot
+      queryParams: { access_type: 'offline', prompt: 'select_account' }
+    }
+  });
+  if (error) toast('❌ Errore Google: ' + error.message, 'err');
+  // onAuthStateChange gestisce la sessione al ritorno dal redirect
+}
+
+async function doLogout() {
+  closeModal('modal-user');
+  await sb.auth.signOut();
+  // Il reset e redirect viene gestito da onAuthStateChange -> resetApp()
+}
+
+/* ============================================================
+   INIT APP
+   ============================================================ */
+async function initAppData() {
+  // Anti-doppio init
+  if (_ready) return;
+  _ready = true;
+
+  // Carica profilo con retry (trigger potrebbe essere lento)
+  let prof = null;
+  for (let i = 0; i < 3; i++) {
+    const { data, error } = await sb.from('profiles').select('*').eq('id', _user.id).maybeSingle();
+    if (!error && data) { prof = data; break; }
+    if (i < 2) await new Promise(r => setTimeout(r, 800));
+  }
+  
+  // Per utenti Google il nome arriva da user.user_metadata
+  const meta = _user.user_metadata || {};
+  if (!prof && meta.full_name) {
+    const parts = meta.full_name.split(' ');
+    const newProf = {
+      id: _user.id,
+      nome: parts[0] || '',
+      cognome: parts.slice(1).join(' ') || '',
+      email: _user.email || '',
+      ruolo: 'cliente',
+      ateco: ''
+    };
+    // Non bloccare l'UI per questo upsert
+    sb.from('profiles').upsert(newProf, { onConflict: 'id' }).then(({ error }) => {
+      if (error) console.error('Profile upsert failed:', error);
+    });
+    prof = newProf;
+  }
+  _profile = prof || { id:_user.id, nome: meta.given_name||'', cognome: meta.family_name||'', email:_user.email||'', ruolo:'cliente', ateco:'' };
+
+  // UI utente
+  const nomeCompleto = [_profile.nome, _profile.cognome].filter(Boolean).join(' ') || _user.email;
+  const iniziale     = (_profile.nome || _user.email || '?').charAt(0).toUpperCase();
+  const isAdmin      = _profile.ruolo === 'admin';
+  const roleText     = isAdmin ? '👑 Admin' : 'Cliente';
+  const roleClass    = isAdmin ? 'rbadge rb-admin' : 'rbadge rb-cliente';
+
+  g('sb-name').textContent  = nomeCompleto;
+  g('sb-email').textContent = _profile.email || _user.email;
+  g('mob-av').textContent   = iniziale;
+  g('um-name').textContent  = nomeCompleto;
+  g('um-email').textContent = _profile.email || _user.email;
+  ['sb-role','um-role'].forEach(id => { g(id).textContent = roleText; g(id).className = roleClass; });
+
+  if (isAdmin) g('nav-admin').style.display = 'flex';
+
+  // Pre-popola ATECO dal profilo
+  if (_profile.ateco && !g('f-ateco').value) {
+    g('f-ateco').value = _profile.ateco;
+    lookupAteco(_profile.ateco, 'f-aok', 'f-ako', 'f-gruppo', 'f-inps');
+  }
+
+  // Data corrente
+  const now = new Date();
+  g('f-mese').value = now.getMonth() + 1;
+  g('f-anno').value = now.getFullYear();
+
+  await loadAnni();
+  loadDocumenti(); // carica documenti in parallelo (non blocca)
+  onAnnoChange();
+  setSync('ok', 'Sincronizzato');
+}
+
+function resetApp() {
+  _ready = false; _user = null; _profile = null;
+  _anni = {}; _last = null; _admData = []; _documenti = {}; _aiFile = null;
+  toast('Disconnesso · Arrivederci 👋', 'info', 1500);
+  // Torna alla landing page dopo il toast
+  setTimeout(() => {
+    window.location.replace(window.location.origin);
+  }, 1200);
+}
+
+/* ============================================================
+   DATI DAL CLOUD
+   ============================================================ */
+async function loadAnni() {
+  setSync('busy', 'Caricamento...');
+  const { data, error } = await sb
+    .from('anni_fiscali')
+    .select('*')
+    .eq('user_id', _user.id)
+    .order('anno', { ascending: false });
+  if (error) { setSync('err', 'Errore sync'); toast('Errore: ' + error.message, 'err'); return; }
+  _anni = {};
+  (data || []).forEach(r => { _anni[r.anno] = r; });
+  renderSidebar();
+  fillConfSelectors();
+  setSync('ok', 'Sincronizzato');
+}
+
+/* ============================================================
+   ATECO LOOKUP
+   okId/koId = id elementi DOM feedback
+   gruppoId/inpsId = id <select> da aggiornare (null = non aggiornare)
+   ============================================================ */
+function lookupAteco(val, okId, koId, gruppoId, inpsId) {
+  val = val.trim();
+  const okEl = g(okId), koEl = g(koId);
+  if (okEl) okEl.classList.remove('show');
+  if (koEl) koEl.classList.remove('show');
+  if (val.length < 2) return;
+
+  // 1. Ricerca nel DB specifico (corrispondenza esatta o per lunghezza)
+  const hit = ATECO_DB[val]
+           || ATECO_DB[val.substring(0, 5)]
+           || ATECO_DB[val.substring(0, 5).replace(/\.$/, '')];
+
+  if (hit) {
+    const gr = GRUPPI[hit.g];
+    if (gruppoId) g(gruppoId).value = hit.g;
+    if (inpsId)   g(inpsId).value   = gr.inps;
+    onInpsTipoChange();
+    if (okEl) {
+      okEl.innerHTML = `✅ <strong>${hit.d}</strong><br>Gruppo: ${gr.name} · Coeff.: <strong>${(gr.coeff*100).toFixed(0)}%</strong>`;
+      okEl.classList.add('show');
+    }
+    return;
+  }
+
+  // 2. Ricerca per prefisso sui GRUPPI
+  const clean = val.replace(/\s/g, '');
+  for (let i = 0; i < GRUPPI.length; i++) {
+    const gr = GRUPPI[i];
+    for (const pre of gr.pre) {
+      if (clean.startsWith(pre)) {
+        if (gr.ex && gr.ex.some(e => clean.startsWith(e))) continue;
+        if (gruppoId) g(gruppoId).value = i;
+        if (inpsId)   g(inpsId).value   = gr.inps;
+        onInpsTipoChange();
+        if (okEl) {
+          okEl.innerHTML = `✅ Codice <strong>${val}</strong> → ${gr.name} · Coeff.: <strong>${(gr.coeff*100).toFixed(0)}%</strong>`;
+          okEl.classList.add('show');
+        }
+        return;
+      }
+    }
+  }
+
+  // 3. Non trovato
+  if (val.length >= 4 && koEl) koEl.classList.add('show');
+}
+
+function onGruppoChange() {
+  const i = parseInt(g('f-gruppo').value);
+  if (!isNaN(i) && GRUPPI[i]) { g('f-inps').value = GRUPPI[i].inps; onInpsTipoChange(); }
+}
+
+function onInpsTipoChange() {
+  const el = g('cassa-row');
+  if (el) el.style.display = g('f-inps').value === 'cassa' ? 'block' : 'none';
+}
+
+/* ============================================================
+   ANNO CHANGE — vincoli temporali + banner anno precedente
+   ============================================================ */
+function onAnnoChange() {
+  const anno    = parseInt(g('f-anno').value);
+  const annoNow = new Date().getFullYear();
+  const isPast  = anno < annoNow;
+  const isFirst = g('f-noaoc') && g('f-noaoc').checked;
+
+  // VINCOLO TEMPORALE: anno passato = archiviato, nasconde mese
+  const meseWrap = g('mese-wrap');
+  if (meseWrap) {
+    if (isPast && !isFirst) {
+      meseWrap.style.display = 'none';
+      if (g('f-mese')) g('f-mese').value = '12'; // anno completo
+    } else {
+      meseWrap.style.display = '';
+    }
+  }
+
+  // Banner anno passato
+  const pastBanner = g('past-banner');
+  if (pastBanner) {
+    if (isPast) pastBanner.classList.add('show');
+    else        pastBanner.classList.remove('show');
+  }
+
+  // Auto-imposta stato "archiviato" per anni passati
+  const statoSel = g('f-stato');
+  if (statoSel && isPast) statoSel.value = 'archiviato';
+
+  // Banner anno precedente trovato in cloud
+  const prev   = _anni[anno - 1];
+  const banner = g('prev-banner');
+  const txt    = g('prev-txt');
+  if (txt && banner) {
+    if (prev) {
+      txt.innerHTML =
+        `<strong>✅ Anno ${anno-1} trovato in cloud</strong><br>` +
+        `Imposta sostitutiva: <strong>${fmt(prev.imposta_sost)}</strong> · INPS: <strong>${fmt(prev.contributi_inps)}</strong><br>` +
+        `Gli acconti per il ${anno+1} saranno calcolati sul dato reale.`;
+      banner.classList.add('show');
+    } else {
+      banner.classList.remove('show');
+    }
+  }
+}
+
+/* ============================================================
+   FIX 1 — ESTRAZIONE LOCALE MODELLO RPF (Redditi Persone Fisiche)
+   Il layer testuale del Modello RPF separa etichette dai valori.
+   Questa funzione intercetta il testo ed estrae i dati direttamente
+   senza consumare quota Gemini (~98% risparmio token).
+   ============================================================ */
+function tryParseRPF(text) {
+  // Riconoscimento documento RPF Modello Redditi Persone Fisiche
+  const isRPF = /PERSONE\s+FISICHE/i.test(text) && /QUADRO\s+LM/i.test(text);
+  if (!isRPF) return null;
+
+  // Converte stringa numero italiano (1.234,56 o 1.234) in float
+  function parseITA(str) {
+    if (!str) return 0;
+    return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+
+  // Cerca il primo numero con PUNTO separatore migliaia (es. 34.827,00)
+  // dopo il label LM indicato. Questo pattern NON cattura codici ATECO (683200)
+  // né codici fiscali numerici (94038190719) perché privi di separatore.
+  function findAfterLabel(label, maxChars) {
+    maxChars = maxChars || 400;
+    const re = new RegExp(
+      label + '[\\s\\S]{0,' + maxChars + '}?(\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?)',
+      'i'
+    );
+    const m = text.match(re);
+    return m ? parseITA(m[1]) : 0;
+  }
+
+  // Anno fiscale: "PERIODO D'IMPOSTA YYYY" è più affidabile di un generico anno
+  const annoMatch =
+    text.match(/PERIODO\s+D.IMPOSTA\s+(20[12]\d)/i) ||
+    text.match(/\b(20[12]\d)\b/);
+  const anno = annoMatch ? parseInt(annoMatch[1]) : null;
+
+  // ATECO: cerca 6 cifre vicino a LM21 o "Codice attività"
+  const atecoMatch =
+    text.match(/LM21[\s\S]{0,120}?(\d{6})/) ||
+    text.match(/[Cc]odice\s+attivit[àa][\s\S]{0,60}?(\d{6})/);
+  const ateco = atecoMatch ? atecoMatch[1] : null;
+
+  // LM22 = componenti positivi = fatturato imponibile (Sezione III regime forfetario)
+  const fatturato = findAfterLabel('LM22');
+  if (fatturato < 100) return null;
+
+  // LM35 = contributi previdenziali dedotti
+  const inps_dedotta = findAfterLabel('LM35');
+
+  // LM39 = imposta sostitutiva dovuta
+  const imposta = findAfterLabel('LM39');
+
+  const tuttiTrovati = inps_dedotta > 0 && imposta > 0;
+  const result = {
+    tipo:                'dichiarazione',
+    anno:                anno,
+    ateco:               ateco,
+    fatturato_lm2:       fatturato,
+    inps_dedotta_lm7:    inps_dedotta,
+    imposta_dovuta_lm11: imposta,
+    inps_versata_f24:    0,
+    note: '⚡ Estratto da Modello RPF (0 token AI)' +
+          (ateco ? ' · ATECO ' + ateco : '') +
+          ' · LM22=' + fatturato.toLocaleString('it-IT') +
+          (inps_dedotta > 0 ? ' LM35=' + inps_dedotta.toLocaleString('it-IT') : '') +
+          (imposta > 0     ? ' LM39=' + imposta.toLocaleString('it-IT') : '') +
+          (!tuttiTrovati
+            ? ' · ⚠️ Verifica LM35 e LM39: correzione manuale potrebbe essere necessaria.'
+            : '')
+  };
+
+  console.log('[tryParseRPF] Risultato:', result);
+  return result;
+}
+
+/* ============================================================
+   GEMINI AI — parsing PDF tramite Supabase Edge Function (sicuro)
+   La chiave Gemini è sul server: non appare mai nel browser (F12).
+   ============================================================ */
+async function parseTaxPDF(file) {
+  if (!file || file.type !== 'application/pdf') {
+    throw new Error('File non valido: carica un PDF.');
+  }
+
+  // 1. Estrai il TESTO dal PDF nel browser con PDF.js
+  //    Inviamo solo testo (~5-20 KB) invece del binario base64 (~800 KB)
+  //    Risparmio token Gemini: ~98% — riduce consumo quota drasticamente
+  let pdf_text = '';
+  let _numPages = 0; // dichiarato FUORI dal try per essere accessibile a riga ~1618
+  try {
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    if (!pdfjsLib) throw new Error('PDF.js non caricato. Ricarica la pagina.');
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    _numPages = pdfDoc.numPages; // assegnato alla variabile esterna (dichiarata prima del try)
+
+    for (let p = 1; p <= _numPages; p++) {
+      const page    = await pdfDoc.getPage(p);
+      const content = await page.getTextContent();
+      // FIX F24 MULTI-PAGINA: preserva la struttura a righe del PDF
+      // Confrontando la posizione Y di ogni elemento: se cambia di più di 2pt
+      // significa una nuova riga → inserisce \n invece di spazio
+      // Questo permette a Gemini di vedere le righe della tabella F24 in modo leggibile
+      let pageText = '';
+      for (let k = 0; k < content.items.length; k++) {
+        const item = content.items[k];
+        const prev = content.items[k - 1];
+        if (k === 0) {
+          pageText += item.str;
+        } else {
+          const yDiff = Math.abs((item.transform[5] || 0) - (prev.transform[5] || 0));
+          pageText += (yDiff > 2 ? '\n' : ' ') + item.str;
+        }
+      }
+      pdf_text += '--- PAGINA ' + p + ' ---\n' + pageText + '\n';
+    }
+  } catch (e) {
+    throw new Error('Errore estrazione testo PDF: ' + e.message +
+      '. Il PDF potrebbe essere una scansione (immagine) non leggibile.');
+  }
+
+  if (!pdf_text || pdf_text.trim().length < 20) {
+    throw new Error('Nessun testo trovato nel PDF. Assicurati che non sia una scansione.');
+  }
+
+  // 1b. FIX RPF — tenta parsing locale PRIMA di chiamare Gemini.
+  //     Se il documento è un Modello Redditi PF, estrae i dati senza consumare quota AI.
+  const rpfLocal = tryParseRPF(pdf_text);
+  if (rpfLocal && rpfLocal.fatturato_lm2 > 0) {
+    console.log('[parseTaxPDF] RPF locale riuscito — Gemini non chiamato.');
+    toast('⚡ Dati estratti localmente dal Modello RPF (0 token Gemini usati)', 'ok', 4000);
+    return rpfLocal;
+  }
+
+  // 1c. FIX F24 ANNO — rileva se documento è un F24 per istruire il server
+  const isLikelyF24 = /F24|MODELLO\s+F24|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO/i.test(pdf_text);
+
+  // 2. Forza il refresh del token — evita 401 da JWT scaduto
+  //    refreshSession() chiama il server e restituisce sempre un token fresco
+  let token = null;
+  try {
+    const { data: rd } = await sb.auth.refreshSession();
+    token = rd?.session?.access_token || null;
+  } catch(_) {}
+  if (!token) {
+    const { data: { session: s2 } } = await sb.auth.getSession();
+    token = s2?.access_token || null;
+  }
+  if (!token) throw new Error('Sessione scaduta — effettua di nuovo il login.');
+
+  // 3. Chiama la Edge Function Supabase (chiave Gemini sul server, mai visibile)
+  //    FIX F24: passiamo is_f24=true per far estrarre esplicitamente l'anno dal modulo
+  const resp = await fetch(EDGE_PDF_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': 'Bearer ' + token,
+      'apikey':        SKEY
+    },
+    body: JSON.stringify({ pdf_text, is_f24: isLikelyF24, page_count: _numPages || 1 })
+  });
+
+  // Gestione robusta: Supabase gateway 401 restituisce {"msg":"..."} non {"error":"..."}
+  let json;
+  try {
+    json = await resp.json();
+  } catch(_) {
+    json = {};
+  }
+
+  if (!resp.ok) {
+    const msg = json?.error || json?.msg || json?.message || ('Errore server: ' + resp.status +
+      (resp.status === 401 ? ' — token scaduto, ricarica la pagina.' :
+       resp.status === 500 ? ' — controlla che GEMINI_KEY sia impostata in Supabase → Edge Functions → Secrets.' : ''));
+    throw new Error(msg);
+  }
+
+  return json;  // { tipo, anno, fatturato_lm2, inps_dedotta_lm7, imposta_dovuta_lm11, inps_versata_f24, note }
+}
+
+/* ============================================================
+   CALCOLO FISCALE
+   ============================================================ */
+function calcola() {
+  const gi = parseInt(g('f-gruppo').value);
+  if (isNaN(gi) || gi < 0 || gi > 8) { toast('⚠️ Seleziona il codice ATECO o il gruppo', 'err'); return; }
+
+  const fatt    = parseFloat(g('f-fatt').value) || 0;
+  if (fatt <= 0)  { toast('⚠️ Inserisci il fatturato imponibile', 'err'); return; }
+  if (fatt > 9999999) { toast('⚠️ Fatturato non valido (max €9.999.999)', 'err'); return; }
+  if (!isFinite(fatt)) { toast('⚠️ Fatturato: valore non valido', 'err'); return; }
+
+  const gr       = GRUPPI[gi];
+  const coeff    = gr.coeff;
+  const aliq     = parseFloat(g('f-aliq').value);
+  const tipo     = g('f-inps').value;
+  const deduci   = g('f-deduci').checked;
+  const noAoc    = g('f-noaoc').checked;
+  const mese     = parseInt(g('f-mese').value);
+  const anno     = parseInt(g('f-anno').value);
+  const ateco    = g('f-ateco').value.trim();
+  const prevAnno = _anni[anno - 1];
+
+  const proiez   = mese < 12 ? (fatt / mese) * 12 : fatt;
+  const r_forf   = fatt * coeff;
+
+  // INPS
+  let c_inps = 0, inps_desc = '', inps_form = '';
+  if (tipo === 'gs' || tipo === 'gs-pen') {
+    const a = INPS_INFO[tipo].a;
+    c_inps    = r_forf * a;
+    inps_desc = INPS_INFO[tipo].desc;
+    inps_form = `${fmt(r_forf)} × ${(a*100).toFixed(2)}%`;
+  } else if (tipo === 'art' || tipo === 'com') {
+    const info = INPS_INFO[tipo];
+    inps_desc  = info.desc;
+    if (r_forf <= info.min) {
+      c_inps    = info.fisso;
+      inps_form = 'Contributi minimi fissi su minimale';
+    } else {
+      const ecc = r_forf - info.min;
+      c_inps    = info.fisso + ecc * info.ae;
+      inps_form = `${fmt(info.fisso)} + (${fmt(ecc)} × ${(info.ae*100).toFixed(2)}%)`;
+    }
+  } else if (tipo === 'cassa') {
+    const pct = (parseFloat(g('f-cassa').value) || 14.5) / 100;
+    c_inps    = r_forf * pct;
+    inps_desc = `Cassa Professionale — ${(pct*100).toFixed(1)}%`;
+    inps_form = `${fmt(r_forf)} × ${(pct*100).toFixed(1)}%`;
+  } else {
+    inps_desc = 'Nessun contributo'; inps_form = '—';
+  }
+
+  // PRINCIPIO DI CASSA — usa INPS effettivamente versata se fornita (LM7 / F24 pagati)
+  // Altrimenti fallback all'INPS stimata per la deduzione
+  const inpsVersataInput = parseFloat(g('f-inps-versata')?.value) || 0;
+  const inpsPerDeduzione = (deduci && inpsVersataInput > 0) ? inpsVersataInput : c_inps;
+
+  const r_imp     = deduci ? Math.max(0, r_forf - inpsPerDeduzione) : r_forf;
+  const imp_sost  = r_imp * aliq;
+  const tot_oneri = imp_sost + c_inps;
+
+  // STORICO — obbligo 3 anni per previsione F24 affidabile
+  const anniSalvati = Object.keys(_anni).length;
+  const storicoOk   = anniSalvati >= 3;
+
+  // ACCONTI — Metodo Storico Granitico (art.17 TUIR)
+  // Base acconti = imposta dovuta anno precedente (LM11 prev) se disponibile
+  // altrimenti usa imposta corrente (stima)
+  let acc1 = 0, acc2 = 0, acc_tot = 0, acc_note = '';
+  const baseAcconti = prevAnno ? prevAnno.imposta_sost : imp_sost;
+  const doAcc = !noAoc && baseAcconti > S_ACC;
+  if (doAcc) {
+    acc_tot  = baseAcconti;
+    acc_note = prevAnno
+      ? `Base storica LM11 anno ${anno-1}: ${fmt(prevAnno.imposta_sost)}`
+      : `Base: stima anno ${anno} (nessun storico)`;
+    if (acc_tot > S_DUE) { acc1 = acc_tot * .40; acc2 = acc_tot * .60; }
+    else { acc2 = acc_tot; }
+  } else {
+    acc_note = noAoc
+      ? 'Primo anno attività — nessun acconto'
+      : `Imposta base ≤ €${S_ACC.toFixed(2)}: esonero da acconti`;
+  }
+
+  // Salva per il form di salvataggio (nomi = colonne DB)
+  _last = {
+    anno, ateco,
+    gruppo_idx:      gi,
+    gruppo_nome:     gr.name,
+    coefficiente:    coeff,
+    aliquota:        aliq,
+    inps_tipo:       tipo,
+    inps_desc,
+    deduci_inps:     deduci,
+    mese_rif:        mese,
+    is_primo_anno:   noAoc,
+    inps_versata_anno_solare: inpsVersataInput > 0 ? inpsVersataInput : null,
+    // valori calcolati
+    fatturato:       fatt,
+    reddito_forf:    r_forf,
+    contributi_inps: c_inps,
+    reddito_imp:     r_imp,
+    imposta_sost:    imp_sost,
+    totale_oneri:    tot_oneri,
+    acconto_1:       acc1,
+    acconto_2:       acc2,
+    acconto_tot:     acc_tot,
+    acconto_note:    acc_note,
+    // solo display (non in DB)
+    _proiez:      proiez,
+    _form:        inps_form,
+    _prev:        prevAnno,
+    _doAcc:       doAcc,
+    _storicoOk:   storicoOk,
+    _anniSalvati: anniSalvati
+  };
+
+  renderRisultati(_last);
+}
+
+/* ============================================================
+   RENDER RISULTATI
+   ============================================================ */
+function renderRisultati(c) {
+  g('ris-wrap').style.display = 'block';
+  setTimeout(() => g('ris-wrap').scrollIntoView({ behavior:'smooth', block:'start' }), 60);
+
+  const gr  = GRUPPI[c.gruppo_idx];
+  const fatt = c.fatturato;
+
+  // — Parametri —
+  g('r-params').innerHTML =
+    row('var(--ac)', 'Anno fiscale',                  c.anno) +
+    rowTxt('var(--ac)', 'Gruppo / Attività',          gr.name) +
+    row('var(--gr)', 'Coefficiente di redditività',   (c.coefficiente*100).toFixed(0)+'%') +
+    row('var(--ye)', 'Aliquota imposta sostitutiva',  (c.aliquota*100).toFixed(0)+'%') +
+    rowTxt('var(--pu)', 'Gestione INPS',              c.inps_desc) +
+    (c._prev ? `<div class="bdr" style="background:var(--pu-d)">
+        <span class="bl"><span class="dot" style="background:var(--pu)"></span>Anno ${c.anno-1} in archivio cloud</span>
+        <span class="bv" style="color:var(--pu)">✅ Trovato</span></div>` : '');
+
+  // — Proiezione —
+  const pw = g('r-proj-wrap');
+  if (c.mese_rif < 12) {
+    pw.style.display = 'block';
+    const col = c._proiez > LIMITE ? 'var(--re)' : c._proiez > LIMITE*.85 ? 'var(--ye)' : 'var(--gr)';
+    const cls = c._proiez > LIMITE ? 'al-d'      : c._proiez > LIMITE*.85 ? 'al-w'      : 'al-o';
+    const msg = c._proiez > LIMITE
+      ? `🚨 <strong>Supereresti il limite di ${fmt(LIMITE)}.</strong> Dal prossimo periodo esci dal regime forfettario!`
+      : c._proiez > LIMITE*.85
+        ? '⚠️ Ti stai avvicinando al limite. Monitora attentamente il fatturato residuo.'
+        : '✅ Fatturato proiettato entro il limite del regime forfettario.';
+    g('r-proj').innerHTML =
+      `<div class="sg sg2">
+        <div class="sc"><div class="sl">Fatturato attuale (${c.mese_rif} mesi)</div><div class="sv big">${fmt(fatt)}</div></div>
+        <div class="sc ${c._proiez>LIMITE?'rc':c._proiez>LIMITE*.85?'yc':'gc'}">
+          <div class="sl">Proiezione 12 mesi</div><div class="sv big">${fmt(c._proiez)}</div></div>
+      </div>
+      <div class="al ${cls}"><span class="ai">📊</span><span>${msg}</span></div>
+      ${pbar(`Proiezione ${fmt(c._proiez)} su limite ${fmt(LIMITE)}`, c._proiez, LIMITE, col)}`;
+  } else { pw.style.display = 'none'; }
+
+  // — Calcolo dettagliato —
+  g('r-calc').innerHTML =
+    row('var(--ac)',  'Fatturato imponibile lordo',      fmt(fatt), '') +
+    rowF('var(--gr)', 'Reddito forfettario',             `${fmt(fatt)}×${(c.coefficiente*100).toFixed(0)}%`, fmt(c.reddito_forf)) +
+    rowF('var(--pu)', 'Contributi INPS stimati',         c._form, `<span style="color:var(--re)">− ${fmt(c.contributi_inps)}</span>`) +
+    (c.deduci_inps ? row('var(--ye)','Reddito imponibile netto', fmt(c.reddito_imp), '') : '') +
+    `<div class="bdr tot">
+      <span class="bl" style="color:var(--t1)"><span class="dot" style="background:var(--re)"></span>Imposta sostitutiva (${(c.aliquota*100).toFixed(0)}%)</span>
+      <span class="br"><span class="bf">${fmt(c.reddito_imp)}×${(c.aliquota*100).toFixed(0)}%</span><span class="bv">${fmt(c.imposta_sost)}</span></span>
+    </div>`;
+
+  // — Totale —
+  g('r-tot').innerHTML =
+    `<div class="tot-box">
+      <div class="ttl">💰 Totale oneri fiscali e previdenziali anno ${c.anno}</div>
+      <div class="tv">${fmt(c.totale_oneri)}</div>
+      <div class="ts">Imposta ${fmt(c.imposta_sost)} + INPS ${fmt(c.contributi_inps)}</div>
+    </div>
+    <div class="sg sg4">
+      <div class="sc gc"><div class="sl">Netto disponibile</div><div class="sv">${fmt(fatt-c.totale_oneri)}</div><div class="ss">dopo tasse+INPS</div></div>
+      <div class="sc rc"><div class="sl">Imposta sost.</div><div class="sv">${fmt(c.imposta_sost)}</div><div class="ss">${fmtP((c.imposta_sost/fatt)*100)} del fatt.</div></div>
+      <div class="sc pc"><div class="sl">Contributi INPS</div><div class="sv">${fmt(c.contributi_inps)}</div><div class="ss">${fmtP((c.contributi_inps/fatt)*100)} del fatt.</div></div>
+      <div class="sc ac"><div class="sl">Acconto ${c.anno+1}</div><div class="sv">${fmt(c.acconto_tot)}</div><div class="ss">${c.acconto_note}</div></div>
+    </div>`;
+
+  // — Barre —
+  const netto = fatt - c.totale_oneri;
+  g('r-bars').innerHTML =
+    pbar('Imposta sostitutiva',       c.imposta_sost,    fatt, 'var(--re)') +
+    pbar('Contributi INPS',           c.contributi_inps, fatt, 'var(--pu)') +
+    pbar('Totale oneri (tasse+INPS)', c.totale_oneri,    fatt, 'var(--ac)') +
+    pbar('Netto disponibile',          netto,            fatt, 'var(--gr)') +
+    `<div style="margin-top:9px;padding:10px 12px;background:var(--gr-d);border:1px solid var(--gr-b);border-radius:8px;font-size:13px;font-weight:700">
+      💵 Netto: <span style="color:var(--gr);font-family:monospace">${fmt(netto)}</span> — ${fmtP((netto/fatt)*100)} del fatturato
+    </div>`;
+
+  // — Limite forfettario —
+  const limCol = fatt>LIMITE?'var(--re)':fatt>LIMITE*.85?'var(--ye)':'var(--gr)';
+  const limCls = fatt>LIMITE?'al-d':fatt>LIMITE*.85?'al-w':'al-o';
+  g('r-lim').innerHTML =
+    `<div class="card" style="margin-bottom:12px">
+      <div class="card-t">⚖️ Verifica limite forfettario ${fmt(LIMITE)} / anno</div>
+      ${pbar(`${fmt(fatt)} su ${fmt(LIMITE)}`, fatt, LIMITE, limCol)}
+      <div class="al ${limCls}" style="margin-top:9px">
+        <span class="ai">${fatt>LIMITE?'🚨':fatt>LIMITE*.85?'⚠️':'✅'}</span>
+        <span>${fatt>LIMITE?'<strong>Limite superato.</strong> Dal prossimo periodo esci dal regime.':fatt>LIMITE*.85?'Ti stai avvicinando al limite.':'Entro il limite del regime forfettario.'}</span>
+      </div>
+    </div>`;
+
+  // — Scadenzario + avviso storico —
+  let sc = '';
+  if (!c._storicoOk) {
+    sc += `<div class="storico-warn">
+      <h4>⚠️ Storico Insufficiente — Previsione F24 Limitata</h4>
+      <p>Hai <strong>${c._anniSalvati}/3 anni</strong> salvati. Per una previsione degli F24 futuri basata su dati storici reali, salva <strong>almeno 3 anni fiscali</strong>. Le cifre sono stime provvisorie.</p>
+    </div>`;
+  }
+  sc += tline('warn','⇒', `30 giugno ${c.anno+1} (oppure luglio +0,40%)`,
+    `Saldo imposta sostitutiva ${c.anno}`, fmt(c.imposta_sost), 'Modello F24 · Codice tributo 1792', true);
+
+  if (c._doAcc && c.acconto_tot > S_DUE) {
+    sc += tline('active','1', `30 giugno ${c.anno+1} — 1ª rata (40%)`,
+      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_1), `F24 · Cod. 1791 · ${c.acconto_note}`, true);
+    sc += tline('danger','2', `30 novembre ${c.anno+1} — 2ª rata (60%)`,
+      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_2), 'F24 · Codice tributo 1791', false);
+  } else if (c._doAcc) {
+    sc += tline('danger','→', `30 novembre ${c.anno+1} — unica rata`,
+      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_2), `F24 · Cod. 1791 · ${c.acconto_note}`, false);
+  } else {
+    sc += tline('ok','✓', `Anno ${c.anno+1}`, 'Nessun acconto imposta sostitutiva', '€ 0,00', c.acconto_note, false);
+  }
+
+  if (c.inps_tipo === 'gs' || c.inps_tipo === 'gs-pen') {
+    sc += tline('active','€', `Saldo contestuale alla dichiarazione — giugno ${c.anno+1}`,
+      `Contributi INPS Gestione Separata ${c.anno}`, fmt(c.contributi_inps), 'Versamento F24 · Codice tributo GS', false);
+  } else if (c.inps_tipo === 'art' || c.inps_tipo === 'com') {
+    sc += tline('active','€', '16 mag · 16 ago · 16 nov · 16 feb',
+      `Contributi INPS ${c.inps_tipo==='art'?'Artigiani':'Commercianti'} ${c.anno}`,
+      fmt(c.totale_oneri-c.imposta_sost)+'/anno', `~${fmt(c.contributi_inps/4)} per rata trimestrale`, false);
+  }
+  g('r-scad').innerHTML = sc;
+}
+
+// Helper per righe breakdown
+function row(col, lbl, val) {
+  return `<div class="bdr"><span class="bl"><span class="dot" style="background:${col}"></span>${lbl}</span><span class="bv">${val}</span></div>`;
+}
+function rowTxt(col, lbl, val) {
+  return `<div class="bdr"><span class="bl"><span class="dot" style="background:${col}"></span>${lbl}</span><span class="bv" style="font-size:11px;text-align:right;max-width:55%">${val}</span></div>`;
+}
+function rowF(col, lbl, formula, val) {
+  return `<div class="bdr"><span class="bl"><span class="dot" style="background:${col}"></span>${lbl}</span><span class="br"><span class="bf">${formula}</span><span class="bv">${val}</span></span></div>`;
+}
+
+/* ============================================================
+   SALVATAGGIO SU SUPABASE
+   ============================================================ */
+async function salvaAnno() {
+  if (!_last) { toast('Esegui prima il calcolo', 'err'); return; }
+
+  // ── Controllo wizard storico ─────────────────────────────
+  // Se l'utente non ha ancora NESSUN anno salvato e sta cercando
+  // di salvare l'anno corrente o uno futuro → apri wizard
+  const annoNow = new Date().getFullYear();
+  const anniEsistenti = Object.keys(_anni).length;
+  if (anniEsistenti === 0 && _last.anno >= annoNow) {
+    wizOpen(_last.anno);
+    return; // salvaAnno verrà richiamato da wizComplete()
+  }
+
+  const stato = g('f-stato').value;
+  const note  = g('f-note').value.trim();
+  const btn   = g('btn-salva');
+  btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
+  setSync('busy', 'Salvataggio...');
+
+  // Costruisce il record con ESATTAMENTE i nomi delle colonne del DB
+  const record = {
+    user_id:         _user.id,
+    anno:            _last.anno,
+    stato,
+    ateco:           _last.ateco,
+    gruppo_idx:      _last.gruppo_idx,
+    gruppo_nome:     _last.gruppo_nome,
+    coefficiente:    _last.coefficiente,
+    aliquota:        _last.aliquota,
+    inps_tipo:       _last.inps_tipo,
+    inps_desc:       _last.inps_desc,
+    deduci_inps:     _last.deduci_inps,
+    mese_rif:        _last.mese_rif,
+    is_primo_anno:   _last.is_primo_anno   || false,
+    inps_versata_anno_solare: _last.inps_versata_anno_solare || null,
+    note,
+    fatturato:       _last.fatturato,
+    reddito_forf:    _last.reddito_forf,
+    contributi_inps: _last.contributi_inps,
+    reddito_imp:     _last.reddito_imp,
+    imposta_sost:    _last.imposta_sost,
+    totale_oneri:    _last.totale_oneri,
+    acconto_1:       _last.acconto_1,
+    acconto_2:       _last.acconto_2,
+    acconto_tot:     _last.acconto_tot,
+    acconto_note:    _last.acconto_note,
+    salvato_il:      new Date().toISOString(),
+    updated_at:      new Date().toISOString()
+  };
+
+  const { data, error } = await sb
+    .from('anni_fiscali')
+    .upsert(record, { onConflict: 'user_id,anno' })
+    .select()
+    .single();
+
+  btn.textContent = '☁️ Salva nel cloud'; btn.disabled = false;
+
+  if (error) { setSync('err', 'Errore'); toast('Errore salvataggio: ' + error.message, 'err'); return; }
+
+  _anni[_last.anno] = data;
+  renderSidebar();
+  fillConfSelectors();
+  onAnnoChange();
+  setSync('ok', 'Sincronizzato');
+  toast(`✅ Anno ${_last.anno} salvato nel cloud (${stato})`, 'ok');
+}
+
+/* ============================================================
+   NAVIGAZIONE VISTE
+   ============================================================ */
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn,.bn-btn').forEach(b => b.classList.remove('active'));
+  g('view-' + name).classList.add('active');
+  const nd = g('nav-' + name), nb = g('bn-' + name);
+  if (nd) nd.classList.add('active');
+  if (nb) nb.classList.add('active');
+  const titles = { calcolo:'Calcolo', archivio:'Archivio', confronto:'Confronto', admin:'Admin', grafici:'Statistiche', calendario:'Scadenze', f24:'F24 Prec.' };
+  g('mob-title').textContent = titles[name] || 'ForfettarioApp';
+  if (name === 'archivio')   renderArchivio();
+  if (name === 'grafici')    renderGrafici();
+  if (name === 'calendario') renderCalendario();
+  if (name === 'f24')        renderF24Precedenti();
+  if (name === 'confronto')  { fillConfSelectors(); renderConfronto(); }
+  if (name === 'admin')      loadAdmin();
+  window.scrollTo(0, 0);
+}
+
+/* ============================================================
+   SIDEBAR — lista anni
+   ============================================================ */
+function renderSidebar() {
+  const anni = Object.values(_anni).sort((a, b) => b.anno - a.anno);
+  const el   = g('hist-list');
+  if (!anni.length) {
+    el.innerHTML = '<div style="padding:8px 10px;font-size:11px;color:var(--t3)">Nessun anno salvato</div>';
+    return;
+  }
+  el.innerHTML = anni.map(r => {
+    const s = r.stato || 'bozza';
+    const lbl = s === 'bozza' ? '📝' : s === 'definitivo' ? '✅' : '🗄️';
+    return `<button class="hist-btn" onclick="openArch(${r.anno})">
+      <span class="hy">${r.anno}</span>
+      <span class="rbadge rb-${s}">${lbl}</span>
+    </button>`;
+  }).join('');
+}
+
+function openArch(anno) {
+  showView('archivio');
+  setTimeout(() => {
+    const el = g('ayc-b-' + anno);
+    if (el) { el.classList.add('open'); el.scrollIntoView({ behavior:'smooth', block:'start' }); }
+  }, 80);
+}
+
+/* ============================================================
+   ARCHIVIO
+   ============================================================ */
+function renderArchivio() {
+  const anni = Object.values(_anni).sort((a, b) => b.anno - a.anno);
+  const el   = g('arch-cnt');
+  if (!anni.length) {
+    el.innerHTML = `<div style="text-align:center;padding:40px 20px">
+      <div style="font-size:40px;margin-bottom:12px">🗂️</div>
+      <h3 style="font-size:20px;font-weight:800;margin-bottom:8px">Nessun anno salvato</h3>
+      <p style="color:var(--t2);font-size:13px;max-width:300px;margin:0 auto 16px;line-height:1.6">Effettua il primo calcolo e salvalo per costruire il tuo storico fiscale.</p>
+      <button class="btn" onclick="showView('calcolo')">Crea il primo calcolo</button>
+    </div>`;
+    return;
+  }
+  el.innerHTML = anni.map(d => {
+    const prev   = _anni[d.anno - 1];
+    let diffH = '';
+    let archBars = '';
+    if (prev) {
+      const diff     = d.totale_oneri - prev.totale_oneri;
+      const diffFatt = d.fatturato - prev.fatturato;
+      const pct      = prev.totale_oneri > 0 ? ((diff / prev.totale_oneri)*100).toFixed(1) : 0;
+      const pctFatt  = prev.fatturato > 0 ? ((diffFatt / prev.fatturato)*100).toFixed(1) : 0;
+      const sign     = diff > 0 ? '+' : '';
+      const cls      = diff > 0 ? 'diff-up' : diff < 0 ? 'diff-dn' : 'diff-eq';
+      const ic       = diff > 0 ? '↑' : diff < 0 ? '↓' : '=';
+      const clsF     = diffFatt > 0 ? 'diff-up' : diffFatt < 0 ? 'diff-dn' : 'diff-eq';
+      const icF      = diffFatt > 0 ? '↑' : diffFatt < 0 ? '↓' : '=';
+      diffH = `<span class="diff ${cls}" title="Var. oneri vs ${prev.anno}">${ic}${sign}${pct}%</span>`;
+      archBars = `
+        <div class="arch-bars">
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Fatturato</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:100%;background:var(--ac)"></div></div>
+            <div class="arch-bar-val">${fmt(d.fatturato)}</div>
+            <span class="arch-diff-badge ${clsF}" style="color:${diffFatt>0?'var(--re)':diffFatt<0?'var(--gr)':'var(--t3)'};border-color:currentColor;background:var(--s2)">${icF}${pctFatt}%</span>
+          </div>
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Oneri tot.</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:${Math.min((d.totale_oneri/d.fatturato)*100,100).toFixed(0)}%;background:var(--re)"></div></div>
+            <div class="arch-bar-val">${fmt(d.totale_oneri)}</div>
+            <span class="arch-diff-badge ${cls}" style="color:${diff>0?'var(--re)':diff<0?'var(--gr)':'var(--t3)'};border-color:currentColor;background:var(--s2)">${ic}${sign}${pct}%</span>
+          </div>
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Netto disp.</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:${Math.min(((d.fatturato-d.totale_oneri)/d.fatturato)*100,100).toFixed(0)}%;background:var(--gr)"></div></div>
+            <div class="arch-bar-val">${fmt(d.fatturato-d.totale_oneri)}</div>
+          </div>
+        </div>`;
+    } else {
+      archBars = `
+        <div class="arch-bars">
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Fatturato</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:100%;background:var(--ac)"></div></div>
+            <div class="arch-bar-val">${fmt(d.fatturato)}</div>
+          </div>
+          <div class="arch-bar-row">
+            <div class="arch-bar-lbl">Oneri tot.</div>
+            <div class="arch-bar-track"><div class="arch-bar-fill" style="width:${Math.min((d.totale_oneri/d.fatturato)*100,100).toFixed(0)}%;background:var(--re)"></div></div>
+            <div class="arch-bar-val">${fmt(d.totale_oneri)}</div>
+          </div>
+        </div>`;
+    }
+    const sal = new Date(d.salvato_il || d.created_at).toLocaleDateString('it-IT');
+    const s   = d.stato || 'bozza';
+    return `<div class="ayc">
+      <div class="ayc-h" onclick="togAyc(${d.anno})">
+        <div class="ayc-left">
+          <div class="ayc-yr">${d.anno}</div>
+          <div class="ayc-meta">
+            <div class="m1">${d.ateco||'—'} · coeff. ${(d.coefficiente*100).toFixed(0)}% · imp. ${(d.aliquota*100).toFixed(0)}%</div>
+            <div class="m2">${d.gruppo_nome||'—'}</div>
+          </div>
+        </div>
+        <div class="ayc-right">
+          ${diffH}
+          <span class="rbadge rb-${s}">${s==='bozza'?'📝':s==='definitivo'?'✅':'🗄️'}</span>
+          <span class="ayc-tot">${fmt(d.totale_oneri)}</span>
+          <span style="color:var(--t3)">›</span>
+        </div>
+      </div>
+      <div class="ayc-body" id="ayc-b-${d.anno}">
+        <div class="mini-grid">
+          <div class="mini-stat"><div class="ml">Fatturato</div><div class="mv">${fmt(d.fatturato)}</div></div>
+          <div class="mini-stat"><div class="ml">Reddito forf.</div><div class="mv">${fmt(d.reddito_forf)}</div></div>
+          <div class="mini-stat"><div class="ml">Imposta sost.</div><div class="mv">${fmt(d.imposta_sost)}</div></div>
+          <div class="mini-stat"><div class="ml">INPS</div><div class="mv">${fmt(d.contributi_inps)}</div></div>
+          <div class="mini-stat" style="border-color:var(--re-b)"><div class="ml">Totale oneri</div><div class="mv" style="color:var(--re)">${fmt(d.totale_oneri)}</div></div>
+          <div class="mini-stat" style="border-color:var(--gr-b)"><div class="ml">Netto disp.</div><div class="mv" style="color:var(--gr)">${fmt(d.fatturato-d.totale_oneri)}</div></div>
+          <div class="mini-stat" style="border-color:var(--ac2)"><div class="ml">Acconto ${d.anno+1}</div><div class="mv">${fmt(d.acconto_tot)}</div></div>
+          <div class="mini-stat"><div class="ml">Rate 1ª / 2ª</div><div class="mv">${d.acconto_1>0?fmt(d.acconto_1):'—'} / ${fmt(d.acconto_2)}</div></div>
+        </div>
+        ${archBars}
+        <div class="bdt">
+          ${row('var(--ac)','Fatturato imponibile',fmt(d.fatturato))}
+          ${rowF('var(--gr)','Reddito forfettario',`${fmt(d.fatturato)}×${(d.coefficiente*100).toFixed(0)}%`,fmt(d.reddito_forf))}
+          ${rowF('var(--pu)','Contributi INPS',d.inps_desc,`<span style="color:var(--re)">−${fmt(d.contributi_inps)}</span>`)}
+          ${row('var(--ye)','Reddito imponibile netto',fmt(d.reddito_imp))}
+          <div class="bdr tot"><span class="bl" style="color:var(--t1)"><span class="dot" style="background:var(--re)"></span>Imposta sostitutiva (${(d.aliquota*100).toFixed(0)}%)</span><span class="bv">${fmt(d.imposta_sost)}</span></div>
+        </div>
+        ${d.note ? `<div class="al al-i" style="margin-top:8px"><span class="ai">📋</span><span style="font-style:italic">${sanitizeHTML(d.note)}</span></div>` : ''}
+        ${(d.inps_versata_anno_solare > 0) ? `
+          <div class="al al-o" style="margin-top:8px;font-size:12px">
+            <span class="ai">🏛️</span>
+            <span><strong>INPS versata (anno solare):</strong> ${fmt(d.inps_versata_anno_solare)} — registrata da F24/pagamenti</span>
+          </div>` : ''}
+        <div style="font-size:11px;color:var(--t3);margin-top:8px">☁️ Salvato il ${sal} · Stato: <strong>${s}</strong> · ${d.acconto_note}</div>
+        ${renderDocumentiAnno(d.anno)}
+        <div class="btn-row">
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--pu-b),var(--pu))" onclick="archAnalizzaPDF(${d.anno})">🤖 Analizza Dichiarazione / F24</button>
+          <button class="btn btn-sm btn-ol" onclick="printAnno(${d.anno})">🖨️ Stampa</button>
+          ${s === 'bozza' ? `<button class="btn btn-sm btn-ye" onclick="apriAggiornaBozza('${d.id}',${d.anno})">🔄 Aggiorna Imponibile</button>` : ''}
+          <button class="btn btn-sm btn-ol" style="color:var(--t3)" onclick="cambiaStato('${d.id}',${d.anno})">✏️ Stato</button>
+          <button class="btn btn-sm btn-re btn-ol" onclick="richiediDel('${d.id}',${d.anno})">🗑️ Elimina</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function togAyc(anno) {
+  const el = g('ayc-b-' + anno);
+  if (el) el.classList.toggle('open');
+}
+
+/* ============================================================
+   DOCUMENTI FISCALI — caricamento, visualizzazione, download, eliminazione
+   ============================================================ */
+
+// Carica tutti i documenti dell'utente e li indicizza per anno
+async function loadDocumenti() {
+  try {
+    const { data, error } = await sb
+      .from('documenti_fiscali')
+      .select('id, anno, nome_file, storage_path, tipo_doc, dimensione, uploaded_at')
+      .eq('user_id', _user.id)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) { console.warn('[loadDocumenti]', error.message); return; }
+
+    _documenti = {};
+    (data || []).forEach(doc => {
+      if (!_documenti[doc.anno]) _documenti[doc.anno] = [];
+      _documenti[doc.anno].push(doc);
+    });
+  } catch(e) {
+    console.warn('[loadDocumenti] Eccezione:', e.message);
+  }
+}
+
+// Renderizza la sezione documenti per un anno specifico (usato in renderArchivio)
+function renderDocumentiAnno(anno) {
+  const docs = _documenti[anno];
+  if (!docs || docs.length === 0) return '';
+
+  const icona = { dichiarazione:'📑', f24:'📋', sconosciuto:'📄' };
+  const rows = docs.map(doc => {
+    const data   = new Date(doc.uploaded_at).toLocaleDateString('it-IT');
+    const dim    = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
+    const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
+    const ico    = icona[doc.tipo_doc] || '📄';
+    return `<div class="doc-row">
+      <span class="doc-ico">${ico}</span>
+      <div class="doc-info">
+        <div class="doc-name">${sanitizeHTML(doc.nome_file)}</div>
+        <div class="doc-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
+      </div>
+      <div class="doc-actions">
+        <button class="btn btn-xs btn-ol" onclick="downloadDoc('${doc.storage_path}','${sanitizeHTML(doc.nome_file)}')">⬇️ Scarica</button>
+        <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="deleteDoc('${doc.id}','${doc.storage_path}',${anno})">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="docs-section">
+    <div class="docs-title">📎 Documenti caricati (${docs.length})</div>
+    ${rows}
+  </div>`;
+}
+
+// Genera URL firmato e apre/scarica il PDF
+async function downloadDoc(storagePath, nomeFile) {
+  try {
+    const { data, error } = await sb.storage
+      .from('documenti-fiscali')
+      .createSignedUrl(storagePath, 300); // URL valido 5 minuti
+
+    if (error) throw error;
+    // Apre in nuova scheda (mobile: tenta download diretto)
+    const a = document.createElement('a');
+    a.href = data.signedUrl;
+    a.download = nomeFile;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch(e) {
+    toast('❌ Impossibile aprire il file: ' + e.message, 'err', 5000);
+  }
+}
+
+// Elimina documento da Storage + tabella
+async function deleteDoc(docId, storagePath, anno) {
+  if (!confirm('Eliminare questo documento? Operazione non reversibile.')) return;
+
+  setSync('busy', 'Eliminazione...');
+  try {
+    // 1. Elimina da Storage
+    await sb.storage.from('documenti-fiscali').remove([storagePath]);
+    // 2. Elimina dalla tabella
+    const { error } = await sb.from('documenti_fiscali')
+      .delete()
+      .eq('id', docId)
+      .eq('user_id', _user.id);
+    if (error) throw error;
+
+    // 3. Aggiorna cache locale
+    if (_documenti[anno]) {
+      _documenti[anno] = _documenti[anno].filter(d => d.id !== docId);
+    }
+    setSync('ok', 'Sincronizzato');
+    renderArchivio();
+    toast('🗑️ Documento eliminato', 'ok');
+  } catch(e) {
+    setSync('err', 'Errore');
+    toast('❌ Errore eliminazione: ' + e.message, 'err');
+  }
+}
+
+/* ============================================================
+   ANALISI PDF DICHIARAZIONE / F24 — dall'archivio
+   ============================================================ */
+let _aiAnno    = null; // anno target dell'analisi corrente
+let _aiResult  = null; // risultato raw dalla Edge Function
+let _aiFile    = null; // file PDF originale (per upload su Storage dopo conferma)
+let _documenti = {};   // { anno: [{ id, nome_file, storage_path, tipo_doc, uploaded_at }] }
+
+// 1. L'utente clicca "Analizza Dich." → apri file picker e ricorda l'anno
+function archAnalizzaPDF(anno) {
+  _aiAnno = anno;
+  const inp = g('arch-pdf-input');
+  inp.value = ''; // reset per permettere ri-selezione dello stesso file
+  inp.click();
+}
+
+// 2. File selezionato → mostra spinner, chiama parseTaxPDF, apri modal
+async function onArchPdfSelected(input) {
+  const file = input.files[0];
+  if (!file || _aiAnno === null) return;
+
+  _aiFile = file; // salva riferimento per upload su Storage dopo conferma
+  const anno = _aiAnno;
+
+  // Feedback visivo — apri il corpo della card se non è aperto
+  const body = g('ayc-b-' + anno);
+  if (body && !body.classList.contains('open')) body.classList.add('open');
+
+  // Mostra toast di attesa
+  toast(`🤖 Analisi AI in corso per il ${anno}…`, 'info', 12000);
+
+  try {
+    const result = await parseTaxPDF(file);
+    _aiResult = result;
+    _aiAnno   = anno;
+    apriModalAiResult(anno, result);
+  } catch(err) {
+    // FIX 4: messaggio guida per inserimento manuale
+    const guida = `\n\n💡 Se il problema persiste: apri il PDF, individua i campi ` +
+      `LM22 (fatturato), LM35 (INPS versata), LM39 (imposta sostitutiva) e ` +
+      `inseriscili manualmente tramite "Aggiorna Imponibile" nell'archivio. ` +
+      `Il calcolo degli acconti dell'anno successivo si attiverà automaticamente al salvataggio.`;
+    toast('❌ ' + err.message + guida, 'err', 10000);
+    console.error('[parseTaxPDF] Errore:', err);
+  }
+}
+
+// 3. Popola e apri il modal con i risultati
+function apriModalAiResult(anno, r) {
+  // Badge tipo documento
+  const tipoLabel = r.tipo === 'f24'
+    ? '📋 F24 rilevato'
+    : r.tipo === 'dichiarazione'
+      ? '📑 Dichiarazione rilevata'
+      : `📄 Documento (${r.tipo || 'sconosciuto'})`;
+  g('ai-doc-tipo').textContent = tipoLabel + ` · Anno ${r.anno || anno}`;
+
+  // Campo fatturato (solo se da dichiarazione con LM2)
+  const hasFatt = (r.fatturato_lm2 || 0) > 0;
+  g('ai-f-fatturato').style.display = hasFatt ? 'block' : 'none';
+  if (hasFatt) {
+    g('ai-v-fatturato').textContent  = fmt(r.fatturato_lm2);
+    g('ai-e-fatturato').value        = r.fatturato_lm2;
+  }
+
+  // Campo INPS versata (da F24 o LM7)
+  const inpsVal = (r.inps_versata_f24 || 0) > 0
+    ? r.inps_versata_f24
+    : (r.inps_dedotta_lm7 || 0) > 0
+      ? r.inps_dedotta_lm7
+      : 0;
+  const hasInps = inpsVal > 0;
+  g('ai-f-inps-versata').style.display = hasInps ? 'block' : 'none';
+  if (hasInps) {
+    g('ai-v-inps-versata').textContent  = fmt(inpsVal);
+    g('ai-e-inps-versata').value        = inpsVal;
+  }
+
+  // Campo imposta sostitutiva LM11
+  const hasImp = (r.imposta_dovuta_lm11 || 0) > 0;
+  g('ai-f-imposta').style.display = hasImp ? 'block' : 'none';
+  if (hasImp) {
+    g('ai-v-imposta').textContent  = fmt(r.imposta_dovuta_lm11);
+    g('ai-e-imposta').value        = r.imposta_dovuta_lm11;
+  }
+
+  // Note AI
+  const noteWrap = g('ai-note-wrap');
+  if (r.note) {
+    noteWrap.style.display = 'block';
+    g('ai-note-txt').textContent = '💬 ' + r.note;
+  } else {
+    noteWrap.style.display = 'none';
+  }
+
+  // Se nessun campo ha dati utili
+  if (!hasFatt && !hasInps && !hasImp) {
+    toast('⚠️ L\'AI non ha trovato dati fiscali nel PDF. Prova con una dichiarazione o un F24.', 'err', 6000);
+    return;
+  }
+
+  openModal('modal-ai-result');
+}
+
+// 4. Utente conferma → aggiorna Supabase con i valori (eventualmente corretti)
+async function confermaAiResult() {
+  if (_aiResult === null || _aiAnno === null) return;
+
+  // FIX 2: MAPPING ANNO F24
+  // Se l'AI ha estratto un anno diverso da quello selezionato (es. F24 del 2023
+  // caricato dalla card del 2024), salva nel record dell'anno CORRETTO del PDF.
+  let anno = _aiAnno;
+  const annoEstrattoF24 = (_aiResult.tipo === 'f24' && _aiResult.anno) ? parseInt(_aiResult.anno) : null;
+  if (annoEstrattoF24 && annoEstrattoF24 !== anno && _anni[annoEstrattoF24]) {
+    console.log(`[confermaAiResult] FIX F24 ANNO: PDF anno ${annoEstrattoF24} ≠ card anno ${anno} → salvo nel record ${annoEstrattoF24}`);
+    toast(`ℹ️ F24 rilevato per l'anno ${annoEstrattoF24} (diverso dal ${anno} selezionato) — salvo nell'anno corretto.`, 'info', 5000);
+    anno = annoEstrattoF24;
+  }
+
+  const d = _anni[anno];
+  if (!d) {
+    toast(`⚠️ Anno ${anno} non trovato nell'archivio. Crea prima il record per quest'anno.`, 'err', 6000);
+    return;
+  }
+
+  // Leggi i valori dagli input modificabili
+  const fatt     = parseFloat(g('ai-e-fatturato')?.value)    || 0;
+  const inpsVers = parseFloat(g('ai-e-inps-versata')?.value) || 0;
+  const imposta  = parseFloat(g('ai-e-imposta')?.value)      || 0;
+
+  const updates = { updated_at: new Date().toISOString() };
+
+  // Aggiorna solo i campi presenti
+  if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
+  if (imposta  > 0) updates.imposta_sost = imposta;
+
+  // Se arriva il fatturato, ricalcola tutti i valori derivati
+  if (fatt > 0) {
+    const gr    = GRUPPI[d.gruppo_idx];
+    const r_forf = fatt * gr.coeff;
+    let c_inps = 0;
+    const tipo = d.inps_tipo;
+    if (tipo === 'gs' || tipo === 'gs-pen') {
+      c_inps = r_forf * INPS_INFO[tipo].a;
+    } else if (tipo === 'art' || tipo === 'com') {
+      const info = INPS_INFO[tipo];
+      c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+    } else if (tipo === 'cassa') {
+      c_inps = r_forf * ((d.cassa_pct || 14.5) / 100);
+    }
+    const inpsPerDed = (d.deduci_inps && inpsVers > 0) ? inpsVers : c_inps;
+    const r_imp      = d.deduci_inps ? Math.max(0, r_forf - inpsPerDed) : r_forf;
+    const aliq       = imposta > 0 ? imposta / r_imp : d.aliquota;
+    const imp_sost   = imposta > 0 ? imposta : r_imp * d.aliquota;
+    const tot_oneri  = imp_sost + c_inps;
+    let acc1 = 0, acc2 = 0, acc_tot = 0;
+    if (imp_sost > S_ACC) {
+      acc_tot = imp_sost;
+      if (acc_tot > S_DUE) { acc1 = acc_tot * .4; acc2 = acc_tot * .6; }
+      else { acc2 = acc_tot; }
+    }
+    Object.assign(updates, {
+      fatturato: fatt, reddito_forf: r_forf,
+      contributi_inps: c_inps, reddito_imp: r_imp,
+      imposta_sost: imp_sost, totale_oneri: tot_oneri,
+      acconto_1: acc1, acconto_2: acc2, acconto_tot: acc_tot,
+      acconto_note: `Aggiornato via AI · ${new Date().toLocaleDateString('it-IT')}`
+    });
+  }
+
+  const btn = g('ai-btn-apply');
+  btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
+  setSync('busy', 'Aggiornamento AI...');
+
+  const { error } = await sb.from('anni_fiscali')
+    .update(updates)
+    .eq('id', d.id)
+    .eq('user_id', _user.id);
+
+  btn.textContent = '✅ Applica al cloud'; btn.disabled = false;
+
+  if (error) {
+    setSync('err', 'Errore');
+    toast('❌ Errore salvataggio: ' + error.message, 'err');
+    return;
+  }
+
+  Object.assign(_anni[anno], updates);
+  closeModal('modal-ai-result');
+  setSync('ok', 'Sincronizzato');
+  renderArchivio();
+  renderSidebar();
+
+  // Messaggio di conferma dettagliato per rendere visibile cosa è stato salvato
+  const campiSalvati = [];
+  if (updates.inps_versata_anno_solare) campiSalvati.push(`INPS versata: ${fmt(updates.inps_versata_anno_solare)}`);
+  if (updates.imposta_sost)             campiSalvati.push(`Imposta: ${fmt(updates.imposta_sost)}`);
+  if (updates.fatturato)                campiSalvati.push(`Fatturato: ${fmt(updates.fatturato)}`);
+  const dettaglio = campiSalvati.length > 0 ? ` (${campiSalvati.join(' · ')})` : '';
+  toast(`✅ Anno ${anno} aggiornato${dettaglio}`, 'ok', 5000);
+
+  // FIX 3: CASCADE UPDATE — ricalcola acconti degli anni successivi
+  await syncFutureYears(anno);
+
+  // ── Upload PDF su Supabase Storage ─────────────────────────────────
+  // Lo facciamo DOPO il salvataggio dati per non bloccare la UX principale
+  if (_aiFile) {
+    try {
+      const ts       = Date.now();
+      const safeName = _aiFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path     = `${_user.id}/${anno}/${ts}_${safeName}`;
+
+      const { error: upErr } = await sb.storage
+        .from('documenti-fiscali')
+        .upload(path, _aiFile, { contentType: 'application/pdf', upsert: false });
+
+      if (!upErr) {
+        // Salva metadati nella tabella documenti_fiscali
+        const { error: dbErr } = await sb.from('documenti_fiscali').insert({
+          user_id:      _user.id,
+          anno:         anno,
+          nome_file:    _aiFile.name,
+          storage_path: path,
+          tipo_doc:     _aiResult?.tipo || 'sconosciuto',
+          dimensione:   _aiFile.size
+        });
+        if (!dbErr) {
+          // Aggiorna cache locale
+          if (!_documenti[anno]) _documenti[anno] = [];
+          _documenti[anno].unshift({
+            id: null, // verrà aggiornato al prossimo loadDocumenti
+            nome_file:    _aiFile.name,
+            storage_path: path,
+            tipo_doc:     _aiResult?.tipo || 'sconosciuto',
+            dimensione:   _aiFile.size,
+            uploaded_at:  new Date().toISOString()
+          });
+          // Ricarica l'archivio per mostrare il file appena caricato
+          renderArchivio();
+          toast(`📎 PDF "${_aiFile.name}" salvato nei documenti dell'anno ${anno}`, 'ok', 4000);
+        } else {
+          console.warn('[upload] Errore salvataggio metadati:', dbErr.message);
+        }
+      } else {
+        console.warn('[upload] Errore storage:', upErr.message);
+        toast(`⚠️ Dati salvati, ma il PDF non è stato archiviato: ${upErr.message}`, 'err', 5000);
+      }
+    } catch(upEx) {
+      console.warn('[upload] Eccezione:', upEx.message);
+    }
+  }
+
+  _aiFile = null; _aiAnno = null; _aiResult = null;
+}
+
+/* ============================================================
+   FIX 3 — CASCADE UPDATE: syncFutureYears(anno)
+   Ricalcola automaticamente gli acconti dell'anno successivo
+   ogni volta che i dati di un anno vengono salvati (PDF, manuale).
+   Esempio: aggiornato 2024 → ricalcola acconti 2025 su Supabase.
+   ============================================================ */
+async function syncFutureYears(anno) {
+  const annoSucc = anno + 1;
+  const dPrec    = _anni[anno];     // anno appena aggiornato (sorgente)
+  const dSucc    = _anni[annoSucc]; // anno successivo (destinazione acconti)
+
+  // Se non esiste il record dell'anno successivo, non c'è nulla da propagare
+  if (!dPrec || !dSucc) {
+    console.log(`[syncFutureYears] Anno ${annoSucc} non in archivio — nessuna propagazione.`);
+    return;
+  }
+
+  const baseImposta = dPrec.imposta_sost || 0;
+
+  // Ricalcola acconti per l'anno successivo (metodo storico — art.17 TUIR)
+  let acc1 = 0, acc2 = 0, acc_tot = 0;
+  if (baseImposta > S_ACC) {
+    acc_tot = baseImposta;
+    if (acc_tot > S_DUE) { acc1 = acc_tot * 0.4; acc2 = acc_tot * 0.6; }
+    else { acc2 = acc_tot; }
+  }
+
+  const updates = {
+    acconto_1:    acc1,
+    acconto_2:    acc2,
+    acconto_tot:  acc_tot,
+    acconto_note: `Base storica LM11 anno ${anno}: ${fmt(baseImposta)} · Aggiornato automaticamente il ${new Date().toLocaleDateString('it-IT')}`,
+    updated_at:   new Date().toISOString()
+  };
+
+  console.log(`[syncFutureYears] Propagazione ${anno} → ${annoSucc}:`, updates);
+
+  // Salva su Supabase
+  const { error } = await sb.from('anni_fiscali')
+    .update(updates)
+    .eq('id', dSucc.id)
+    .eq('user_id', _user.id);
+
+  if (error) {
+    console.warn(`[syncFutureYears] Errore aggiornamento anno ${annoSucc}:`, error.message);
+    toast(`⚠️ Acconti ${annoSucc} non aggiornati automaticamente: ${error.message}`, 'err', 5000);
+    return;
+  }
+
+  // Aggiorna cache locale
+  Object.assign(_anni[annoSucc], updates);
+
+  // FIX 3: Aggiornamento UI immediato senza ricaricare la pagina
+  renderArchivio();
+  renderSidebar();
+  renderCalendario();
+
+  toast(`🔄 Acconti ${annoSucc} ricalcolati automaticamente su base ${anno} (${fmt(baseImposta)})`, 'ok', 5000);
+
+  // Propaga ricorsivamente agli anni ancora successivi (es. 2025 → 2026)
+  // Solo se anche il successivo è in archivio, per non propagare oltre il necessario
+  if (_anni[annoSucc + 1]) {
+    await syncFutureYears(annoSucc);
+  }
+}
+
+// Variabile temporanea per il modal cambio stato
+let _statoRow = null;
+
+function cambiaStato(rowId, anno) {
+  const d = _anni[anno]; if (!d) return;
+  _statoRow = { id: rowId, anno };
+  // Pre-seleziona lo stato corrente nel dropdown
+  // "definitivo" non è più un'opzione → fallback a "bozza"
+  const sel = g('stato-select');
+  const statoCorrente = d.stato || 'bozza';
+  const opzioniValide = ['bozza', 'archiviato'];
+  if (sel) sel.value = opzioniValide.includes(statoCorrente) ? statoCorrente : 'bozza';
+  // Aggiorna la descrizione
+  const stati_label = { bozza:'📝 Bozza', definitivo:'✅ Definitivo', archiviato:'🗄️ Archiviato' };
+  g('stato-desc').textContent = `Anno ${anno} — stato attuale: ${stati_label[statoCorrente] || statoCorrente}`;
+  openModal('modal-stato');
+}
+
+async function confCambiaStato() {
+  if (!_statoRow) return;
+  const { id, anno } = _statoRow;
+  const nuovo = g('stato-select').value;
+  if (!nuovo) return;
+
+  setSync('busy', 'Aggiornamento...');
+  const { error } = await sb.from('anni_fiscali')
+    .update({ stato: nuovo, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', _user.id);
+
+  if (error) { setSync('err', 'Errore'); toast('Errore: ' + error.message, 'err'); return; }
+
+  _anni[anno].stato = nuovo;
+  _statoRow = null;
+  closeModal('modal-stato');
+  setSync('ok', 'Sincronizzato');
+  renderSidebar(); renderArchivio();
+  toast(`✅ Anno ${anno} → ${nuovo}`, 'ok');
+}
+
+function richiediDel(rowId, anno) {
+  _delId = rowId;
+  g('del-lbl').textContent = anno;
+  openModal('modal-del');
+}
+
+async function confDel() {
+  if (!_delId) return;
+  setSync('busy', 'Eliminazione...');
+  const { error } = await sb.from('anni_fiscali')
+    .delete()
+    .eq('id', _delId)
+    .eq('user_id', _user.id);  // sicurezza extra
+  if (error) { setSync('err','Errore'); toast('Errore: '+error.message,'err'); closeModal('modal-del'); return; }
+  // Rimuovi dalla cache locale
+  Object.keys(_anni).forEach(k => { if (_anni[k].id === _delId) delete _anni[k]; });
+  _delId = null;
+  closeModal('modal-del');
+  setSync('ok', 'Sincronizzato');
+  renderSidebar(); renderArchivio(); fillConfSelectors();
+  toast('Anno eliminato dal cloud', 'ok');
+}
+
+/* ============================================================
+   CONFRONTO ANNI
+   ============================================================ */
+function fillConfSelectors() {
+  const anni = Object.values(_anni).sort((a, b) => b.anno - a.anno);
+  const opt  = '<option value="">— seleziona —</option>' + anni.map(r => `<option value="${r.anno}">${r.anno}</option>`).join('');
+  const ca   = g('c-a'), cb = g('c-b');
+  if (!ca || !cb) return;
+  const prevA = ca.value, prevB = cb.value;
+  ca.innerHTML = opt; cb.innerHTML = opt;
+  // Ripristina selezione precedente se ancora valida
+  if (prevA && _anni[parseInt(prevA)]) ca.value = prevA;
+  if (prevB && _anni[parseInt(prevB)]) cb.value = prevB;
+  else if (anni.length >= 2) { ca.value = anni[1].anno; cb.value = anni[0].anno; }
+}
+
+function renderConfronto() {
+  const av  = g('c-a')?.value;
+  const bv  = g('c-b')?.value;
+  const el  = g('conf-cnt');
+  if (!av || !bv || av === bv) {
+    el.innerHTML = '<div class="al al-i"><span class="ai">ℹ️</span><span>Seleziona due anni diversi per il confronto.</span></div>';
+    return;
+  }
+  const A = _anni[parseInt(av)], B = _anni[parseInt(bv)];
+  if (!A || !B) {
+    el.innerHTML = '<div class="al al-w"><span class="ai">⚠️</span><span>Uno degli anni selezionati non è presente nell\'archivio cloud.</span></div>';
+    return;
+  }
+
+  function cRow(lbl, vA, vB) {
+    const d = vB - vA, s = d > 0 ? '+' : '';
+    const cls = d > 0 ? 'diff-up' : d < 0 ? 'diff-dn' : 'diff-eq';
+    const ic  = d > 0 ? '↑' : d < 0 ? '↓' : '=';
+    return `<div class="bdr">
+      <span class="bl">${lbl}</span>
+      <span class="br" style="gap:14px">
+        <span class="bf">${fmt(vA)}</span>
+        <span class="bv">${fmt(vB)}</span>
+        <span class="diff ${cls}" style="min-width:90px;justify-content:center">${ic}${s}${fmt(Math.abs(d))}</span>
+      </span>
+    </div>`;
+  }
+  function cRowP(lbl, vA, vB) {
+    const d = vB - vA, s = d > 0 ? '+' : '';
+    const cls = d > 0 ? 'diff-up' : d < 0 ? 'diff-dn' : 'diff-eq';
+    const ic  = d > 0 ? '↑' : d < 0 ? '↓' : '=';
+    return `<div class="bdr">
+      <span class="bl">${lbl}</span>
+      <span class="br" style="gap:14px">
+        <span class="bf">${fmtP(vA)}</span>
+        <span class="bv">${fmtP(vB)}</span>
+        <span class="diff ${cls}" style="min-width:90px;justify-content:center">${ic}${s}${fmtP(Math.abs(d))}</span>
+      </span>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="card" style="border-color:var(--ac2)">
+      <div class="card-t">
+        <span style="font-family:monospace;color:var(--t2)">${av}</span>
+        <span style="color:var(--t3);margin:0 4px">→</span>
+        <span style="font-family:monospace">${bv}</span>
+      </div>
+      <div class="bdt">
+        <div class="bdr" style="background:var(--s2)">
+          <span class="bl" style="font-weight:700">Voce</span>
+          <span class="br" style="gap:14px">
+            <span style="font-size:11px;color:var(--t3);font-weight:700;min-width:60px;text-align:right">Anno ${av}</span>
+            <span style="font-size:12px;font-weight:700;min-width:80px;text-align:right">Anno ${bv}</span>
+            <span style="font-size:11px;color:var(--t3);min-width:90px;text-align:center">Δ Variazione</span>
+          </span>
+        </div>
+        ${cRow('Fatturato imponibile',      A.fatturato,       B.fatturato)}
+        ${cRow('Reddito forfettario',        A.reddito_forf,    B.reddito_forf)}
+        ${cRow('Contributi INPS',            A.contributi_inps, B.contributi_inps)}
+        ${cRow('Reddito imponibile netto',   A.reddito_imp,     B.reddito_imp)}
+        ${cRow('Imposta sostitutiva',        A.imposta_sost,    B.imposta_sost)}
+        ${cRow('Totale oneri',               A.totale_oneri,    B.totale_oneri)}
+        ${cRow('Netto disponibile',          A.fatturato-A.totale_oneri, B.fatturato-B.totale_oneri)}
+        ${cRow('Acconto anno successivo',    A.acconto_tot,     B.acconto_tot)}
+      </div>
+      <div class="bdt" style="margin-top:9px">
+        <div class="bdr" style="background:var(--s2)">
+          <span class="bl" style="font-weight:700">Incidenza % sul fatturato</span>
+        </div>
+        ${cRowP('% imposta su fatturato',  (A.imposta_sost/A.fatturato)*100,                      (B.imposta_sost/B.fatturato)*100)}
+        ${cRowP('% INPS su fatturato',     (A.contributi_inps/A.fatturato)*100,                   (B.contributi_inps/B.fatturato)*100)}
+        ${cRowP('% totale oneri',          (A.totale_oneri/A.fatturato)*100,                      (B.totale_oneri/B.fatturato)*100)}
+        ${cRowP('% netto disponibile',     ((A.fatturato-A.totale_oneri)/A.fatturato)*100,         ((B.fatturato-B.totale_oneri)/B.fatturato)*100)}
+      </div>
+    </div>`;
+}
+
+/* ============================================================
+   SICUREZZA — sanitizzazione HTML & validazione
+   ============================================================ */
+function sanitizeHTML(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+function validateNum(val, min, max, label) {
+  const n = parseFloat(val);
+  if (isNaN(n))           { toast(`⚠️ ${label}: inserisci un numero valido`, 'err'); return null; }
+  if (n < min)            { toast(`⚠️ ${label}: valore minimo ${min}`, 'err'); return null; }
+  if (max !== null && n > max) { toast(`⚠️ ${label}: valore massimo ${max}`, 'err'); return null; }
+  return n;
+}
+
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+}
+
+/* ============================================================
+   EXPORT PDF — Fascicolo fiscale
+   ============================================================ */
+function exportPDF(annoArg) {
+  let d = null;
+  if (annoArg !== null && annoArg !== undefined) {
+    d = _anni[annoArg];
+    if (!d) { toast('Anno non trovato', 'err'); return; }
+  } else {
+    if (!_last) { toast('\u26a0\ufe0f Esegui prima il calcolo', 'err'); return; }
+    d = _last;
+  }
+
+  // Verifica libreria jsPDF
+  const jspdfLib = window.jspdf;
+  if (!jspdfLib || !jspdfLib.jsPDF) {
+    toast('\u274c Libreria PDF non caricata. Ricarica la pagina.', 'err'); return;
+  }
+  const { jsPDF } = jspdfLib;
+
+  // Sanitizzatore WinAnsi: rimuove caratteri fuori dal charset Helvetica
+  // Euro \u20AC -> EUR, em-dash \u2014 -> -, minus \u2212 -> -, smart quotes -> '
+  const ps = str => String(str)
+    .replace(/\u20AC/g, 'EUR')
+    .replace(/\u2014|\u2013/g, '-')
+    .replace(/\u2212/g, '-')
+    .replace(/\u00D7/g, 'x')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[^\x00-\xFF]/g, '?');
+
+  // Formattatore importi per PDF — solo ASCII, nessun toLocaleString
+  // toLocaleString('it-IT') in Chrome >= 106 usa \u202F come sep. migliaia
+  // quel char e' > \xFF e verrebbe convertito in '?' da ps()
+  const pf = n => {
+    const num  = Number(n) || 0;
+    const sign = num < 0 ? '-' : '';
+    const abs  = Math.abs(num).toFixed(2);
+    const [intPart, decPart] = abs.split('.');
+    const intFmt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return sign + 'EUR ' + intFmt + ',' + decPart;
+  };
+
+  let doc;
+  try { doc = new jsPDF({ unit:'mm', format:'a4' }); }
+  catch(e) { toast('\u274c Errore init PDF: ' + e.message, 'err'); return; }
+
+  const W = 210, M = 15, RW = W - M*2;
+
+  // Palette colori
+  const C = {
+    bg: [13,17,23], s1: [22,27,34], bd: [42,49,64],
+    ac: [88,166,255], gr: [63,185,80], re: [248,81,73],
+    pu: [188,140,255], t1: [230,237,243], t2: [139,148,158], t3: [110,118,129]
+  };
+
+  let y = 0;
+
+  // === SFONDO + HEADER ===
+  doc.setFillColor(...C.bg);  doc.rect(0, 0, W, 297, 'F');
+  doc.setFillColor(...C.s1);  doc.rect(0, 0, W, 42, 'F');
+  doc.setFillColor(...C.ac);  doc.rect(0, 40, W, 2, 'F');
+
+  doc.setFontSize(24); doc.setFont('helvetica','bold');
+  doc.setTextColor(...C.t1);
+  doc.text('ForfettarioApp', M, 17);
+
+  doc.setFontSize(9); doc.setFont('helvetica','normal');
+  doc.setTextColor(...C.t2);
+  doc.text('Fascicolo Fiscale - Regime Forfettario - Peppone Tek', M, 24);
+
+  const nomeCliente = ps(
+    (`${_profile?.nome || ''} ${_profile?.cognome || ''}`.trim()) || (_user?.email || '')
+  );
+  doc.setFontSize(9);
+  doc.text(nomeCliente, M, 32);
+  doc.text(`Generato il ${new Date().toLocaleDateString('it-IT')}`, W-M, 32, { align:'right' });
+
+  y = 52;
+
+  // === HELPER FUNZIONI ===
+  const sectionTitle = (title) => {
+    if (y > 260) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+    doc.setFillColor(...C.bd); doc.rect(M, y, RW, 7, 'F');
+    doc.setFontSize(8); doc.setFont('helvetica','bold');
+    doc.setTextColor(...C.t2);
+    doc.text(ps(title), M+3, y+5);
+    y += 11;
+  };
+
+  const dataRow = (lbl, val, highlight) => {
+    if (y > 270) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+    doc.setFillColor(...(highlight ? C.s1 : C.bg));
+    doc.rect(M, y, RW, 6, 'F');
+    doc.setFontSize(8.5); doc.setFont('helvetica','normal');
+    doc.setTextColor(...C.t2);
+    doc.text(ps(lbl), M+3, y+4.2);
+    doc.setFont('helvetica','bold'); doc.setTextColor(...C.t1);
+    doc.text(ps(val), W-M-3, y+4.2, { align:'right' });
+    doc.setDrawColor(...C.bd); doc.line(M, y+6, W-M, y+6);
+    y += 6.5;
+  };
+
+  const totRow = (lbl, val, color) => {
+    if (y > 270) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+    doc.setFillColor(...C.s1); doc.rect(M, y, RW, 9, 'F');
+    doc.setFontSize(10); doc.setFont('helvetica','bold');
+    doc.setTextColor(...C.t2); doc.text(ps(lbl), M+3, y+6);
+    doc.setTextColor(...(color || C.re)); doc.text(ps(val), W-M-3, y+6, { align:'right' });
+    y += 11;
+  };
+
+  // === SEZIONE 1: PARAMETRI ===
+  sectionTitle('PARAMETRI ANNO ' + d.anno);
+  dataRow('Anno fiscale',                  String(d.anno),                                     false);
+  dataRow('Codice ATECO',                  ps(d.ateco || '-'),                                 true);
+  dataRow('Gruppo / Attivita',             ps((d.gruppo_nome||'-').substring(0,50)),            false);
+  dataRow('Coefficiente di redditivita',   ((d.coefficiente||0)*100).toFixed(0)+'%',           true);
+  dataRow('Aliquota imposta sostitutiva',  ((d.aliquota||0)*100).toFixed(0)+'%',               false);
+  dataRow('Gestione previdenziale',        ps(d.inps_desc || '-'),                             true);
+  dataRow('Deduzione INPS dal reddito',    d.deduci_inps ? 'Si (art.1 c.64 L.190/2014)':'No', false);
+  y += 4;
+
+  // === SEZIONE 2: CALCOLO ===
+  sectionTitle('CALCOLO DETTAGLIATO');
+  dataRow('Fatturato imponibile',          pf(d.fatturato),                                    false);
+  dataRow('Reddito forfettario (x'+((d.coefficiente||0)*100).toFixed(0)+'%)',
+                                           pf(d.reddito_forf),                                 true);
+  dataRow('Contributi INPS stimati',       '- '+pf(d.contributi_inps),                        false);
+  dataRow('Reddito imponibile netto',      pf(d.reddito_imp),                                  true);
+  y += 2;
+  totRow('Imposta sostitutiva ('+((d.aliquota||0)*100).toFixed(0)+'%)', pf(d.imposta_sost), C.re);
+  totRow('Contributi INPS', pf(d.contributi_inps), C.pu);
+  y += 2;
+
+  // Box totale
+  if (y > 255) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+  doc.setFillColor(20,40,70); doc.rect(M, y, RW, 18, 'F');
+  doc.setDrawColor(...C.ac);  doc.rect(M, y, RW, 18);
+  doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.setTextColor(...C.t2);
+  doc.text('TOTALE ONERI FISCALI E PREVIDENZIALI', M+4, y+7);
+  doc.setFontSize(15); doc.setTextColor(...C.re);
+  doc.text(pf(d.totale_oneri), W-M-4, y+13, { align:'right' });
+  y += 24;
+
+  // === SEZIONE 3: DISTRIBUZIONE ===
+  sectionTitle('DISTRIBUZIONE DEL FATTURATO');
+  const netto = d.fatturato - d.totale_oneri;
+  dataRow('Netto disponibile (dopo tasse+INPS)',   pf(netto),                                  false);
+  dataRow('% Imposta su fatturato',                fmtP((d.imposta_sost/d.fatturato)*100),     true);
+  dataRow('% INPS su fatturato',                   fmtP((d.contributi_inps/d.fatturato)*100),  false);
+  dataRow('% Totale oneri su fatturato',           fmtP((d.totale_oneri/d.fatturato)*100),     true);
+  dataRow('% Netto disponibile',                   fmtP((netto/d.fatturato)*100),              false);
+  y += 4;
+
+  // === SEZIONE 4: SCADENZARIO ===
+  sectionTitle('SCADENZARIO E ACCONTI');
+  dataRow('Saldo imposta - 30 giu '+  (d.anno+1), pf(d.imposta_sost),  false);
+  if ((d.acconto_tot||0) > 0) {
+    if ((d.acconto_1||0) > 0) {
+      dataRow('1a rata acconto (40%) - 30 giu '+(d.anno+1), pf(d.acconto_1), true);
+      dataRow('2a rata acconto (60%) - 30 nov '+(d.anno+1), pf(d.acconto_2), false);
+    } else {
+      dataRow('Acconto unico - 30 nov '+(d.anno+1), pf(d.acconto_2), true);
+    }
+  } else {
+    dataRow('Acconti anno '+(d.anno+1), 'Nessuno (sotto soglia)', false);
+  }
+  dataRow('Totale acconto anno successivo', pf(d.acconto_tot||0), false);
+  y += 4;
+
+  // === SEZIONE 5: NOTE ===
+  if (d.note && ps(d.note).trim()) {
+    sectionTitle('NOTE');
+    doc.setFontSize(8.5); doc.setFont('helvetica','normal');
+    doc.setTextColor(...C.t2);
+    const lines = doc.splitTextToSize(ps(d.note), RW-6);
+    lines.forEach(line => {
+      if (y > 270) { doc.addPage(); doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F'); y = 20; }
+      doc.text(line, M+3, y+4); y += 5.5;
+    });
+    y += 4;
+  }
+
+  // === FOOTER ===
+  doc.setFillColor(...C.s1); doc.rect(0, 278, W, 19, 'F');
+  doc.setDrawColor(...C.bd); doc.line(0, 278, W, 278);
+  doc.setFontSize(7); doc.setFont('helvetica','normal');
+  doc.setTextColor(...C.t3);
+  doc.text(
+    'Strumento informativo - L.190/2014 e succ. modifiche - Aliquote INPS 2024 - Consulta sempre il tuo commercialista.',
+    W/2, 284, { align:'center' }
+  );
+  doc.text(
+    'ForfettarioApp - Peppone Tek - ' + new Date().toLocaleDateString('it-IT'),
+    W/2, 291, { align:'center' }
+  );
+
+  // === SALVA ===
+  try {
+    const cognome = ps((_profile?.cognome||'').toLowerCase()) || 'fascicolo';
+    doc.save(`ForfettarioApp_${d.anno}_${cognome}.pdf`);
+    toast('\u2705 PDF esportato correttamente', 'ok');
+  } catch(e) {
+    toast('\u274c Errore salvataggio PDF: ' + e.message, 'err');
+  }
+}
+
+/* ============================================================
+   GRAFICI — statistiche visive pluriennali
+   ============================================================ */
+let _charts = {};
+
+function renderGrafici() {
+  const anni = Object.values(_anni).sort((a,b) => a.anno - b.anno);
+  const el   = g('grafici-cnt');
+
+  if (anni.length < 1) {
+    el.innerHTML = `<div class="no-data-state">
+      <div class="nds-ico">📊</div>
+      <h3>Nessun dato disponibile</h3>
+      <p>Salva almeno un anno fiscale per vedere i grafici storici.</p>
+      <button class="btn" style="margin-top:14px" onclick="showView('calcolo')">Crea il primo calcolo</button>
+    </div>`;
+    return;
+  }
+
+  const labels   = anni.map(a => a.anno);
+  const fatturati= anni.map(a => +a.fatturato);
+  const imposte  = anni.map(a => +a.imposta_sost);
+  const inps     = anni.map(a => +a.contributi_inps);
+  const netti    = anni.map(a => +(a.fatturato - a.totale_oneri));
+  const oneri    = anni.map(a => +a.totale_oneri);
+
+  // Summary cards
+  const tot = anni.length;
+  const lastY = anni[tot-1];
+  const avgOneri = oneri.reduce((a,b)=>a+b,0)/tot;
+  const maxFatt  = Math.max(...fatturati);
+
+  // Destroy vecchi chart se esistono (previene doppio canvas)
+  Object.values(_charts).forEach(c => { try { c.destroy(); } catch(e){} });
+  _charts = {};
+
+  el.innerHTML = `
+    <div class="sg sg4" style="margin-bottom:14px">
+      <div class="sc ac"><div class="sl">Anni in archivio</div><div class="sv">${tot}</div></div>
+      <div class="sc gc"><div class="sl">Netto anno ${lastY.anno}</div><div class="sv">${fmt(lastY.fatturato-lastY.totale_oneri)}</div></div>
+      <div class="sc rc"><div class="sl">Oneri anno ${lastY.anno}</div><div class="sv">${fmt(lastY.totale_oneri)}</div></div>
+      <div class="sc yc"><div class="sl">Media oneri/anno</div><div class="sv">${fmt(avgOneri)}</div></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-t">📊 Andamento fatturato e netto disponibile (€)</div>
+      <div class="chart-wrap"><canvas id="ch-fatt"></canvas></div>
+    </div>
+
+    <div class="g2">
+      <div class="chart-card">
+        <div class="chart-t">🧮 Composizione oneri fiscali (€)</div>
+        <div class="chart-wrap"><canvas id="ch-oneri"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-t">📉 Incidenza % sul fatturato</div>
+        <div class="chart-wrap"><canvas id="ch-pct"></canvas></div>
+      </div>
+    </div>
+
+    ${tot > 1 ? `<div class="chart-card">
+      <div class="chart-t">📈 Variazione anno su anno (€)</div>
+      <div class="chart-wrap"><canvas id="ch-var"></canvas></div>
+    </div>` : ''}
+  `;
+
+  const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend:{ labels:{ color:'#8b949e', font:{size:11} } } },
+    scales: {
+      x: { ticks:{ color:'#8b949e', font:{size:10} }, grid:{ color:'#2a3140' } },
+      y: { ticks:{ color:'#8b949e', font:{size:10}, callback: v => '€'+Number(v).toLocaleString('it-IT',{maximumFractionDigits:0}) }, grid:{ color:'#2a3140' } }
+    }
+  };
+
+  // Chart 1: Fatturato vs Netto
+  _charts.fatt = new Chart(g('ch-fatt'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'Fatturato', data: fatturati, backgroundColor:'rgba(88,166,255,0.5)', borderColor:'#58a6ff', borderWidth:1.5, borderRadius:4 },
+        { label:'Netto disponibile', data: netti, backgroundColor:'rgba(63,185,80,0.5)', borderColor:'#3fb950', borderWidth:1.5, borderRadius:4 }
+      ]
+    },
+    options: { ...chartDefaults }
+  });
+
+  // Chart 2: Composizione oneri
+  _charts.oneri = new Chart(g('ch-oneri'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'Imposta sost.', data: imposte, backgroundColor:'rgba(248,81,73,0.6)', borderColor:'#f85149', borderWidth:1.5, borderRadius:4, stack:'oneri' },
+        { label:'INPS', data: inps, backgroundColor:'rgba(188,140,255,0.6)', borderColor:'#bc8cff', borderWidth:1.5, borderRadius:4, stack:'oneri' }
+      ]
+    },
+    options: { ...chartDefaults, scales: { ...chartDefaults.scales, x:{ ...chartDefaults.scales.x, stacked:true }, y:{ ...chartDefaults.scales.y, stacked:true } } }
+  });
+
+  // Chart 3: % incidenza
+  const pctOneri = anni.map(a => +((a.totale_oneri/a.fatturato)*100).toFixed(1));
+  const pctNetti = anni.map(a => +(((a.fatturato-a.totale_oneri)/a.fatturato)*100).toFixed(1));
+  _charts.pct = new Chart(g('ch-pct'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label:'% Oneri', data: pctOneri, borderColor:'#f85149', backgroundColor:'rgba(248,81,73,0.1)', tension:0.35, fill:true, pointRadius:4 },
+        { label:'% Netto', data: pctNetti, borderColor:'#3fb950', backgroundColor:'rgba(63,185,80,0.1)', tension:0.35, fill:true, pointRadius:4 }
+      ]
+    },
+    options: { ...chartDefaults, scales: {
+      x: chartDefaults.scales.x,
+      y: { ticks:{ color:'#8b949e', font:{size:10}, callback: v => v+'%' }, grid:{ color:'#2a3140' } }
+    }}
+  });
+
+  // Chart 4: variazione YoY (solo se >1 anno)
+  if (tot > 1) {
+    const varFatt = anni.slice(1).map((a,i) => +(a.fatturato - anni[i].fatturato));
+    const varOneri= anni.slice(1).map((a,i) => +(a.totale_oneri - anni[i].totale_oneri));
+    const labVar  = anni.slice(1).map(a => `${a.anno-1}→${a.anno}`);
+    _charts.var = new Chart(g('ch-var'), {
+      type: 'bar',
+      data: {
+        labels: labVar,
+        datasets: [
+          { label:'Δ Fatturato', data: varFatt, backgroundColor: varFatt.map(v=>v>=0?'rgba(63,185,80,.5)':'rgba(248,81,73,.5)'), borderColor: varFatt.map(v=>v>=0?'#3fb950':'#f85149'), borderWidth:1.5, borderRadius:4 },
+          { label:'Δ Oneri', data: varOneri, backgroundColor: varOneri.map(v=>v>=0?'rgba(248,81,73,.4)':'rgba(63,185,80,.4)'), borderColor: varOneri.map(v=>v>=0?'#f85149':'#3fb950'), borderWidth:1.5, borderRadius:4 }
+        ]
+      },
+      options: { ...chartDefaults }
+    });
+  }
+}
+
+/* ============================================================
+   CALENDARIO SCADENZE FISCALI
+   ============================================================ */
+function renderCalendario() {
+  // Solo anni NON archiviati + anno corrente
+  const annoNowCal = new Date().getFullYear();
+  const anni = Object.values(_anni)
+    .filter(a => a.stato !== 'archiviato' || a.anno >= annoNowCal)
+    .sort((a,b) => b.anno - a.anno);
+  const el   = g('cal-cnt');
+
+  if (!anni.length) {
+    el.innerHTML = `<div class="no-data-state">
+      <div class="nds-ico">📅</div>
+      <h3>Nessuna scadenza</h3>
+      <p>Salva almeno un anno fiscale per vedere le scadenze fiscali.</p>
+      <button class="btn" style="margin-top:14px" onclick="showView('calcolo')">Crea il primo calcolo</button>
+    </div>`;
+    return;
+  }
+
+  // Costruisce lista scadenze
+  const scadenze = [];
+  anni.forEach(d => {
+    const y = d.anno;
+    // Saldo imposta sostitutiva
+    scadenze.push({ mese:6, anno:y+1, tipo:'imposta', emoji:'💰', titolo:`Saldo imposta sost. ${y}`, importo:d.imposta_sost, desc:`F24 · Cod.1792 · Entro 30 giu ${y+1}` });
+    // Acconti
+    if (d.acconto_tot > 0) {
+      if (d.acconto_1 > 0) {
+        scadenze.push({ mese:6, anno:y+1, tipo:'acconto', emoji:'📋', titolo:`Acconto 1ª rata ${y+1} (40%)`, importo:d.acconto_1, desc:`F24 · Cod.1791 · Entro 30 giu ${y+1}` });
+        scadenze.push({ mese:11, anno:y+1, tipo:'acconto', emoji:'📋', titolo:`Acconto 2ª rata ${y+1} (60%)`, importo:d.acconto_2, desc:`F24 · Cod.1791 · Entro 30 nov ${y+1}` });
+      } else {
+        scadenze.push({ mese:11, anno:y+1, tipo:'acconto', emoji:'📋', titolo:`Acconto unico ${y+1}`, importo:d.acconto_2, desc:`F24 · Cod.1791 · Entro 30 nov ${y+1}` });
+      }
+    }
+    // INPS trimestrali
+    if (d.inps_tipo === 'art' || d.inps_tipo === 'com') {
+      const rata = d.contributi_inps / 4;
+      [[5,'16 mag'],[8,'16 ago'],[11,'16 nov'],[2,'16 feb']].forEach(([m, gg]) => {
+        const aR = m < 5 ? y+2 : y+1;
+        scadenze.push({ mese:m, anno:aR, tipo:'inps', emoji:'🏛️', titolo:`INPS ${d.inps_tipo==='art'?'Artigiani':'Commercianti'} ${y} — rata ${gg}`, importo:rata, desc:`~${fmt(rata)} · F24 trimestrale` });
+      });
+    } else if (d.inps_tipo === 'gs' || d.inps_tipo === 'gs-pen') {
+      scadenze.push({ mese:6, anno:y+1, tipo:'inps', emoji:'🏛️', titolo:`INPS Gest. Separata ${y}`, importo:d.contributi_inps, desc:`F24 · saldo contestuale alla dichiarazione` });
+    }
+  });
+
+  scadenze.sort((a,b) => (a.anno*12+a.mese) - (b.anno*12+b.mese));
+
+  // Raggruppa per anno-mese
+  const gruppi = {};
+  scadenze.forEach(s => {
+    const k = `${s.anno}-${s.mese}`;
+    if (!gruppi[k]) gruppi[k] = { anno:s.anno, mese:s.mese, items:[] };
+    gruppi[k].items.push(s);
+  });
+
+  const mesiNomi = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const coloreTipo = { imposta:'var(--re)', acconto:'var(--ac)', inps:'var(--pu)' };
+
+  const oggi = new Date();
+  const oAnno = oggi.getFullYear(), oMese = oggi.getMonth()+1;
+
+  const sortedKeys = Object.keys(gruppi).sort();
+
+  let html = `
+    <div class="card" style="margin-bottom:12px">
+      <div class="cal-legend">
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--re)"></span>Saldo imposta</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--ac)"></span>Acconti</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--pu)"></span>INPS</span>
+      </div>
+      <div class="ib">📌 Scadenze generate da <strong>${anni.length} anno/i</strong> salvati in archivio. Per gli anni futuri le cifre sono stime basate sui dati storici. Verifica sempre con il tuo commercialista.</div>
+    </div>
+    <div class="cal-grid">`;
+
+  sortedKeys.forEach(k => {
+    const grp = gruppi[k];
+    const isPast    = grp.anno < oAnno || (grp.anno === oAnno && grp.mese < oMese);
+    const isCurrent = grp.anno === oAnno && grp.mese === oMese;
+    const borderStyle = isCurrent ? 'border:2px solid var(--ac)' : '';
+    html += `<div class="cal-month has-events" style="${isPast?'opacity:.55':''};${borderStyle}">
+      <div class="cal-month-h">${isCurrent?'📍 ':''}${mesiNomi[grp.mese]} ${grp.anno}${isPast?' · ✓':''}</div>`;
+    grp.items.forEach(s => {
+      html += `<div class="cal-event">
+        <div class="ce-date">${s.emoji} ${s.titolo}</div>
+        <div class="ce-amt" style="color:${coloreTipo[s.tipo]}">${fmt(s.importo)}</div>
+        <div class="ce-desc">${sanitizeHTML(s.desc)}</div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+/* ============================================================
+   PANNELLO ADMIN — POTENZIATO
+   ============================================================ */
+async function loadAdmin() {
+  if (_profile?.ruolo !== 'admin') {
+    g('view-admin').innerHTML = '<div class="al al-d" style="margin:20px"><span class="ai">🚫</span><span>Accesso riservato agli amministratori.</span></div>';
+    return;
+  }
+  g('adm-tbl').innerHTML = '<div class="loading"><div class="spinner"></div><span>Caricamento...</span></div>';
+
+  // ⚠️  Admin vede SOLO dati anagrafici — nessun dato fiscale
+  const { data: profiles, error: pe } = await sb
+    .from('profiles')
+    .select('id, nome, cognome, email, ruolo, ateco, created_at')
+    .order('created_at', { ascending: false });
+  if (pe) { g('adm-tbl').innerHTML = `<div class="al al-d"><span>Errore: ${sanitizeHTML(pe.message)}</span></div>`; return; }
+
+  _admData = profiles || [];
+
+  const totU = _admData.length;
+  const cliU = _admData.filter(p => p.ruolo === 'cliente').length;
+
+  g('adm-stats').innerHTML = `
+    <div class="sc ac"><div class="sl">Utenti totali</div><div class="sv">${totU}</div></div>
+    <div class="sc gc"><div class="sl">Clienti</div><div class="sv">${cliU}</div></div>
+    <div class="sc yc"><div class="sl">Amministratori</div><div class="sv">${totU - cliU}</div></div>
+    <div class="sc"><div class="sl">Peppone Tek</div><div class="sv" style="font-size:11px;color:var(--ac)">ForfettarioApp</div></div>`;
+
+  renderAdminUsers(_admData);
+}
+
+let _admAnniAll = []; // mantenuto per compatibilità interna
+
+function renderAdminUsers(profiles) {
+  if (!profiles.length) {
+    g('adm-tbl').innerHTML = '<div style="text-align:center;padding:24px;color:var(--t2)">Nessun utente trovato.</div>';
+    return;
+  }
+  g('adm-tbl').innerHTML = profiles.map(p => {
+    const isc = new Date(p.created_at).toLocaleDateString('it-IT');
+    const roleClass = p.ruolo === 'admin' ? 'rb-admin' : 'rb-cliente';
+    const iniziale  = ((p.nome || p.email || '?').charAt(0)).toUpperCase();
+    return `<div class="adm-cl-card">
+      <div class="adm-cl-av">${iniziale}</div>
+      <div class="adm-cl-info">
+        <div class="adm-cl-name">
+          ${sanitizeHTML(p.nome||'—')} ${sanitizeHTML(p.cognome||'')}
+          <span class="rbadge ${roleClass}" style="margin-left:6px">${p.ruolo}</span>
+        </div>
+        <div class="adm-cl-meta">
+          📧 ${sanitizeHTML(p.email)}<br>
+          📋 ATECO: <strong>${sanitizeHTML(p.ateco||'—')}</strong> · Iscritto: ${isc}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterAdmin(query) {
+  if (!_admData.length) return;
+  const q = query.trim().toLowerCase();
+  if (!q) { renderAdminUsers(_admData); return; }
+  const filtered = _admData.filter(p =>
+    (p.nome||'').toLowerCase().includes(q) ||
+    (p.cognome||'').toLowerCase().includes(q) ||
+    (p.email||'').toLowerCase().includes(q) ||
+    (p.ateco||'').toLowerCase().includes(q)
+  );
+  renderAdminUsers(filtered);
+}
+
+/* ============================================================
+   EXPORT / IMPORT
+   ============================================================ */
+function exportCSV() {
+  if (!_admData.length) { toast('Carica prima il pannello admin', 'err'); return; }
+  // Esporta solo dati anagrafici (nessun dato fiscale)
+  const header = 'Nome,Cognome,Email,Ruolo,ATECO,Iscritto il\n';
+  const rows   = _admData.map(p =>
+    `"${(p.nome||'').replace(/"/g,'""')}","${(p.cognome||'').replace(/"/g,'""')}","${p.email}","${p.ruolo}","${p.ateco||''}","${new Date(p.created_at).toLocaleDateString('it-IT')}"`
+  ).join('\n');
+  const blob = new Blob(['\ufeff' + header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `anagrafica_peppone_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('✅ CSV anagrafica esportato', 'ok');
+}
+
+function exportJSON() {
+  const data = Object.values(_anni);
+  if (!data.length) { toast('Nessun dato da esportare', 'err'); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `forfettario_backup_${new Date().getFullYear()}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('✅ Backup JSON esportato', 'ok');
+}
+
+async function importJSON(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    try {
+      const raw  = JSON.parse(ev.target.result);
+      const arr  = Array.isArray(raw) ? raw : Object.values(raw);
+      if (!arr.length) { toast('File vuoto o non valido', 'err'); return; }
+      if (!confirm(`Importare ${arr.length} anni dal file?\nI dati esistenti per gli stessi anni verranno sovrascritti.`)) return;
+      setSync('busy', 'Importazione...');
+      let ok = 0, err = 0;
+      for (const r of arr) {
+        const record = { ...r, user_id: _user.id, updated_at: new Date().toISOString() };
+        delete record.id; // Lascia generare un nuovo UUID
+        const { error } = await sb.from('anni_fiscali').upsert(record, { onConflict: 'user_id,anno' });
+        if (error) err++; else ok++;
+      }
+      await loadAnni();
+      setSync('ok', 'Sincronizzato');
+      toast(`✅ Importati ${ok} anni${err ? ` · ${err} errori` : ''}`, ok > 0 ? 'ok' : 'err');
+    } catch (ex) { toast('File non valido: ' + ex.message, 'err'); }
+  };
+  reader.readAsText(file);
+  e.target.value = ''; // Reset input per permettere re-import dello stesso file
+}
+
+
+/* ============================================================
+   STAMPA SINGOLO ANNO
+   ============================================================ */
+function printAnno(annoArg) {
+  const body = document.body;
+
+  if (annoArg === null || annoArg === undefined) {
+    // ── Stampa calcolo corrente (da view calcolo) ──
+    body.classList.add('print-calcolo');
+    window.print();
+    setTimeout(() => body.classList.remove('print-calcolo'), 800);
+
+  } else {
+    // ── Stampa singolo anno dall'archivio ──
+    // 1. Assicura che l'ayc-body sia aperto e visibile
+    const ayc = g('ayc-b-' + annoArg)?.closest('.ayc');
+    if (!ayc) { toast('Anno non trovato nell\u2019archivio', 'err'); return; }
+
+    // 2. Apri il body se chiuso
+    const aycBody = g('ayc-b-' + annoArg);
+    const wasOpen = aycBody?.classList.contains('open');
+    if (aycBody) aycBody.classList.add('open');
+
+    // 3. Marca il target e avvia stampa
+    ayc.classList.add('print-target');
+    body.classList.add('print-archivio');
+
+    window.print();
+
+    // 4. Pulizia dopo stampa
+    setTimeout(() => {
+      body.classList.remove('print-archivio');
+      ayc.classList.remove('print-target');
+      if (!wasOpen && aycBody) aycBody.classList.remove('open');
+    }, 800);
+  }
+}
+
+/* ============================================================
+   AGGIORNA IMPONIBILE BOZZA
+   ============================================================ */
+function apriAggiornaBozza(rowId, anno) {
+  _bozzaRow = { id: rowId, anno };
+  const d = _anni[anno];
+  g('bozza-desc').textContent = `Anno ${anno} — Fatturato attuale: ${fmt(d?.fatturato||0)}. Inserisci il nuovo imponibile per ricalcolare.`;
+  g('bozza-fatt').value = d?.fatturato || '';
+  g('bozza-note').value = d?.note || '';
+  openModal('modal-bozza');
+}
+
+async function confAggiornaBozza() {
+  if (!_bozzaRow) return;
+  const { id, anno } = _bozzaRow;
+  const d = _anni[anno];
+  if (!d) { toast('Anno non trovato', 'err'); return; }
+
+  const newFatt = parseFloat(g('bozza-fatt').value);
+  if (!newFatt || newFatt <= 0) { toast('⚠️ Inserisci un fatturato valido', 'err'); return; }
+  if (newFatt > 9999999) { toast('⚠️ Fatturato troppo elevato', 'err'); return; }
+  const newNote = g('bozza-note').value.trim();
+
+  // Ricalcola tutti i valori
+  const gi    = d.gruppo_idx;
+  const gr    = GRUPPI[gi];
+  const coeff = gr.coeff;
+  const aliq  = d.aliquota;
+  const tipo  = d.inps_tipo;
+  const mese  = d.mese_rif || 12;
+
+  const r_forf = newFatt * coeff;
+  let c_inps = 0;
+  if (tipo === 'gs' || tipo === 'gs-pen') {
+    c_inps = r_forf * INPS_INFO[tipo].a;
+  } else if (tipo === 'art' || tipo === 'com') {
+    const info = INPS_INFO[tipo];
+    c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+  } else if (tipo === 'cassa') {
+    c_inps = r_forf * ((d.cassa_pct || 14.5) / 100);
+  }
+
+  const r_imp     = d.deduci_inps ? Math.max(0, r_forf - c_inps) : r_forf;
+  const imp_sost  = r_imp * aliq;
+  const tot_oneri = imp_sost + c_inps;
+
+  let acc1 = 0, acc2 = 0, acc_tot = 0;
+  if (imp_sost > S_ACC) {
+    acc_tot = imp_sost;
+    if (acc_tot > S_DUE) { acc1 = acc_tot * .4; acc2 = acc_tot * .6; }
+    else { acc2 = acc_tot; }
+  }
+
+  const updates = {
+    fatturato:       newFatt,
+    reddito_forf:    r_forf,
+    contributi_inps: c_inps,
+    reddito_imp:     r_imp,
+    imposta_sost:    imp_sost,
+    totale_oneri:    tot_oneri,
+    acconto_1:       acc1,
+    acconto_2:       acc2,
+    acconto_tot:     acc_tot,
+    note:            newNote || d.note,
+    updated_at:      new Date().toISOString()
+  };
+
+  setSync('busy', 'Aggiornamento...');
+  const { error } = await sb.from('anni_fiscali')
+    .update(updates).eq('id', id).eq('user_id', _user.id);
+
+  if (error) { setSync('err', 'Errore'); toast('❌ Errore: ' + error.message, 'err'); return; }
+
+  // Aggiorna cache locale
+  Object.assign(_anni[anno], updates);
+  closeModal('modal-bozza');
+  _bozzaRow = null;
+  setSync('ok', 'Sincronizzato');
+  renderSidebar(); renderArchivio();
+  toast(`✅ Anno ${anno} aggiornato con fatturato ${fmt(newFatt)}`, 'ok');
+
+  // FIX 3: CASCADE UPDATE — aggiorna automaticamente gli acconti dell'anno successivo
+  await syncFutureYears(anno);
+}
+
+/* ============================================================
+   F24 ANNI PRECEDENTI — view dedicata anni archiviati
+   ============================================================ */
+function renderF24Precedenti() {
+  const el = g('f24-cnt');
+  const archiviati = Object.values(_anni)
+    .filter(a => a.stato === 'archiviato')
+    .sort((a, b) => b.anno - a.anno);
+
+  if (!archiviati.length) {
+    el.innerHTML = `<div class="no-data-state">
+      <div class="nds-ico">📑</div>
+      <h3>Nessun anno archiviato</h3>
+      <p>Gli anni in stato "Archiviato" compariranno qui separati per un confronto immediato degli F24.</p>
+      <button class="btn" style="margin-top:14px" onclick="showView('archivio')">Vai all'Archivio</button>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="al al-i" style="margin-bottom:14px">
+      <span class="ai">📋</span>
+      <span>Dati F24 degli anni archiviati. Per ogni anno: saldo imposta sostitutiva + acconti + INPS. Usa <strong>Esporta PDF</strong> per stamparli singolarmente.</span>
+    </div>
+    ${archiviati.map((d, idx) => {
+      const prev = archiviati[idx + 1]; // anno precedente in lista
+      let diffTag = '';
+      if (prev) {
+        const diffOneri = d.totale_oneri - prev.totale_oneri;
+        const pct = prev.totale_oneri > 0 ? ((diffOneri/prev.totale_oneri)*100).toFixed(1) : 0;
+        const cls = diffOneri > 0 ? 'diff-up' : diffOneri < 0 ? 'diff-dn' : 'diff-eq';
+        const ic  = diffOneri > 0 ? '↑' : diffOneri < 0 ? '↓' : '=';
+        diffTag = `<span class="diff ${cls}" title="vs ${prev.anno}">${ic}${pct}%</span>`;
+      }
+      return `<div class="f24-card">
+        <div class="f24-card-h">
+          <div>
+            <div class="f24y">📑 Anno ${d.anno}</div>
+            <div style="font-size:11px;color:var(--t2);margin-top:2px">${d.ateco||'—'} · ${d.gruppo_nome||'—'}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${diffTag}
+            <span class="rbadge rb-archiviato">archiviato</span>
+            <button class="btn btn-sm btn-ol no-print" onclick="exportPDF(${d.anno})">📄 PDF</button>
+          </div>
+        </div>
+        <div class="f24-card-body">
+          <div class="bdt">
+            ${row('var(--ac)','Fatturato imponibile',fmt(d.fatturato))}
+            ${row('var(--gr)','Reddito forfettario',fmt(d.reddito_forf))}
+            ${row('var(--pu)','Contributi INPS ('+d.inps_desc+')',fmt(d.contributi_inps))}
+            ${row('var(--ye)','Reddito imponibile netto',fmt(d.reddito_imp))}
+            <div class="bdr tot">
+              <span class="bl" style="color:var(--t1)"><span class="dot" style="background:var(--re)"></span>Imposta sostitutiva (${(d.aliquota*100).toFixed(0)}%)</span>
+              <span class="bv">${fmt(d.imposta_sost)}</span>
+            </div>
+          </div>
+          <div class="sg sg4" style="margin-top:12px">
+            <div class="sc rc"><div class="sl">🧾 F24 Saldo</div><div class="sv">${fmt(d.imposta_sost)}</div><div class="ss">Entro 30 giu ${d.anno+1}</div></div>
+            ${d.acconto_1 > 0 ? `
+            <div class="sc yc"><div class="sl">📋 Acconto 1ª rata</div><div class="sv">${fmt(d.acconto_1)}</div><div class="ss">30 giu ${d.anno+1} (40%)</div></div>
+            <div class="sc yc"><div class="sl">📋 Acconto 2ª rata</div><div class="sv">${fmt(d.acconto_2)}</div><div class="ss">30 nov ${d.anno+1} (60%)</div></div>
+            ` : d.acconto_2 > 0 ? `
+            <div class="sc yc"><div class="sl">📋 Acconto unico</div><div class="sv">${fmt(d.acconto_2)}</div><div class="ss">30 nov ${d.anno+1}</div></div>
+            ` : '<div class="sc"><div class="sl">📋 Acconti</div><div class="sv">—</div><div class="ss">Nessuno</div></div>'}
+            <div class="sc gc"><div class="sl">💵 Netto disp.</div><div class="sv">${fmt(d.fatturato-d.totale_oneri)}</div><div class="ss">${fmtP(((d.fatturato-d.totale_oneri)/d.fatturato)*100)}</div></div>
+          </div>
+          <div style="margin-top:10px;padding:10px 12px;background:var(--re-d);border:1px solid var(--re-b);border-radius:8px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+            <span style="color:var(--t2)">💰 Totale oneri ${d.anno}</span>
+            <span style="color:var(--re);font-family:monospace">${fmt(d.totale_oneri)}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+
+
+/* ============================================================
+   WIZARD — INSERIMENTO ANNI PRECEDENTI (primo accesso)
+   ============================================================ */
+
+let _wiz = {
+  steps: [],       // array di anni da inserire, es [2024, 2023]
+  stepIdx: 0,      // indice corrente
+  skipped: [],     // anni saltati dall'utente
+  annoTarget: null // anno che l'utente vuole davvero salvare
+};
+
+function wizOpen(annoTarget) {
+  const annoNow = new Date().getFullYear();
+  _wiz.annoTarget = annoTarget;
+  _wiz.stepIdx    = 0;
+  _wiz.skipped    = [];
+
+  // Calcola gli anni mancanti precedenti all'annoTarget
+  // Usa i 2 anni immediatamente precedenti non ancora salvati
+  const stepsArr = [];
+  for (let a = annoTarget - 1; a >= annoTarget - 4; a--) {
+    if (a < 2015) break;
+    if (!_anni[a]) stepsArr.push(a); // solo se non già salvato
+  }
+  _wiz.steps = stepsArr; // ordine: anno più recente prima
+
+  if (!_wiz.steps.length) {
+    // Nessun anno da inserire (es: target è 2020 e non si va oltre)
+    wizComplete();
+    return;
+  }
+
+  // Barra step
+  const bar = g('wiz-steps-bar');
+  bar.innerHTML = _wiz.steps.map((a, i) =>
+    `<div class="wiz-step-dot ${i === 0 ? 'active' : ''}" id="wiz-dot-${i}"></div>`
+  ).join('');
+
+  g('wiz-overlay').classList.add('open');
+  wizRenderStep();
+}
+
+function wizRenderStep() {
+  const idx  = _wiz.stepIdx;
+  const anno = _wiz.steps[idx];
+  const tot  = _wiz.steps.length;
+
+  // Aggiorna barra step
+  _wiz.steps.forEach((_, i) => {
+    const dot = g('wiz-dot-' + i);
+    if (!dot) return;
+    dot.className = 'wiz-step-dot ' +
+      (i < idx ? 'done' : i === idx ? 'active' : '');
+  });
+
+  // Testi
+  g('wiz-year-label').textContent = 'Anno ' + anno;
+  g('wiz-year-lbl2').textContent  = anno;
+  g('wiz-info').innerHTML =
+    `Passo <strong>${idx + 1} di ${tot}</strong> — ` +
+    `Anno <strong>${anno}</strong>. Inserisci il fatturato imponibile. ` +
+    `Gruppo, ATECO, aliquota e INPS vengono ereditati dal calcolo corrente. ` +
+    `L'anno sarà salvato come <strong style="color:var(--gr)">Definitivo</strong>.`;
+
+  // Reset input
+  g('wiz-fatt').value          = '';
+  g('wiz-note').value          = '';
+  g('wiz-inps-versata').value  = '';
+  if (g('wiz-primo-anno')) g('wiz-primo-anno').checked = false;
+  if (g('wiz-pdf'))        g('wiz-pdf').value           = '';
+  if (g('wiz-pdf-lbl'))    g('wiz-pdf-lbl').textContent = 'Nessun file scelto';
+  g('wiz-preview').style.display = 'none';
+  g('wiz-btn-next').textContent  = idx < tot - 1 ? 'Salva e continua →' : 'Salva e chiudi ✓';
+  g('wiz-fatt').focus();
+}
+
+/* Parsing AI del PDF nel Wizard */
+async function wizParsePDF(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const lbl     = g('wiz-pdf-lbl');
+  const spinner = g('wiz-ai-spinner');
+  lbl.textContent = file.name;
+  spinner.style.display = 'inline-block';
+
+  try {
+    const result = await parseTaxPDF(file);
+    spinner.style.display = 'none';
+
+    // Compila i campi in base al tipo documento
+    if (result.fatturato_lm2 > 0) {
+      g('wiz-fatt').value = result.fatturato_lm2;
+      wizPreview();
+    }
+    if (result.inps_versata_f24 > 0) {
+      g('wiz-inps-versata').value = result.inps_versata_f24;
+    } else if (result.inps_dedotta_lm7 > 0) {
+      g('wiz-inps-versata').value = result.inps_dedotta_lm7;
+    }
+    const anno = _wiz.steps[_wiz.stepIdx];
+    const noteAI = `AI: ${result.tipo||'doc'} anno ${result.anno||anno}` + (result.note ? ` — ${result.note}` : '');
+    g('wiz-note').value = noteAI;
+    toast(`✅ AI ha compilato i campi per l'anno ${result.anno || anno}`, 'ok');
+  } catch(err) {
+    spinner.style.display = 'none';
+    toast('❌ ' + err.message, 'err', 5000);
+  }
+}
+
+function wizPreview() {
+  const fatt = parseFloat(g('wiz-fatt').value) || 0;
+  if (fatt <= 0) { g('wiz-preview').style.display = 'none'; return; }
+
+  // Eredita i parametri dal calcolo corrente (_last)
+  const gr     = GRUPPI[_last.gruppo_idx];
+  const coeff  = gr.coeff;
+  const aliq   = _last.aliquota;
+  const tipo   = _last.inps_tipo;
+  const deduci = _last.deduci_inps;
+
+  const r_forf = fatt * coeff;
+  let c_inps = 0;
+  if (tipo === 'gs' || tipo === 'gs-pen') {
+    c_inps = r_forf * INPS_INFO[tipo].a;
+  } else if (tipo === 'art' || tipo === 'com') {
+    const info = INPS_INFO[tipo];
+    c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+  } else if (tipo === 'cassa') {
+    const pct = (parseFloat(g('f-cassa')?.value) || 14.5) / 100;
+    c_inps = r_forf * pct;
+  }
+  const r_imp    = deduci ? Math.max(0, r_forf - c_inps) : r_forf;
+  const imp_sost = r_imp * aliq;
+  const tot_on   = imp_sost + c_inps;
+  const netto    = fatt - tot_on;
+
+  g('wp-redd').textContent  = fmt(r_forf);
+  g('wp-inps').textContent  = fmt(c_inps);
+  g('wp-imp').textContent   = fmt(imp_sost);
+  g('wp-netto').textContent = fmt(netto);
+  g('wp-tot').textContent   = fmt(tot_on);
+  g('wiz-preview').style.display = 'block';
+}
+
+async function wizNext() {
+  const primoAnno = g('wiz-primo-anno')?.checked || false;
+  const fatt = parseFloat(g('wiz-fatt').value);
+
+  // Se primo anno: non serve il fatturato (saltiamo con is_primo_anno=true, acconti=0)
+  if (!primoAnno) {
+    if (!fatt || fatt <= 0)  { toast('Inserisci il fatturato per questo anno', 'err'); return; }
+    if (fatt > 9999999)      { toast('Fatturato non valido', 'err'); return; }
+  }
+
+  const anno             = _wiz.steps[_wiz.stepIdx];
+  const note             = g('wiz-note').value.trim();
+  const inpsVersataWiz   = parseFloat(g('wiz-inps-versata')?.value) || 0;
+
+  // Ricalcola con parametri ereditati
+  const gr    = GRUPPI[_last.gruppo_idx];
+  const coeff = gr.coeff;
+  const aliq  = _last.aliquota;
+  const tipo  = _last.inps_tipo;
+  const deduci= _last.deduci_inps;
+
+  const fattCalc = fatt || 0;
+  const r_forf = fattCalc * coeff;
+  let c_inps = 0, inps_desc = _last.inps_desc;
+  if (tipo === 'gs' || tipo === 'gs-pen') {
+    c_inps = r_forf * INPS_INFO[tipo].a;
+  } else if (tipo === 'art' || tipo === 'com') {
+    const info = INPS_INFO[tipo];
+    c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+  } else if (tipo === 'cassa') {
+    const pct = (parseFloat(g('f-cassa')?.value) || 14.5) / 100;
+    c_inps = r_forf * pct;
+  }
+
+  // Principio di cassa: usa INPS versata se disponibile
+  const inpsPerDed = (deduci && inpsVersataWiz > 0) ? inpsVersataWiz : c_inps;
+  const r_imp    = deduci ? Math.max(0, r_forf - inpsPerDed) : r_forf;
+  const imp_sost = r_imp * aliq;
+  const tot_on   = imp_sost + c_inps;
+
+  // Acconti per l'anno successivo (metodo storico granitico)
+  let acc1 = 0, acc2 = 0, acc_tot = 0, acc_note = 'Dati storici definitivi';
+  if (!primoAnno && imp_sost > S_ACC) {
+    acc_tot = imp_sost;
+    if (acc_tot > S_DUE) { acc1 = acc_tot * .4; acc2 = acc_tot * .6; }
+    else { acc2 = acc_tot; }
+  } else if (primoAnno) {
+    acc_note = 'Primo anno attività — acconti azzerati';
+  }
+
+  const record = {
+    user_id:         _user.id,
+    anno,
+    stato:           'archiviato',
+    ateco:           _last.ateco,
+    gruppo_idx:      _last.gruppo_idx,
+    gruppo_nome:     gr.name,
+    coefficiente:    coeff,
+    aliquota:        aliq,
+    inps_tipo:       tipo,
+    inps_desc,
+    deduci_inps:     deduci,
+    mese_rif:        12,
+    is_primo_anno:   primoAnno,
+    inps_versata_anno_solare: inpsVersataWiz > 0 ? inpsVersataWiz : null,
+    note:            note || '',
+    fatturato:       fattCalc,
+    reddito_forf:    r_forf,
+    contributi_inps: c_inps,
+    reddito_imp:     r_imp,
+    imposta_sost:    imp_sost,
+    totale_oneri:    tot_on,
+    acconto_1:       acc1,
+    acconto_2:       acc2,
+    acconto_tot:     acc_tot,
+    acconto_note:    acc_note,
+    salvato_il:      new Date().toISOString(),
+    updated_at:      new Date().toISOString()
+  };
+
+  const btn = g('wiz-btn-next');
+  btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
+
+  const { data, error } = await sb
+    .from('anni_fiscali')
+    .upsert(record, { onConflict: 'user_id,anno' })
+    .select().single();
+
+  btn.disabled = false;
+
+  if (error) {
+    toast('Errore salvataggio anno ' + anno + ': ' + error.message, 'err');
+    btn.textContent = 'Riprova';
+    return;
+  }
+
+  _anni[anno] = data;
+  toast(`✅ Anno ${anno} salvato come Definitivo`, 'ok');
+
+  // Avanza al prossimo step o chiudi
+  _wiz.stepIdx++;
+  if (_wiz.stepIdx >= _wiz.steps.length) {
+    wizComplete();
+  } else {
+    wizRenderStep();
+  }
+}
+
+function wizSkipStep() {
+  const anno = _wiz.steps[_wiz.stepIdx];
+  _wiz.skipped.push(anno);
+  _wiz.stepIdx++;
+  if (_wiz.stepIdx >= _wiz.steps.length) {
+    wizComplete();
+  } else {
+    wizRenderStep();
+  }
+}
+
+function wizAbort() {
+  // Utente dichiara primo anno: chiude wizard e salva direttamente
+  g('wiz-overlay').classList.remove('open');
+  renderSidebar();
+  onAnnoChange();
+  salvaAnno(); // riprende il salvataggio originale
+}
+
+async function wizComplete() {
+  g('wiz-overlay').classList.remove('open');
+  renderSidebar();
+  fillConfSelectors();
+  onAnnoChange();
+
+  if (_wiz.skipped.length > 0) {
+    toast(`Anni ${_wiz.skipped.join(', ')} saltati. Potrai inserirli in seguito dall'archivio.`, 'info', 5000);
+  }
+  // Ora salva l'anno originale che l'utente voleva salvare
+  await salvaAnno();
+}
+
+/* ============================================================
+   BOOT — controlla sessione esistente e ascolta cambi auth
+   ============================================================ */
+(async function boot() {
+  const ls = document.getElementById('loading-screen');
+  let appStarted = false;
+
+  const isOAuthCallback = window.location.hash.includes('access_token') ||
+                          window.location.search.includes('code=');
+
+  function hideLs() {
+    if (!ls) return;
+    ls.classList.add('hidden');
+    setTimeout(() => { ls.classList.add('gone'); }, 400);
+  }
+
+  function startApp(user) {
+    if (appStarted) return;
+    appStarted = true;
+    _user = user;
+
+    g('auth-screen').style.display = 'none';
+    g('app').classList.add('show');
+    hideLs();
+
+    // Carica i dati in background senza bloccare l'UI
+    initAppData();
+  }
+
+  // Ascolta logout, SIGNED_IN e INITIAL_SESSION (es. dopo conferma email)
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+      startApp(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      resetApp();
+    }
+  });
+
+  // Se è callback OAuth aspetta SIGNED_IN con timeout di sicurezza
+  if (isOAuthCallback) {
+    setTimeout(() => {
+      if (!appStarted) {
+        console.warn('OAuth timeout o sessione non rilevata');
+        hideLs(); // Mostra auth screen invece di loop
+      }
+    }, 6000);
+    return;
+  }
+
+  // Prova a ottenere la sessione all'avvio
+  try {
+    const { data: { session }, error } = await sb.auth.getSession();
+    if (error) throw error;
+    if (session?.user) {
+      startApp(session.user);
+    } else {
+      // Nessuna sessione: resta su auth screen (permette il login)
+      hideLs();
+    }
+  } catch(e) {
+    console.error('boot error:', e.message);
+    // Errore: resta su auth screen
+    hideLs();
+  }
+})();
+
 </script>
 </body>
 </html>
