@@ -588,6 +588,31 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   background:rgba(188,140,255,.1);border:1px solid var(--pu-b);color:var(--pu);
   font-size:11px;font-weight:700;margin-bottom:14px}
 
+/* ── Convalida esperto commercialista ───────────────────────── */
+.ai-convalida{
+  display:none;margin-bottom:10px;
+  border-radius:8px;overflow:hidden;
+  border:1px solid var(--bd);
+}
+.ai-convalida.show{display:block}
+.ai-conv-header{
+  display:flex;align-items:center;gap:7px;
+  padding:7px 11px;font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.ai-conv-msg{
+  padding:9px 12px;font-size:12px;line-height:1.65;
+  color:var(--t2);border-top:1px solid var(--bd);
+  background:var(--s1);
+}
+/* stati semaforo */
+.ai-convalida.verde  .ai-conv-header{background:rgba(63,185,80,.12);color:#3fb950;border-left:3px solid #3fb950}
+.ai-convalida.giallo .ai-conv-header{background:rgba(210,153,34,.12);color:#d29922;border-left:3px solid #d29922}
+.ai-convalida.rosso  .ai-conv-header{background:rgba(248,81,73,.12);color:#f85149;border-left:3px solid #f85149}
+.ai-convalida.verde  .ai-conv-msg   {border-left:3px solid #3fb950}
+.ai-convalida.giallo .ai-conv-msg   {border-left:3px solid #d29922}
+.ai-convalida.rosso  .ai-conv-msg   {border-left:3px solid #f85149}
+
 </style>
 </head>
 <body>
@@ -1049,25 +1074,37 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     </p>
 
     <div class="ai-result-field" id="ai-f-fatturato" style="display:none">
-      <div class="arf-lbl">📊 Fatturato imponibile LM2 (€)</div>
+      <div class="arf-lbl">📊 Fatturato imponibile — Rigo LM22 col.3 (€)</div>
       <div class="arf-val" id="ai-v-fatturato">—</div>
       <input type="number" class="arf-edit" id="ai-e-fatturato" min="0" step="0.01" placeholder="Modifica se necessario">
     </div>
 
     <div class="ai-result-field" id="ai-f-inps-versata" style="display:none">
-      <div class="arf-lbl">🏛️ INPS versata / F24 pagati nell'anno solare (€)</div>
+      <div class="arf-lbl">🏛️ Contributi previdenziali — Rigo LM35 / F24 (€)</div>
       <div class="arf-val" id="ai-v-inps-versata">—</div>
       <input type="number" class="arf-edit" id="ai-e-inps-versata" min="0" step="0.01" placeholder="Modifica se necessario">
     </div>
 
     <div class="ai-result-field" id="ai-f-imposta" style="display:none">
-      <div class="arf-lbl">💰 Imposta sostitutiva dovuta LM11 (€)</div>
+      <div class="arf-lbl">💰 Imposta sostitutiva dovuta — Rigo LM39 (€)</div>
       <div class="arf-val" id="ai-v-imposta">—</div>
       <input type="number" class="arf-edit" id="ai-e-imposta" min="0" step="0.01" placeholder="Modifica se necessario">
     </div>
 
+    <!-- BOX CONVALIDA ESPERTO COMMERCIALISTA -->
+    <div class="ai-convalida" id="ai-convalida-box">
+      <div class="ai-conv-header" id="ai-conv-header">
+        <span id="ai-conv-icon">⚪</span>
+        <span id="ai-conv-stato">Convalida in corso…</span>
+      </div>
+      <div class="ai-conv-msg" id="ai-conv-msg">—</div>
+    </div>
+
+    <!-- Note tecniche (parsing locale / AI) -->
     <div id="ai-note-wrap" style="display:none">
-      <div style="font-size:11px;color:var(--t3);margin-bottom:12px;padding:8px 11px;background:var(--ye-d);border:1px solid var(--ye-b);border-radius:7px" id="ai-note-txt"></div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:12px;padding:8px 11px;
+                  background:var(--s2);border:1px solid var(--bd);border-radius:7px"
+           id="ai-note-txt"></div>
     </div>
 
     <div class="btn-row" style="margin-top:14px">
@@ -1721,6 +1758,208 @@ function tryParseF24(text) {
 }
 
 /* ============================================================
+   PROMPT ESPERTO COMMERCIALISTA
+   Inviato alla Edge Function Supabase insieme al testo del PDF.
+   La Edge Function lo usa come system instruction per Gemini.
+   ============================================================ */
+const EXPERT_PROMPT = `Agisci come un Esperto Commercialista specializzato in Regime Forfettario Italiano.
+Il tuo compito è estrarre dati contabili precisi da documenti PDF (Modello Redditi PF o F24) e validarne la coerenza interna.
+
+DATI DA ESTRARRE (mappa i campi sul Quadro LM del Modello Redditi):
+1. ANNO DI IMPOSTA: Identificalo dal frontespizio o dall'intestazione del quadro.
+2. CODICE ATECO: Estrai il valore dal Rigo LM22, colonna 1.
+3. FATTURATO LORDO: Somma dei componenti positivi dai righi LM22, LM23, LM24 (colonna 3).
+4. CONTRIBUTI PREVIDENZIALI: Estrai l'importo dal Rigo LM35 (Contributi previdenziali e assistenziali deducibili).
+5. IMPOSTA SOSTITUTIVA: Estrai l'importo dal Rigo LM39 (Imposta sostitutiva dovuta).
+
+LOGICA DI VALIDAZIONE:
+- Verifica se l'imposta nel rigo LM39 corrisponde al calcolo teorico: ((Fatturato × Coefficiente ATECO) - Contributi LM35) × Aliquota (5% o 15%).
+- Se l'importo LM35 è zero ma il fatturato è alto, segnalalo come potenziale anomalia.
+- Se il documento è un F24, estrai i codici tributo 1790, 1791 (acconti) o 1792 (saldo) e verifica l'anno di riferimento.
+
+FORMATO DI USCITA (SOLO JSON, nessun testo aggiuntivo, nessun markdown):
+{
+  "anno": integer,
+  "ateco": "string",
+  "fatturato": float,
+  "inps_versata": float,
+  "imposta_dovuta": float,
+  "tipo": "dichiarazione" | "f24" | "sconosciuto",
+  "convalida": {
+    "stato": "verde" | "giallo" | "rosso",
+    "messaggio": "string (spiegazione tecnica della validazione effettuata o avviso su discrepanze)"
+  }
+}
+
+REGOLE ASSOLUTE: Non inventare mai cifre non presenti nel documento.
+Se i dati sono parziali, imposta stato su "giallo" e indica nel messaggio cosa manca.`;
+
+/* ============================================================
+   NORMALIZZAZIONE RISPOSTA AI/LOCALE
+   Unifica il vecchio formato { fatturato_lm2, inps_dedotta_lm7, ... }
+   con il nuovo formato esperto { fatturato, inps_versata, imposta_dovuta, convalida }.
+   Produce SEMPRE il campo `convalida` — se non arriva dall'AI, lo calcola localmente.
+   ============================================================ */
+function normalizzaRisultato(raw, annoCorrente) {
+  // ── Mappa entrambi i formati in uno unico interno ──────────
+  const r = {
+    tipo:             raw.tipo || 'sconosciuto',
+    anno:             raw.anno || annoCorrente,
+    ateco:            raw.ateco || null,
+    fatturato_lm2:    raw.fatturato    || raw.fatturato_lm2    || 0,
+    inps_dedotta_lm7: raw.inps_versata || raw.inps_dedotta_lm7 || 0,
+    imposta_dovuta_lm11: raw.imposta_dovuta || raw.imposta_dovuta_lm11 || 0,
+    inps_versata_f24: raw.inps_versata_f24 || 0,
+    note:             raw.note || null,
+    convalida:        raw.convalida || null
+  };
+
+  // ── Se manca la convalida, la calcoliamo localmente ───────
+  if (!r.convalida) {
+    r.convalida = convalidaLocale(r);
+  }
+
+  return r;
+}
+
+/* ============================================================
+   VALIDAZIONE CONTABILE LOCALE (Esperto Commercialista offline)
+   Applicata sia ai risultati del parser locale che a quelli AI
+   privi del campo convalida.
+   ============================================================ */
+function convalidaLocale(r) {
+  const fatt   = r.fatturato_lm2;
+  const inps   = r.inps_dedotta_lm7;
+  const imposta = r.imposta_dovuta_lm11;
+  const ateco  = r.ateco;
+
+  // ── Caso F24: non ha fatturato → convalida diversa ────────
+  if (r.tipo === 'f24') {
+    const versata = r.inps_versata_f24;
+    if (versata > 0) {
+      return {
+        stato: 'verde',
+        messaggio: `F24 rilevato. Importo INPS/contributi versati: €${versata.toLocaleString('it-IT',{minimumFractionDigits:2})}. Nessuna verifica aritmetica applicabile su un F24 (non contiene dichiarazione di reddito).`
+      };
+    }
+    return {
+      stato: 'giallo',
+      messaggio: 'F24 rilevato ma nessun importo identificabile con certezza. Verifica manualmente i codici tributo presenti nel documento.'
+    };
+  }
+
+  // ── Dati insufficienti per validare ───────────────────────
+  if (fatt <= 0) {
+    return {
+      stato: 'giallo',
+      messaggio: 'Fatturato (Rigo LM22) non estratto. Impossibile eseguire la validazione aritmetica. Inserisci manualmente il valore.'
+    };
+  }
+
+  // ── Cerca il gruppo ATECO e il coefficiente ───────────────
+  let coeff = null;
+  let nomeGruppo = null;
+  if (ateco) {
+    const raw6 = ateco.replace(/[.\s]/g, '');
+    const pre2 = raw6.substring(0, 2);
+    const pre4 = raw6.substring(0, 4);
+    const pre5 = raw6.substring(0, 5);
+    for (const gr of GRUPPI) {
+      // Controlla exclusion list prima
+      const excluded = (gr.ex || []).some(e => raw6.startsWith(e.replace('.', '')));
+      if (excluded) continue;
+      if (gr.pre.some(p => {
+        const pn = p.replace('.', '');
+        return raw6.startsWith(pn) || pre2 === pn || pre4 === pn || pre5 === pn;
+      })) {
+        coeff = gr.coeff;
+        nomeGruppo = gr.name;
+        break;
+      }
+    }
+  }
+
+  // ── Anomalia: contributi INPS zero con fatturato alto ─────
+  if (inps === 0 && fatt > 5000) {
+    return {
+      stato: 'giallo',
+      messaggio: `⚠️ Rigo LM35 (Contributi previdenziali) risulta zero, ma il fatturato è €${fatt.toLocaleString('it-IT')}. Questo è possibile solo per contribuenti esonerati o in regime di moratoria. Verifica nel documento originale.`
+    };
+  }
+
+  // ── Senza coefficiente non possiamo calcolare il teorico ──
+  if (coeff === null) {
+    const baseParts = [];
+    if (fatt > 0) baseParts.push(`Fatturato: €${fatt.toLocaleString('it-IT',{minimumFractionDigits:2})}`);
+    if (inps > 0) baseParts.push(`INPS LM35: €${inps.toLocaleString('it-IT',{minimumFractionDigits:2})}`);
+    if (imposta > 0) baseParts.push(`Imposta LM39: €${imposta.toLocaleString('it-IT',{minimumFractionDigits:2})}`);
+    return {
+      stato: 'giallo',
+      messaggio: `Dati estratti: ${baseParts.join(' · ')}. Coefficiente ATECO non determinato${ateco ? ` per codice ${ateco}` : ''}: validazione aritmetica non disponibile. Verifica il gruppo attività corretto.`
+    };
+  }
+
+  // ── Calcolo teorico ───────────────────────────────────────
+  const reddForf    = fatt * coeff;
+  const reddImp     = Math.max(0, reddForf - inps);
+  // Aliquota: 5% se imposta ≤ 5% reddito imponibile (startup), altrimenti 15%
+  const aliqTeor    = imposta > 0 && imposta <= reddImp * 0.06 ? 0.05 : 0.15;
+  const imposTeorica5  = reddImp * 0.05;
+  const imposTeorica15 = reddImp * 0.15;
+  const scarto = imposta > 0
+    ? Math.abs(imposta - (aliqTeor === 0.05 ? imposTeorica5 : imposTeorica15))
+    : null;
+  const scartoPerc = scarto != null && imposta > 0
+    ? (scarto / imposta * 100).toFixed(1)
+    : null;
+
+  const fmt2 = v => v.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const riepilogo =
+    `Fatturato LM22: €${fmt2(fatt)} · ` +
+    `Coeff. ${(coeff*100).toFixed(0)}% (${nomeGruppo}) · ` +
+    `Reddito forfettario: €${fmt2(reddForf)} · ` +
+    `INPS LM35: €${fmt2(inps)} · ` +
+    `Reddito imponibile netto: €${fmt2(reddImp)}`;
+
+  // ── Imposta non estratta: calcola il teorico ─────────────
+  if (imposta <= 0) {
+    return {
+      stato: 'giallo',
+      messaggio: `Rigo LM39 non estratto. ${riepilogo}. ` +
+        `Imposta teorica al 15%: €${fmt2(imposTeorica15)} · al 5% (start-up): €${fmt2(imposTeorica5)}.`
+    };
+  }
+
+  // ── Convalida con scarto <5% → verde ─────────────────────
+  if (parseFloat(scartoPerc) < 5) {
+    return {
+      stato: 'verde',
+      messaggio: `✅ Convalida OK (scarto ${scartoPerc}%). ${riepilogo}. ` +
+        `Imposta LM39 dichiarata: €${fmt2(imposta)} · Teorica (${(aliqTeor*100).toFixed(0)}%): €${fmt2(aliqTeor===0.05?imposTeorica5:imposTeorica15)}.`
+    };
+  }
+
+  // ── Scarto tra 5% e 20% → giallo ─────────────────────────
+  if (parseFloat(scartoPerc) <= 20) {
+    return {
+      stato: 'giallo',
+      messaggio: `⚠️ Scarto ${scartoPerc}% rispetto al teorico. ${riepilogo}. ` +
+        `Imposta LM39 dichiarata: €${fmt2(imposta)} · Teorica (${(aliqTeor*100).toFixed(0)}%): €${fmt2(aliqTeor===0.05?imposTeorica5:imposTeorica15)}. ` +
+        `Possibili cause: aliquota agevolata 5%, deduzioni particolari, o arrotondamenti del modello.`
+    };
+  }
+
+  // ── Scarto >20% → rosso ───────────────────────────────────
+  return {
+    stato: 'rosso',
+    messaggio: `🔴 Discrepanza significativa (${scartoPerc}%). ${riepilogo}. ` +
+      `Imposta LM39 dichiarata: €${fmt2(imposta)} · Teorica (15%): €${fmt2(imposTeorica15)} · (5%): €${fmt2(imposTeorica5)}. ` +
+      `Verifica il documento originale o la correttezza del codice ATECO inserito.`
+  };
+}
+
+/* ============================================================
    GEMINI AI — parsing PDF tramite Supabase Edge Function (sicuro)
    La chiave Gemini è sul server: non appare mai nel browser (F12).
    ============================================================ */
@@ -1779,7 +2018,7 @@ async function parseTaxPDF(file) {
   if (rpfLocal && rpfLocal.fatturato_lm2 > 0) {
     console.log('[parseTaxPDF] RPF locale riuscito — Gemini non chiamato.');
     toast('⚡ Dati estratti localmente dal Modello RPF (0 token Gemini usati)', 'ok', 4000);
-    return rpfLocal;
+    return normalizzaRisultato(rpfLocal, null);
   }
 
   // 1c. Tenta parsing F24 locale prima di chiamare Gemini
@@ -1787,7 +2026,7 @@ async function parseTaxPDF(file) {
   if (f24Local && f24Local.inps_versata_f24 > 0) {
     console.log('[parseTaxPDF] F24 locale riuscito — Gemini non chiamato.');
     toast('⚡ F24 estratto localmente (0 token Gemini usati)', 'ok', 4000);
-    return f24Local;
+    return normalizzaRisultato(f24Local, null);
   }
 
   // 1d. FIX F24 ANNO — rileva se documento è un F24 per istruire il server
@@ -1808,6 +2047,7 @@ async function parseTaxPDF(file) {
 
   // 3. Chiama la Edge Function Supabase (chiave Gemini sul server, mai visibile)
   //    FIX F24: passiamo is_f24=true per far estrarre esplicitamente l'anno dal modulo
+  //    EXPERT PROMPT: istruisce Gemini ad agire da commercialista con validazione contabile
   const resp = await fetch(EDGE_PDF_URL, {
     method: 'POST',
     headers: {
@@ -1815,7 +2055,12 @@ async function parseTaxPDF(file) {
       'Authorization': 'Bearer ' + token,
       'apikey':        SKEY
     },
-    body: JSON.stringify({ pdf_text, is_f24: isLikelyF24, page_count: _numPages || 1 })
+    body: JSON.stringify({
+      pdf_text,
+      is_f24:       isLikelyF24,
+      page_count:   _numPages || 1,
+      expert_prompt: EXPERT_PROMPT   // ← prompt esperto commercialista
+    })
   });
 
   // Gestione robusta: Supabase gateway 401 restituisce {"msg":"..."} non {"error":"..."}
@@ -1833,7 +2078,8 @@ async function parseTaxPDF(file) {
     throw new Error(msg);
   }
 
-  return json;  // { tipo, anno, fatturato_lm2, inps_dedotta_lm7, imposta_dovuta_lm11, inps_versata_f24, note }
+  // Normalizza: unifica vecchio e nuovo formato, aggiunge convalida se mancante
+  return normalizzaRisultato(json, null);
 }
 
 /* ============================================================
@@ -2537,7 +2783,7 @@ function apriModalAiResult(anno, r) {
       : `📄 Documento (${r.tipo || 'sconosciuto'})`;
   g('ai-doc-tipo').textContent = tipoLabel + ` · Anno ${r.anno || anno}`;
 
-  // Campo fatturato (solo se da dichiarazione con LM2)
+  // Campo fatturato (solo se da dichiarazione con LM22)
   const hasFatt = (r.fatturato_lm2 || 0) > 0;
   g('ai-f-fatturato').style.display = hasFatt ? 'block' : 'none';
   if (hasFatt) {
@@ -2545,7 +2791,7 @@ function apriModalAiResult(anno, r) {
     g('ai-e-fatturato').value        = r.fatturato_lm2;
   }
 
-  // Campo INPS versata (da F24 o LM7)
+  // Campo INPS versata (da F24 o LM35)
   const inpsVal = (r.inps_versata_f24 || 0) > 0
     ? r.inps_versata_f24
     : (r.inps_dedotta_lm7 || 0) > 0
@@ -2558,7 +2804,7 @@ function apriModalAiResult(anno, r) {
     g('ai-e-inps-versata').value        = inpsVal;
   }
 
-  // Campo imposta sostitutiva LM11
+  // Campo imposta sostitutiva LM39
   const hasImp = (r.imposta_dovuta_lm11 || 0) > 0;
   g('ai-f-imposta').style.display = hasImp ? 'block' : 'none';
   if (hasImp) {
@@ -2566,11 +2812,31 @@ function apriModalAiResult(anno, r) {
     g('ai-e-imposta').value        = r.imposta_dovuta_lm11;
   }
 
-  // Note AI
+  // ── BOX CONVALIDA ESPERTO COMMERCIALISTA ──────────────────
+  const convBox = g('ai-convalida-box');
+  const conv = r.convalida || convalidaLocale(r);
+  if (conv) {
+    const icona = conv.stato === 'verde' ? '✅'
+                : conv.stato === 'giallo' ? '⚠️'
+                : '🔴';
+    const label = conv.stato === 'verde' ? 'Convalida contabile: OK'
+                : conv.stato === 'giallo' ? 'Convalida: Verifica consigliata'
+                : 'Convalida: Discrepanza rilevata';
+    // Rimuove le classi stato precedenti
+    convBox.classList.remove('verde', 'giallo', 'rosso');
+    convBox.classList.add('show', conv.stato);
+    g('ai-conv-icon').textContent  = icona;
+    g('ai-conv-stato').textContent = label;
+    g('ai-conv-msg').textContent   = conv.messaggio;
+  } else {
+    convBox.classList.remove('show');
+  }
+
+  // Note tecniche (parser locale / AI)
   const noteWrap = g('ai-note-wrap');
   if (r.note) {
     noteWrap.style.display = 'block';
-    g('ai-note-txt').textContent = '💬 ' + r.note;
+    g('ai-note-txt').textContent = '🔧 ' + r.note;
   } else {
     noteWrap.style.display = 'none';
   }
