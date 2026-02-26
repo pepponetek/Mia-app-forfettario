@@ -1449,51 +1449,42 @@ function onAnnoChange() {
 // Cache in memoria: chiave = hash(nome+size), valore = risultato
 const _pdfCache = new Map();
 
-// URL fissi PDF.js 3.11.174 — versione stabile classic (non module)
-const PDFJS_LIB    = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// PDF.js 2.16.105 — ultima versione che supporta disableWorker (senza worker, compatibile mobile)
+const PDFJS_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
 
 async function loadPdfjsLib() {
-  // Se già presente e worker già configurato, restituisce subito
-  if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions.workerSrc) return;
-
-  // Carica lo script principale
-  if (!window.pdfjsLib) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = PDFJS_LIB;
-      s.onload  = resolve;
-      s.onerror = () => reject(new Error('PDF.js non caricabile. Controlla la connessione internet.'));
-      document.head.appendChild(s);
-    });
-  }
-
-  // Imposta sempre il worker DOPO aver caricato la libreria
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  if (window.pdfjsLib) return; // già caricata
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = PDFJS_LIB;
+    s.onload  = resolve;
+    s.onerror = () => reject(new Error('PDF.js non caricabile. Controlla la connessione.'));
+    document.head.appendChild(s);
+  });
+  // Disabilita il worker — non necessario per PDF di dichiarazioni fiscali
+  // Elimina DEFINITIVAMENTE l'errore "No GlobalWorkerOptions.workerSrc specified"
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = '';
 }
 
 async function extractPdfText(file) {
-  // Assicura che PDF.js sia caricato e il worker configurato
   await loadPdfjsLib();
 
   const arrayBuffer = await file.arrayBuffer();
-
   const pdf = await window.pdfjsLib.getDocument({
-    data: arrayBuffer,
-    useWorkerFetch: false,   // evita problemi CORS con service worker
-    isEvalSupported: false,  // sicurezza
-    useSystemFonts: true
+    data:             new Uint8Array(arrayBuffer),
+    disableWorker:    true,   // esegue tutto nel thread principale — nessun worker richiesto
+    disableStream:    true,   // compatibilità massima mobile
+    isEvalSupported:  false,
   }).promise;
 
   let fullText = '';
   const maxPages = Math.min(pdf.numPages, 20);
   for (let i = 1; i <= maxPages; i++) {
-    const page   = await pdf.getPage(i);
-    const tc     = await page.getTextContent();
-    const pageText = tc.items.map(item => item.str || '').join(' ');
+    const page     = await pdf.getPage(i);
+    const tc       = await page.getTextContent();
+    const pageText = tc.items.map(it => it.str || '').join(' ');
     fullText += pageText + '\n';
   }
-
   return fullText.trim();
 }
 
