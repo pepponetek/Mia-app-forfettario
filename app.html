@@ -2142,10 +2142,10 @@ async function onArchPdfSelected(input) {
     apriModalAiResult(anno, result);
   } catch(err) {
     // FIX 4: messaggio guida per inserimento manuale
-    const guida = '\n\n💡 Se il problema persiste: apri il PDF, individua i campi ' +
-      'LM22 (fatturato), LM35 (INPS versata), LM39 (imposta sostitutiva) e ' +
-      'inseriscili manualmente tramite "Aggiorna Imponibile" nell'archivio. ' +
-      'Il calcolo degli acconti dell'anno successivo si attiverà automaticamente al salvataggio.';
+    const guida = `\n\n💡 Se il problema persiste: apri il PDF, individua i campi ` +
+      `LM22 (fatturato), LM35 (INPS versata), LM39 (imposta sostitutiva) e ` +
+      `inseriscili manualmente tramite "Aggiorna Imponibile" nell'archivio. ` +
+      `Il calcolo degli acconti dell'anno successivo si attiverà automaticamente al salvataggio.`;
     toast('❌ ' + err.message + guida, 'err', 10000);
     console.error('[parseTaxPDF] Errore:', err);
   }
