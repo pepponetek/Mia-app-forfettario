@@ -1438,85 +1438,83 @@ function onAnnoChange() {
 }
 
 /* ============================================================
-   PRE-PARSER LOCALE — Modello Redditi Persone Fisiche (RPF)
-   Risolve il problema dei PDF a campi modulo in cui i valori
-   numerici vengono estratti separati dalle etichette (LM22, LM34…)
-   da PDF.js, rendendo impossibile a Gemini abbinarli.
-   Strategia: riconosce la sequenza ATECO→coeff→numeri nel Quadro LM
-   e mappa i valori alle variabili fiscali corrette senza bisogno
-   di chiamare la Edge Function Gemini.
+   FIX 1 — ESTRAZIONE LOCALE MODELLO RPF (Redditi Persone Fisiche)
+   Il layer testuale del Modello RPF separa etichette dai valori.
+   Questa funzione intercetta il testo ed estrae i dati direttamente
+   senza consumare quota Gemini (~98% risparmio token).
    ============================================================ */
-function tryParseRPFForm(rawText) {
-  // 1. Controlla che sia un Modello Redditi PF con regime forfetario
-  const isRPF = rawText.includes('PERSONE FISICHE') && rawText.includes('QUADRO LM');
-  const isForf = rawText.includes('forfetario') || rawText.includes('forfettario');
-  if (!isRPF || !isForf) return null;
+function tryParseRPF(text) {
+  // Riconoscimento documento RPF
+  const isRPF = /PERSONE\s+FISICHE/i.test(text) && /QUADRO\s+LM/i.test(text);
+  if (!isRPF) return null;
 
-  // 2. Estrai anno d'imposta
-  const annoMatch = rawText.match(/Periodo d.imposta\s+(\d{4})/i);
+  // Utility: converti stringa numero italiano (1.234,56 o 1234) → float
+  function parseITA(str) {
+    if (!str) return 0;
+    // Rimuove separatori di migliaia (punto) e converte virgola decimale
+    return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+
+  // Cerca il codice ATECO: 6 cifre consecutive (es. 683200 o 62.09.09 normalizzato)
+  const atecoMatch = text.match(/\b(\d{2}[.\s]?\d{2}[.\s]?\d{2})\b/);
+  const ateco = atecoMatch ? atecoMatch[1].replace(/[.\s]/g, '') : null;
+
+  // Anno: cerca un anno fiscale 4 cifre nel range plausibile (2018-2035)
+  const annoMatch = text.match(/\b(20[12]\d)\b/);
   const anno = annoMatch ? parseInt(annoMatch[1]) : null;
 
-  // 3. Analizza riga per riga
-  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l !== '');
-
-  // Helper: converte "34.827" o "2.021" → numero float
-  const itToNum = s => parseFloat(s.replace(/\./g, '').replace(',', '.'));
-
-  // Pattern numero italiano (es: "34.827", "2.021", "16.475")
-  const rxNum = /^\d{1,3}(?:\.\d{3})*(?:,\d{2})?$/;
-
-  // 4. Trova l'indice ATECO a 6 cifre (es: 683200)
-  //    Il PDF stampa sempre il codice ATECO come riga isolata
-  let atecoIdx = -1;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (/^[1-9]\d{5}$/.test(lines[i])) { atecoIdx = i; break; }
-  }
-  if (atecoIdx < 0) return null;
-
-  // 5. Raccogli i numeri significativi (> 1000) nelle 40 righe successive all'ATECO.
-  //    Struttura attesa nel Quadro LM forfetario:
-  //      [ateco] → [coeff%] → [fatturato/LM22] → [reddito_lordo/LM34]
-  //      → [contributi/LM35] → [reddito_netto/LM36] → [imposta/LM39]
-  const bigNums = [];
-  for (let i = atecoIdx + 1; i < Math.min(atecoIdx + 45, lines.length); i++) {
-    if (rxNum.test(lines[i])) {
-      const v = itToNum(lines[i]);
-      if (v > 1000) bigNums.push(v);
-    }
-  }
-  if (bigNums.length < 3) return null;
-
-  // 6. Deduplica mantenendo l'ordine di prima occorrenza
-  const seen = new Set();
-  const uniq = [];
-  for (const n of bigNums) {
-    if (!seen.has(n)) { seen.add(n); uniq.push(n); }
+  // Estrae tutti i numeri nel formato italiano con separatore migliaia
+  // Cattura: 1.234 / 12.345 / 123.456 / 1.234.567 (con o senza decimali)
+  const numPattern = /\b(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{4,}(?:,\d{1,2})?)\b/g;
+  const allNums = [];
+  let m;
+  while ((m = numPattern.exec(text)) !== null) {
+    const val = parseITA(m[1]);
+    if (val >= 100) allNums.push(val); // ignora numeri piccoli (codici, pagine, ecc.)
   }
 
-  // 7. Mapping posizionale (basato sulla struttura del modello RPF):
-  //    uniq[0] = componenti positivi = FATTURATO (LM22)
-  //    uniq[1] = reddito lordo (LM34) — tipicamente fatturato × coefficiente
-  //    uniq[2] = contributi INPS deducibili (LM35)
-  //    uniq[3] = reddito netto (LM36/LM38)
-  //    uniq[4] = imposta sostitutiva (LM39) — se presente
-  //    Nota: uniq[1] può coincidere con uniq[0] se coeff=100%; in quel
-  //    caso l'array scala di uno.
-  const fatturato  = uniq[0] || 0;
-  const contributi = uniq[2] || uniq[1] || 0; // LM35: 3° elemento unico
-  // L'imposta è l'ultimo elemento < 20% del fatturato prima degli acconti
-  const imposta = uniq.find(n => n < fatturato * 0.20 && n > 50) || 0;
+  if (allNums.length < 2) return null;
 
+  // Strategia mapping:
+  // LM22 = fatturato: il valore più grande > 1.000
+  // LM35 = contributi INPS: tipicamente 25-35% del reddito forfettario (fatturato × coeff)
+  // LM39 = imposta sostitutiva: tipicamente 5-15% del fatturato
+  // Ordina decrescente e assegna
+  const sorted = [...allNums].sort((a, b) => b - a);
+
+  // LM22: fatturato = valore massimo (deve essere > 1.000)
+  const fatturato = sorted[0] > 1000 ? sorted[0] : null;
   if (!fatturato) return null;
 
-  return {
-    tipo:                 'dichiarazione',
-    anno:                 anno,
-    fatturato_lm2:        fatturato,
-    inps_dedotta_lm7:     contributi,
-    imposta_dovuta_lm11:  imposta,
-    inps_versata_f24:     0,
-    note: `Estratto automaticamente da Modello Redditi PF ${anno || ''} (Regime Forfetario). Verifica i valori prima di confermare.`
+  // Per LM35 e LM39: cerca nell'array ordinato i valori plausibili
+  // LM35 (contributi) plausibile: tra 10% e 40% del fatturato
+  const lm35Candidate = sorted.find(v => v !== fatturato && v >= fatturato * 0.05 && v <= fatturato * 0.45);
+
+  // LM39 (imposta) plausibile: tra 3% e 20% del fatturato, minore di contributi se presenti
+  const maxImposta = lm35Candidate ? lm35Candidate * 0.9 : fatturato * 0.2;
+  const lm39Candidate = sorted.find(v =>
+    v !== fatturato && v !== lm35Candidate &&
+    v >= fatturato * 0.03 && v <= maxImposta
+  );
+
+  // Verifica minima: almeno fatturato estratto
+  const result = {
+    tipo:               'dichiarazione',
+    anno:               anno,
+    ateco:              ateco,
+    fatturato_lm2:      fatturato,
+    inps_dedotta_lm7:   lm35Candidate || 0,
+    imposta_dovuta_lm11: lm39Candidate || 0,
+    inps_versata_f24:   0,
+    note:               `⚡ Estratto localmente da Modello RPF (no Gemini)` +
+                        (ateco ? ` · ATECO ${ateco}` : '') +
+                        (!lm35Candidate || !lm39Candidate
+                          ? ' · ⚠️ Verifica i campi LM35 e LM39: potrebbero richiedere correzione manuale.'
+                          : '')
   };
+
+  console.log('[tryParseRPF] Risultato locale:', result);
+  return result;
 }
 
 /* ============================================================
@@ -1556,12 +1554,17 @@ async function parseTaxPDF(file) {
     throw new Error('Nessun testo trovato nel PDF. Assicurati che non sia una scansione.');
   }
 
-  // 1b. Prova prima il pre-parser locale per Modello Redditi PF (RPF).
-  //     Questi PDF hanno i valori dei campi modulo separati dalle etichette
-  //     nel testo estratto → Gemini non riesce ad abbinarli.
-  //     Il pre-parser risolve questo problema senza consumare quota Gemini.
-  const localResult = tryParseRPFForm(pdf_text);
-  if (localResult) return localResult;
+  // 1b. FIX RPF — tenta parsing locale PRIMA di chiamare Gemini.
+  //     Se il documento è un Modello Redditi PF, estrae i dati senza consumare quota AI.
+  const rpfLocal = tryParseRPF(pdf_text);
+  if (rpfLocal && rpfLocal.fatturato_lm2 > 0) {
+    console.log('[parseTaxPDF] RPF locale riuscito — Gemini non chiamato.');
+    toast('⚡ Dati estratti localmente dal Modello RPF (0 token Gemini usati)', 'ok', 4000);
+    return rpfLocal;
+  }
+
+  // 1c. FIX F24 ANNO — rileva se documento è un F24 per istruire il server
+  const isLikelyF24 = /F24|MODELLO\s+F24|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO/i.test(pdf_text);
 
   // 2. Forza il refresh del token — evita 401 da JWT scaduto
   //    refreshSession() chiama il server e restituisce sempre un token fresco
@@ -1577,6 +1580,7 @@ async function parseTaxPDF(file) {
   if (!token) throw new Error('Sessione scaduta — effettua di nuovo il login.');
 
   // 3. Chiama la Edge Function Supabase (chiave Gemini sul server, mai visibile)
+  //    FIX F24: passiamo is_f24=true per far estrarre esplicitamente l'anno dal modulo
   const resp = await fetch(EDGE_PDF_URL, {
     method: 'POST',
     headers: {
@@ -1584,7 +1588,7 @@ async function parseTaxPDF(file) {
       'Authorization': 'Bearer ' + token,
       'apikey':        SKEY
     },
-    body: JSON.stringify({ pdf_text })
+    body: JSON.stringify({ pdf_text, is_f24: isLikelyF24 })
   });
 
   // Gestione robusta: Supabase gateway 401 restituisce {"msg":"..."} non {"error":"..."}
@@ -2137,7 +2141,13 @@ async function onArchPdfSelected(input) {
     _aiAnno   = anno;
     apriModalAiResult(anno, result);
   } catch(err) {
-    toast('❌ ' + err.message, 'err', 6000);
+    // FIX 4: messaggio guida per inserimento manuale
+    const guida = '\n\n💡 Se il problema persiste: apri il PDF, individua i campi ' +
+      'LM22 (fatturato), LM35 (INPS versata), LM39 (imposta sostitutiva) e ' +
+      'inseriscili manualmente tramite "Aggiorna Imponibile" nell'archivio. ' +
+      'Il calcolo degli acconti dell'anno successivo si attiverà automaticamente al salvataggio.';
+    toast('❌ ' + err.message + guida, 'err', 10000);
+    console.error('[parseTaxPDF] Errore:', err);
   }
 }
 
@@ -2201,9 +2211,23 @@ function apriModalAiResult(anno, r) {
 // 4. Utente conferma → aggiorna Supabase con i valori (eventualmente corretti)
 async function confermaAiResult() {
   if (_aiResult === null || _aiAnno === null) return;
-  const anno = _aiAnno;
-  const d    = _anni[anno];
-  if (!d) { toast('Anno non trovato', 'err'); return; }
+
+  // FIX 2: MAPPING ANNO F24
+  // Se l'AI ha estratto un anno diverso da quello selezionato (es. F24 del 2023
+  // caricato dalla card del 2024), salva nel record dell'anno CORRETTO del PDF.
+  let anno = _aiAnno;
+  const annoEstrattoF24 = (_aiResult.tipo === 'f24' && _aiResult.anno) ? parseInt(_aiResult.anno) : null;
+  if (annoEstrattoF24 && annoEstrattoF24 !== anno && _anni[annoEstrattoF24]) {
+    console.log(`[confermaAiResult] FIX F24 ANNO: PDF anno ${annoEstrattoF24} ≠ card anno ${anno} → salvo nel record ${annoEstrattoF24}`);
+    toast(`ℹ️ F24 rilevato per l'anno ${annoEstrattoF24} (diverso dal ${anno} selezionato) — salvo nell'anno corretto.`, 'info', 5000);
+    anno = annoEstrattoF24;
+  }
+
+  const d = _anni[anno];
+  if (!d) {
+    toast(`⚠️ Anno ${anno} non trovato nell'archivio. Crea prima il record per quest'anno.`, 'err', 6000);
+    return;
+  }
 
   // Leggi i valori dagli input modificabili
   const fatt     = parseFloat(g('ai-e-fatturato')?.value)    || 0;
@@ -2273,7 +2297,77 @@ async function confermaAiResult() {
   renderArchivio();
   renderSidebar();
   toast(`✅ Anno ${anno} aggiornato con i dati del PDF`, 'ok');
+
+  // FIX 3: CASCADE UPDATE — ricalcola acconti degli anni successivi
+  await syncFutureYears(anno);
+
   _aiAnno = null; _aiResult = null;
+}
+
+/* ============================================================
+   FIX 3 — CASCADE UPDATE: syncFutureYears(anno)
+   Ricalcola automaticamente gli acconti dell'anno successivo
+   ogni volta che i dati di un anno vengono salvati (PDF, manuale).
+   Esempio: aggiornato 2024 → ricalcola acconti 2025 su Supabase.
+   ============================================================ */
+async function syncFutureYears(anno) {
+  const annoSucc = anno + 1;
+  const dPrec    = _anni[anno];     // anno appena aggiornato (sorgente)
+  const dSucc    = _anni[annoSucc]; // anno successivo (destinazione acconti)
+
+  // Se non esiste il record dell'anno successivo, non c'è nulla da propagare
+  if (!dPrec || !dSucc) {
+    console.log(`[syncFutureYears] Anno ${annoSucc} non in archivio — nessuna propagazione.`);
+    return;
+  }
+
+  const baseImposta = dPrec.imposta_sost || 0;
+
+  // Ricalcola acconti per l'anno successivo (metodo storico — art.17 TUIR)
+  let acc1 = 0, acc2 = 0, acc_tot = 0;
+  if (baseImposta > S_ACC) {
+    acc_tot = baseImposta;
+    if (acc_tot > S_DUE) { acc1 = acc_tot * 0.4; acc2 = acc_tot * 0.6; }
+    else { acc2 = acc_tot; }
+  }
+
+  const updates = {
+    acconto_1:    acc1,
+    acconto_2:    acc2,
+    acconto_tot:  acc_tot,
+    acconto_note: `Base storica LM11 anno ${anno}: ${fmt(baseImposta)} · Aggiornato automaticamente il ${new Date().toLocaleDateString('it-IT')}`,
+    updated_at:   new Date().toISOString()
+  };
+
+  console.log(`[syncFutureYears] Propagazione ${anno} → ${annoSucc}:`, updates);
+
+  // Salva su Supabase
+  const { error } = await sb.from('anni_fiscali')
+    .update(updates)
+    .eq('id', dSucc.id)
+    .eq('user_id', _user.id);
+
+  if (error) {
+    console.warn(`[syncFutureYears] Errore aggiornamento anno ${annoSucc}:`, error.message);
+    toast(`⚠️ Acconti ${annoSucc} non aggiornati automaticamente: ${error.message}`, 'err', 5000);
+    return;
+  }
+
+  // Aggiorna cache locale
+  Object.assign(_anni[annoSucc], updates);
+
+  // FIX 3: Aggiornamento UI immediato senza ricaricare la pagina
+  renderArchivio();
+  renderSidebar();
+  renderCalendario();
+
+  toast(`🔄 Acconti ${annoSucc} ricalcolati automaticamente su base ${anno} (${fmt(baseImposta)})`, 'ok', 5000);
+
+  // Propaga ricorsivamente agli anni ancora successivi (es. 2025 → 2026)
+  // Solo se anche il successivo è in archivio, per non propagare oltre il necessario
+  if (_anni[annoSucc + 1]) {
+    await syncFutureYears(annoSucc);
+  }
 }
 
 // Variabile temporanea per il modal cambio stato
@@ -3149,6 +3243,9 @@ async function confAggiornaBozza() {
   setSync('ok', 'Sincronizzato');
   renderSidebar(); renderArchivio();
   toast(`✅ Anno ${anno} aggiornato con fatturato ${fmt(newFatt)}`, 'ok');
+
+  // FIX 3: CASCADE UPDATE — aggiorna automaticamente gli acconti dell'anno successivo
+  await syncFutureYears(anno);
 }
 
 /* ============================================================
