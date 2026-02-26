@@ -487,6 +487,17 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   body.print-calcolo .card{display:block!important}
 }
 
+/* ── DOCUMENTI FISCALI — sezione nell'archivio ──────────── */
+.docs-section{margin-top:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--bd);border-radius:8px}
+.docs-title{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.doc-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bd);font-size:12px}
+.doc-row:last-child{border-bottom:none;padding-bottom:0}
+.doc-ico{font-size:16px;flex-shrink:0;width:22px;text-align:center}
+.doc-info{flex:1;min-width:0}
+.doc-name{color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-meta{color:var(--t3);font-size:10px;margin-top:1px}
+.doc-actions{display:flex;gap:4px;flex-shrink:0}
+
 /* ── ADMIN SEARCH ────────────────────────────────────── */
 .adm-search{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;
   color:var(--t1);padding:10px 13px;font-family:inherit;font-size:14px;outline:none;margin-bottom:12px}
@@ -1295,13 +1306,14 @@ async function initAppData() {
   g('f-anno').value = now.getFullYear();
 
   await loadAnni();
+  loadDocumenti(); // carica documenti in parallelo (non blocca)
   onAnnoChange();
   setSync('ok', 'Sincronizzato');
 }
 
 function resetApp() {
   _ready = false; _user = null; _profile = null;
-  _anni = {}; _last = null; _admData = [];
+  _anni = {}; _last = null; _admData = []; _documenti = {}; _aiFile = null;
   toast('Disconnesso · Arrivederci 👋', 'info', 1500);
   // Torna alla landing page dopo il toast
   setTimeout(() => {
@@ -1538,12 +1550,27 @@ async function parseTaxPDF(file) {
 
     const arrayBuffer = await file.arrayBuffer();
     const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const _numPages = pdfDoc.numPages; // catturato prima del try-catch per uso successivo
 
-    for (let p = 1; p <= pdfDoc.numPages; p++) {
+    for (let p = 1; p <= _numPages; p++) {
       const page    = await pdfDoc.getPage(p);
       const content = await page.getTextContent();
-      const pageText = content.items.map(i => i.str).join(' ');
-      pdf_text += pageText + '\n';
+      // FIX F24 MULTI-PAGINA: preserva la struttura a righe del PDF
+      // Confrontando la posizione Y di ogni elemento: se cambia di più di 2pt
+      // significa una nuova riga → inserisce \n invece di spazio
+      // Questo permette a Gemini di vedere le righe della tabella F24 in modo leggibile
+      let pageText = '';
+      for (let k = 0; k < content.items.length; k++) {
+        const item = content.items[k];
+        const prev = content.items[k - 1];
+        if (k === 0) {
+          pageText += item.str;
+        } else {
+          const yDiff = Math.abs((item.transform[5] || 0) - (prev.transform[5] || 0));
+          pageText += (yDiff > 2 ? '\n' : ' ') + item.str;
+        }
+      }
+      pdf_text += '--- PAGINA ' + p + ' ---\n' + pageText + '\n';
     }
   } catch (e) {
     throw new Error('Errore estrazione testo PDF: ' + e.message +
@@ -1588,7 +1615,7 @@ async function parseTaxPDF(file) {
       'Authorization': 'Bearer ' + token,
       'apikey':        SKEY
     },
-    body: JSON.stringify({ pdf_text, is_f24: isLikelyF24 })
+    body: JSON.stringify({ pdf_text, is_f24: isLikelyF24, page_count: _numPages || 1 })
   });
 
   // Gestione robusta: Supabase gateway 401 restituisce {"msg":"..."} non {"error":"..."}
@@ -2089,7 +2116,13 @@ function renderArchivio() {
           <div class="bdr tot"><span class="bl" style="color:var(--t1)"><span class="dot" style="background:var(--re)"></span>Imposta sostitutiva (${(d.aliquota*100).toFixed(0)}%)</span><span class="bv">${fmt(d.imposta_sost)}</span></div>
         </div>
         ${d.note ? `<div class="al al-i" style="margin-top:8px"><span class="ai">📋</span><span style="font-style:italic">${sanitizeHTML(d.note)}</span></div>` : ''}
+        ${(d.inps_versata_anno_solare > 0) ? `
+          <div class="al al-o" style="margin-top:8px;font-size:12px">
+            <span class="ai">🏛️</span>
+            <span><strong>INPS versata (anno solare):</strong> ${fmt(d.inps_versata_anno_solare)} — registrata da F24/pagamenti</span>
+          </div>` : ''}
         <div style="font-size:11px;color:var(--t3);margin-top:8px">☁️ Salvato il ${sal} · Stato: <strong>${s}</strong> · ${d.acconto_note}</div>
+        ${renderDocumentiAnno(d.anno)}
         <div class="btn-row">
           <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--pu-b),var(--pu))" onclick="archAnalizzaPDF(${d.anno})">🤖 Analizza Dichiarazione / F24</button>
           <button class="btn btn-sm btn-ol" onclick="printAnno(${d.anno})">🖨️ Stampa</button>
@@ -2108,10 +2141,117 @@ function togAyc(anno) {
 }
 
 /* ============================================================
+   DOCUMENTI FISCALI — caricamento, visualizzazione, download, eliminazione
+   ============================================================ */
+
+// Carica tutti i documenti dell'utente e li indicizza per anno
+async function loadDocumenti() {
+  try {
+    const { data, error } = await sb
+      .from('documenti_fiscali')
+      .select('id, anno, nome_file, storage_path, tipo_doc, dimensione, uploaded_at')
+      .eq('user_id', _user.id)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) { console.warn('[loadDocumenti]', error.message); return; }
+
+    _documenti = {};
+    (data || []).forEach(doc => {
+      if (!_documenti[doc.anno]) _documenti[doc.anno] = [];
+      _documenti[doc.anno].push(doc);
+    });
+  } catch(e) {
+    console.warn('[loadDocumenti] Eccezione:', e.message);
+  }
+}
+
+// Renderizza la sezione documenti per un anno specifico (usato in renderArchivio)
+function renderDocumentiAnno(anno) {
+  const docs = _documenti[anno];
+  if (!docs || docs.length === 0) return '';
+
+  const icona = { dichiarazione:'📑', f24:'📋', sconosciuto:'📄' };
+  const rows = docs.map(doc => {
+    const data   = new Date(doc.uploaded_at).toLocaleDateString('it-IT');
+    const dim    = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
+    const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
+    const ico    = icona[doc.tipo_doc] || '📄';
+    return `<div class="doc-row">
+      <span class="doc-ico">${ico}</span>
+      <div class="doc-info">
+        <div class="doc-name">${sanitizeHTML(doc.nome_file)}</div>
+        <div class="doc-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
+      </div>
+      <div class="doc-actions">
+        <button class="btn btn-xs btn-ol" onclick="downloadDoc('${doc.storage_path}','${sanitizeHTML(doc.nome_file)}')">⬇️ Scarica</button>
+        <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="deleteDoc('${doc.id}','${doc.storage_path}',${anno})">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="docs-section">
+    <div class="docs-title">📎 Documenti caricati (${docs.length})</div>
+    ${rows}
+  </div>`;
+}
+
+// Genera URL firmato e apre/scarica il PDF
+async function downloadDoc(storagePath, nomeFile) {
+  try {
+    const { data, error } = await sb.storage
+      .from('documenti-fiscali')
+      .createSignedUrl(storagePath, 300); // URL valido 5 minuti
+
+    if (error) throw error;
+    // Apre in nuova scheda (mobile: tenta download diretto)
+    const a = document.createElement('a');
+    a.href = data.signedUrl;
+    a.download = nomeFile;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch(e) {
+    toast('❌ Impossibile aprire il file: ' + e.message, 'err', 5000);
+  }
+}
+
+// Elimina documento da Storage + tabella
+async function deleteDoc(docId, storagePath, anno) {
+  if (!confirm('Eliminare questo documento? Operazione non reversibile.')) return;
+
+  setSync('busy', 'Eliminazione...');
+  try {
+    // 1. Elimina da Storage
+    await sb.storage.from('documenti-fiscali').remove([storagePath]);
+    // 2. Elimina dalla tabella
+    const { error } = await sb.from('documenti_fiscali')
+      .delete()
+      .eq('id', docId)
+      .eq('user_id', _user.id);
+    if (error) throw error;
+
+    // 3. Aggiorna cache locale
+    if (_documenti[anno]) {
+      _documenti[anno] = _documenti[anno].filter(d => d.id !== docId);
+    }
+    setSync('ok', 'Sincronizzato');
+    renderArchivio();
+    toast('🗑️ Documento eliminato', 'ok');
+  } catch(e) {
+    setSync('err', 'Errore');
+    toast('❌ Errore eliminazione: ' + e.message, 'err');
+  }
+}
+
+/* ============================================================
    ANALISI PDF DICHIARAZIONE / F24 — dall'archivio
    ============================================================ */
-let _aiAnno   = null; // anno target dell'analisi corrente
-let _aiResult = null; // risultato raw dalla Edge Function
+let _aiAnno    = null; // anno target dell'analisi corrente
+let _aiResult  = null; // risultato raw dalla Edge Function
+let _aiFile    = null; // file PDF originale (per upload su Storage dopo conferma)
+let _documenti = {};   // { anno: [{ id, nome_file, storage_path, tipo_doc, uploaded_at }] }
 
 // 1. L'utente clicca "Analizza Dich." → apri file picker e ricorda l'anno
 function archAnalizzaPDF(anno) {
@@ -2126,6 +2266,7 @@ async function onArchPdfSelected(input) {
   const file = input.files[0];
   if (!file || _aiAnno === null) return;
 
+  _aiFile = file; // salva riferimento per upload su Storage dopo conferma
   const anno = _aiAnno;
 
   // Feedback visivo — apri il corpo della card se non è aperto
@@ -2296,12 +2437,67 @@ async function confermaAiResult() {
   setSync('ok', 'Sincronizzato');
   renderArchivio();
   renderSidebar();
-  toast(`✅ Anno ${anno} aggiornato con i dati del PDF`, 'ok');
+
+  // Messaggio di conferma dettagliato per rendere visibile cosa è stato salvato
+  const campiSalvati = [];
+  if (updates.inps_versata_anno_solare) campiSalvati.push(`INPS versata: ${fmt(updates.inps_versata_anno_solare)}`);
+  if (updates.imposta_sost)             campiSalvati.push(`Imposta: ${fmt(updates.imposta_sost)}`);
+  if (updates.fatturato)                campiSalvati.push(`Fatturato: ${fmt(updates.fatturato)}`);
+  const dettaglio = campiSalvati.length > 0 ? ` (${campiSalvati.join(' · ')})` : '';
+  toast(`✅ Anno ${anno} aggiornato${dettaglio}`, 'ok', 5000);
 
   // FIX 3: CASCADE UPDATE — ricalcola acconti degli anni successivi
   await syncFutureYears(anno);
 
-  _aiAnno = null; _aiResult = null;
+  // ── Upload PDF su Supabase Storage ─────────────────────────────────
+  // Lo facciamo DOPO il salvataggio dati per non bloccare la UX principale
+  if (_aiFile) {
+    try {
+      const ts       = Date.now();
+      const safeName = _aiFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path     = `${_user.id}/${anno}/${ts}_${safeName}`;
+
+      const { error: upErr } = await sb.storage
+        .from('documenti-fiscali')
+        .upload(path, _aiFile, { contentType: 'application/pdf', upsert: false });
+
+      if (!upErr) {
+        // Salva metadati nella tabella documenti_fiscali
+        const { error: dbErr } = await sb.from('documenti_fiscali').insert({
+          user_id:      _user.id,
+          anno:         anno,
+          nome_file:    _aiFile.name,
+          storage_path: path,
+          tipo_doc:     _aiResult?.tipo || 'sconosciuto',
+          dimensione:   _aiFile.size
+        });
+        if (!dbErr) {
+          // Aggiorna cache locale
+          if (!_documenti[anno]) _documenti[anno] = [];
+          _documenti[anno].unshift({
+            id: null, // verrà aggiornato al prossimo loadDocumenti
+            nome_file:    _aiFile.name,
+            storage_path: path,
+            tipo_doc:     _aiResult?.tipo || 'sconosciuto',
+            dimensione:   _aiFile.size,
+            uploaded_at:  new Date().toISOString()
+          });
+          // Ricarica l'archivio per mostrare il file appena caricato
+          renderArchivio();
+          toast(`📎 PDF "${_aiFile.name}" salvato nei documenti dell'anno ${anno}`, 'ok', 4000);
+        } else {
+          console.warn('[upload] Errore salvataggio metadati:', dbErr.message);
+        }
+      } else {
+        console.warn('[upload] Errore storage:', upErr.message);
+        toast(`⚠️ Dati salvati, ma il PDF non è stato archiviato: ${upErr.message}`, 'err', 5000);
+      }
+    } catch(upEx) {
+      console.warn('[upload] Eccezione:', upEx.message);
+    }
+  }
+
+  _aiFile = null; _aiAnno = null; _aiResult = null;
 }
 
 /* ============================================================
