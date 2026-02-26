@@ -1658,6 +1658,7 @@ async function parseTaxPDF(file) {
   //    Inviamo solo testo (~5-20 KB) invece del binario base64 (~800 KB)
   //    Risparmio token Gemini: ~98% — riduce consumo quota drasticamente
   let pdf_text = '';
+  let _numPages = 0; // dichiarato FUORI dal try → accessibile anche dopo il catch
   try {
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     if (!pdfjsLib) throw new Error('PDF.js non caricato. Ricarica la pagina.');
@@ -1666,7 +1667,7 @@ async function parseTaxPDF(file) {
 
     const arrayBuffer = await file.arrayBuffer();
     const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const _numPages = pdfDoc.numPages; // catturato prima del try-catch per uso successivo
+    _numPages = pdfDoc.numPages; // assegnato alla variabile esterna (let, non const)
 
     for (let p = 1; p <= _numPages; p++) {
       const page    = await pdfDoc.getPage(p);
