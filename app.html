@@ -1072,7 +1072,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     </p>
 
     <div class="ai-result-field" id="ai-f-fatturato" style="display:none">
-      <div class="arf-lbl">📊 Componenti positivi — LM22 col.3 (€)</div>
+      <div class="arf-lbl">📊 FATTURATO IMPONIBILE — RIGO LM22 COL.3 (€)</div>
       <div class="arf-val" id="ai-v-fatturato">—</div>
       <input type="number" class="arf-edit" id="ai-e-fatturato" min="0" step="0.01"
              placeholder="Modifica se necessario">
@@ -1107,7 +1107,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     </div>
 
     <div class="btn-row" style="margin-top:14px">
-      <button class="btn btn-gr btn-sm" onclick="confermaAiResult()">✅ Applica al cloud</button>
+      <button class="btn btn-gr btn-sm" id="ai-btn-apply" onclick="confermaAiResult()">✅ Applica al cloud</button>
       <button class="btn btn-ol btn-sm" onclick="closeModal('modal-ai-result')">Annulla</button>
     </div>
   </div>
@@ -1338,7 +1338,7 @@ async function doGoogleLogin() {
 
 async function doLogout() {
   closeModal('modal-user');
-  await sb.auth.signOut();
+  try { await sb.auth.signOut(); } catch(e) { console.error('Logout error:', e.message); }
   // Il reset e redirect viene gestito da onAuthStateChange -> resetApp()
 }
 
@@ -1816,7 +1816,8 @@ function tryParseRPF(text) {
    Cerca: importo totale F24, anno di riferimento, INPS versata
    ============================================================ */
 function tryParseF24(text) {
-  const isF24 = /MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO/i.test(text);
+  // FIX: regex allineata a isLikelyF24 — include F24 semplificato, causali INPS, keyword alternative
+  const isF24 = /\bF24\b|MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|\bDPPI\b|\b1791\b|\b1792\b|\bCF29\b|\bCF30\b|\bCF31\b|\bCF32\b|\bPXX\b/i.test(text);
   if (!isF24) return null;
 
   function parseITA(str) {
@@ -1923,8 +1924,14 @@ function normalizzaRisultato(raw, annoFallback) {
                 parseFloat(raw.inps_versata_f24) || 0;
   const imp   = parseFloat(raw.imposta_dovuta) || parseFloat(raw.imposta_dovuta_lm11) || 0;
 
+  // FIX: normalizza tipo — Gemini a volte restituisce varianti ('F24', 'f 24', ecc.)
+  let tipoNorm = (raw.tipo || '').toLowerCase().replace(/\s/g, '');
+  if (tipoNorm === 'f24') tipoNorm = 'f24';
+  else if (tipoNorm === 'dichiarazione') tipoNorm = 'dichiarazione';
+  else tipoNorm = raw.tipo || 'sconosciuto';
+
   const r = {
-    tipo:               raw.tipo || 'sconosciuto',
+    tipo:               tipoNorm,
     anno:               raw.anno || annoFallback,
     ateco:              raw.ateco || null,
     fatturato_lm2:      fatt,
@@ -2537,7 +2544,7 @@ async function salvaAnno() {
   toast(`✅ Anno ${_last.anno} salvato nel cloud (${stato})`, 'ok');
 
   // CASCADE UPDATE — propaga gli acconti all'anno successivo (es. salvo 2024 → aggiorno acconti 2025)
-  await syncFutureYears(_last.anno);
+  try { await syncFutureYears(_last.anno); } catch(e) { console.warn('syncFutureYears:', e.message); }
 }
 
 /* ============================================================
@@ -2966,8 +2973,27 @@ function apriModalAiResult(anno, r) {
     noteWrap.style.display = 'none';
   }
 
-  // ── Nessun dato estratto → toast di errore, non aprire modal ─
+  // ── Nessun dato estratto ─────────────────────────────────────────────
+  // FIX: per F24 con dati non trovati, mostriamo comunque il modal
+  // con il campo INPS editabile a 0 e messaggio guida manuale.
+  // Solo per dichiarazioni con tutti zero blocchiamo con toast.
   if (!hasFatt && !hasInps && !hasImp) {
+    if (r.tipo === 'f24') {
+      // F24 rilevato ma importi non trovati: mostra campo INPS vuoto editabile
+      g('ai-f-inps-versata').style.display = 'block';
+      g('ai-v-inps-versata').textContent   = '—';
+      g('ai-e-inps-versata').value         = '';
+      // Aggiunge nota di avviso nel box convalida
+      const convBox = g('ai-conv-box');
+      convBox.className = 'ai-conv-box show giallo';
+      g('ai-conv-icona').textContent  = '⚠️';
+      g('ai-conv-titolo').textContent = 'Importo non rilevato automaticamente';
+      g('ai-conv-corpo').textContent  = 'Il PDF non contiene le keyword standard. Inserisci manualmente l'importo INPS versata nel campo sopra prima di applicare.';
+      // Apri il modal comunque
+      openModal('modal-ai-result');
+      return;
+    }
+    // Dichiarazione con zero dati → blocca con toast
     toast('⚠️ Nessun dato fiscale trovato nel PDF. Carica una Dichiarazione Redditi PF o un F24.', 'err', 6000);
     return;
   }
@@ -3065,7 +3091,7 @@ async function confermaAiResult() {
   }
 
   const btn = g('ai-btn-apply');
-  btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
+  if (btn) { btn.textContent = '⏳ Salvataggio...'; btn.disabled = true; }
   setSync('busy', 'Aggiornamento AI...');
 
   const { error } = await sb.from('anni_fiscali')
@@ -3073,7 +3099,7 @@ async function confermaAiResult() {
     .eq('id', d.id)
     .eq('user_id', _user.id);
 
-  btn.textContent = '✅ Applica al cloud'; btn.disabled = false;
+  if (btn) { btn.textContent = '✅ Applica al cloud'; btn.disabled = false; }
 
   if (error) {
     setSync('err', 'Errore');
@@ -3081,19 +3107,25 @@ async function confermaAiResult() {
     return;
   }
 
+  // FIX F24 SAVE: aggiorna il record locale con TUTTI i campi salvati,
+  // incluso inps_versata_anno_solare che prima non veniva propagato localmente
   Object.assign(_anni[anno], updates);
+  // Forza aggiornamento esplicito del campo INPS versata nel record locale
+  if (updates.inps_versata_anno_solare !== undefined) {
+    _anni[anno].inps_versata_anno_solare = updates.inps_versata_anno_solare;
+  }
   closeModal('modal-ai-result');
   setSync('ok', 'Sincronizzato');
   renderArchivio();
   renderSidebar();
 
-  // Messaggio di conferma dettagliato per rendere visibile cosa è stato salvato
+  // Messaggio di conferma dettagliato — sempre visibile per 7 secondi
   const campiSalvati = [];
   if (updates.inps_versata_anno_solare) campiSalvati.push(`INPS versata: ${fmt(updates.inps_versata_anno_solare)}`);
   if (updates.imposta_sost)             campiSalvati.push(`Imposta: ${fmt(updates.imposta_sost)}`);
   if (updates.fatturato)                campiSalvati.push(`Fatturato: ${fmt(updates.fatturato)}`);
-  const dettaglio = campiSalvati.length > 0 ? ` (${campiSalvati.join(' · ')})` : '';
-  toast(`✅ Anno ${anno} aggiornato${dettaglio}`, 'ok', 5000);
+  const dettaglio = campiSalvati.length > 0 ? ` (${campiSalvati.join(' · ')})` : ' — nessun campo aggiornato (valori non variati)';
+  toast(`✅ Anno ${anno} aggiornato${dettaglio}`, 'ok', 7000);
 
   // FIX 3: CASCADE UPDATE — ricalcola acconti degli anni successivi
   await syncFutureYears(anno);
