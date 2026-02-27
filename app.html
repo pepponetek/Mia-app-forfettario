@@ -1830,38 +1830,71 @@ function tryParseRPF(text) {
 
 /* ============================================================
    ESTRAZIONE LOCALE F24 — parsing deterministico senza AI
-   Cerca: importo totale F24, anno di riferimento, INPS versata
+   Gestisce tutti i formati: F24 ordinario, semplificato, elide,
+   PDF da intermediari, layout PDF.js con testo spezzato.
    ============================================================ */
 function tryParseF24(text) {
-  // FIX: regex allineata a isLikelyF24 — include F24 semplificato, causali INPS, keyword alternative
-  const isF24 = /\bF24\b|MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|\bDPPI\b|\b1791\b|\b1792\b|\bCF29\b|\bCF30\b|\bCF31\b|\bCF32\b|\bPXX\b/i.test(text);
+  const isF24 = /\bF24\b|MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|\bDPPI\b|\b1791\b|\b1792\b|\bCF29\b|\bCF30\b|\bCF31\b|\bCF32\b|\bPXX\b|CONTRIBUTI\s+INPS/i.test(text);
   if (!isF24) return null;
 
+  // parseITA: gestisce importi con e senza punto migliaia (2.760,00 e 2760,00)
   function parseITA(str) {
     if (!str) return 0;
-    return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+    // Rimuove i punti migliaia SOLO se seguiti da esattamente 3 cifre poi virgola
+    const clean = str.replace(/\.(\d{3})(?=[,])/g, '$1').replace(',', '.');
+    return parseFloat(clean) || 0;
   }
 
-  // Anno di riferimento: cerca pattern espliciti nel modello F24
+  // Pattern importo monetario: con o senza punto migliaia
+  // \d{1,3}(?:[.,]\d{3})*,\d{2}  → cattura 2.760,00 e 2760,00 e 12.345,67
+  // |\d{4,},\d{2}                  → cattura 2760,00 direttamente
+  const IMO = '(\\d{1,3}(?:[.,]\\d{3})*,\\d{2}|\\d{4,},\\d{2})';
+
+  // ── STEP 1: Anno di riferimento (obbligatorio per identificare l'anno fiscale)
   const annoMatch =
     text.match(/ANNO\s+(?:DI\s+)?RIFERIMENTO[\s:]*(\d{4})/i) ||
-    text.match(/ANNO\s+RIF\.?\s*(\d{4})/i) ||
-    text.match(/COMPETENZA\s+(\d{4})/i) ||
-    text.match(/PERIODO\s+D[I']?\s*IMPOSTA[\s:]*(\d{4})/i);
+    text.match(/ANNO\s+RIF\.?[\s:]*(\d{4})/i)               ||
+    text.match(/COMPETENZA[\s:]*(\d{4})/i)                    ||
+    text.match(/PERIODO[\s:]+(?:DI\s+IMPOSTA[\s:]+)?(\d{4})/i) ||
+    text.match(/\b(20\d{2})\b/);   // fallback: primo anno 20xx trovato
   const anno = annoMatch ? parseInt(annoMatch[1]) : null;
 
-  // Importo totale da versare (formato italiano: 1.234,00)
+  // ── STEP 2: Importo INPS (causali DPPI, GS, PXX, CF29-32, 1791/1792)
+  // Cerca causale + importo sulla stessa riga o sulle successive (finestra 200 char)
+  const causaliINPS = /DPPI|GS\b|PXX|CF29|CF30|CF31|CF32|1791|1792|CONTRIBUTI\s+INPS|INPS\s+ARTIG|INPS\s+COMM/i;
+  const inpsMatch =
+    text.match(new RegExp('(?:' + causaliINPS.source + ')[\\s\\S]{0,200}?' + IMO, 'i'));
+  const inpsF24 = inpsMatch ? parseITA(inpsMatch[1]) : 0;
+
+  // ── STEP 3: Importo totale (fallback se INPS non trovato)
   const totMatch =
-    text.match(/TOTALE\s+(?:DA\s+VERSARE|DOVUTO|A\s+DEBITO)[\s:]*(\d{1,3}(?:\.\d{3})*,\d{2})/i) ||
-    text.match(/IMPORTO\s+A\s+DEBITO[\s:]*(\d{1,3}(?:\.\d{3})*,\d{2})/i) ||
-    text.match(/TOTALE[\s:]+(\d{1,3}(?:\.\d{3})*,\d{2})\b/i);
+    text.match(new RegExp('(?:TOTALE\\s+(?:DA\\s+)?VERSARE|SALDO\\s+FINALE|IMPORTO\\s+A\\s+DEBITO\\s+VERSATO)[^\\n]{0,60}\\n?[^\\n]{0,30}?' + IMO, 'i')) ||
+    text.match(new RegExp('(?:TOTALE|SALDO)[\\s:]' + IMO, 'i'));
   const importoTotale = totMatch ? parseITA(totMatch[1]) : 0;
 
-  // Cerca INPS versata (causali DPPI / GS / contributi previdenziali)
-  const inpsMatch = text.match(/(?:DPPI|GS|PXX|\bINPS\b)[\s\S]{0,80}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-  const inpsF24   = inpsMatch ? parseITA(inpsMatch[1]) : 0;
+  // ── STEP 4: Fallback aggressivo — somma tutti gli importi vicino a causali INPS
+  let importoFallback = 0;
+  if (inpsF24 === 0 && importoTotale === 0) {
+    // Estrai TUTTI i numeri monetari dal documento
+    const tuttiImporti = [...text.matchAll(/(\d{1,3}(?:[.,]\d{3})*,\d{2}|\d{4,},\d{2})/g)]
+      .map(m => parseITA(m[1]))
+      .filter(v => v > 50 && v < 200000);  // range plausibile contributi INPS
+    // Prendi il valore più grande (solitamente il totale)
+    if (tuttiImporti.length > 0) {
+      importoFallback = Math.max(...tuttiImporti);
+    }
+  }
 
-  if (importoTotale < 10 && inpsF24 < 10) return null; // dati non trovati
+  const importoFinale = inpsF24 || importoTotale || importoFallback;
+  if (importoFinale < 10) return null; // nessun dato trovato
+
+  // ── STEP 5: Determina nota diagnostica
+  let nota = '⚡ F24 estratto localmente (0 token AI)';
+  if (!anno) nota += ' · ⚠️ Anno non trovato: verifica manualmente';
+  else       nota += ` · Anno rif.: ${anno}`;
+  if (inpsF24 > 0)       nota += ` · INPS causale: ${inpsF24.toLocaleString('it-IT',{minimumFractionDigits:2})}`;
+  else if (importoTotale > 0) nota += ` · Totale F24: ${importoTotale.toLocaleString('it-IT',{minimumFractionDigits:2})}`;
+  else                        nota += ` · ⚠️ Importo da fallback: ${importoFallback.toLocaleString('it-IT',{minimumFractionDigits:2})} — verifica`;
 
   const result = {
     tipo:                'f24',
@@ -1870,11 +1903,8 @@ function tryParseF24(text) {
     fatturato_lm2:       0,
     inps_dedotta_lm7:    0,
     imposta_dovuta_lm11: 0,
-    inps_versata_f24:    inpsF24 > 0 ? inpsF24 : (importoTotale > 0 ? importoTotale : 0),
-    note: `⚡ F24 estratto localmente (0 token AI)` +
-          (anno ? ` · Anno rif.: ${anno}` : ' · ⚠️ Anno non trovato: verifica manualmente') +
-          (importoTotale > 0 ? ` · Totale: ${importoTotale.toLocaleString('it-IT',{minimumFractionDigits:2})}` : '') +
-          (inpsF24 > 0 ? ` · INPS: ${inpsF24.toLocaleString('it-IT',{minimumFractionDigits:2})}` : '')
+    inps_versata_f24:    importoFinale,
+    note:                nota
   };
 
   console.log('[tryParseF24] Risultato:', result);
