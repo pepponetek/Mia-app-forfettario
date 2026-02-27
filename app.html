@@ -1930,7 +1930,10 @@ function normalizzaRisultato(raw, annoFallback) {
     fatturato_lm2:      fatt,
     inps_dedotta_lm7:   inps,
     imposta_dovuta_lm11: imp,
-    inps_versata_f24:   parseFloat(raw.inps_versata_f24) || 0,
+    // FIX F24: il nuovo formato Gemini usa "inps_versata" anche per F24.
+    // Se inps_versata_f24 non è presente MA tipo è f24, usa inps_versata.
+    inps_versata_f24: parseFloat(raw.inps_versata_f24) ||
+                      ((raw.tipo === 'f24') ? (parseFloat(raw.inps_versata) || inps) : 0),
     note:               raw.note || null,
     convalida:          null
   };
@@ -2152,7 +2155,9 @@ async function parseTaxPDF(file) {
   }
 
   // 1d. FIX F24 ANNO — rileva se documento è un F24 per istruire il server
-  const isLikelyF24 = /F24|MODELLO\s+F24|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO/i.test(pdf_text);
+  // FIX: rilevamento F24 più robusto — include "VERSAMENTI UNIFICATI",
+  // "SALDO FINALE", codici tributo INPS tipici, intestazione F24 semplificato
+  const isLikelyF24 = /\bF24\b|MODELLO\s+F24|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|DPPI|1791|1792|CF29|CF30|CF31|CF32|PXX/i.test(pdf_text);
 
   // 2. Forza il refresh del token — evita 401 da JWT scaduto
   //    refreshSession() chiama il server e restituisce sempre un token fresco
