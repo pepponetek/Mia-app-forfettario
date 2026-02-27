@@ -1414,11 +1414,14 @@ async function initAppData() {
 function resetApp() {
   _ready = false; _user = null; _profile = null;
   _anni = {}; _last = null; _admData = []; _documenti = {}; _aiFile = null;
+  // Pulisce token Supabase da localStorage per evitare loop al prossimo avvio
+  try {
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
+    });
+  } catch(e) { /* localStorage non disponibile */ }
   toast('Disconnesso · Arrivederci 👋', 'info', 1500);
-  // Torna alla landing page dopo il toast
-  setTimeout(() => {
-    window.location.replace(window.location.origin);
-  }, 1200);
+  setTimeout(() => { window.location.replace(window.location.origin); }, 1200);
 }
 
 /* ============================================================
@@ -2988,7 +2991,7 @@ function apriModalAiResult(anno, r) {
       convBox.className = 'ai-conv-box show giallo';
       g('ai-conv-icona').textContent  = '⚠️';
       g('ai-conv-titolo').textContent = 'Importo non rilevato automaticamente';
-      g('ai-conv-corpo').textContent  = 'Il PDF non contiene le keyword standard. Inserisci manualmente l'importo INPS versata nel campo sopra prima di applicare.';
+      g('ai-conv-corpo').textContent  = "Il PDF non contiene le keyword standard. Inserisci manualmente l'importo INPS versata nel campo sopra prima di applicare.";
       // Apri il modal comunque
       openModal('modal-ai-result');
       return;
@@ -4587,36 +4590,65 @@ async function wizComplete() {
     setTimeout(() => { ls.classList.add('gone'); }, 400);
   }
 
+  function showAuthScreen() {
+    hideLs();
+    // Mostra schermata login — nessun redirect, evita loop infinito
+    const as = document.getElementById('auth-screen');
+    if (as) as.style.display = '';
+  }
+
   function startApp(user) {
     if (appStarted) return;
     appStarted = true;
     _user = user;
-
     g('auth-screen').style.display = 'none';
     g('app').classList.add('show');
     hideLs();
-
-    // Carica i dati in background senza bloccare l'UI
     initAppData();
   }
 
-  // Ascolta logout, SIGNED_IN e INITIAL_SESSION (es. dopo conferma email)
+  // FIX LOOP INFINITO:
+  // Se token_revoked → SIGNED_OUT arriva PRIMA che l'utente si sia mai loggato
+  // (appStarted = false), resetApp() faceva location.replace → ricarica → loop.
+  // Ora: SIGNED_OUT prima del login mostra solo auth-screen, senza redirect.
+  // SIGNED_OUT dopo il login (logout volontario) invece fa il redirect normale.
   sb.auth.onAuthStateChange(async (event, session) => {
     if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
       startApp(session.user);
+    } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+      // Token rinnovato silenziosamente — aggiorna _user senza restart
+      if (appStarted) _user = session.user;
     } else if (event === 'SIGNED_OUT') {
-      resetApp();
+      if (appStarted) {
+        // Logout volontario o token scaduto DOPO login → reset completo
+        resetApp();
+      } else {
+        // Token corrotto trovato al boot PRIMA del login → mostra solo login
+        // Pulisce localStorage per rompere il loop al prossimo avvio
+        console.warn('[boot] SIGNED_OUT prima del login — pulizia token e mostra auth screen');
+        try {
+          // Rimuove solo i token Supabase, non tutti i dati localStorage
+          Object.keys(localStorage).forEach(k => {
+            if (k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
+          });
+        } catch(e) { /* localStorage non disponibile */ }
+        showAuthScreen();
+      }
     }
   });
 
-  // Se è callback OAuth aspetta SIGNED_IN con timeout di sicurezza
+  // Timeout di sicurezza: se dopo 4s lo spinner è ancora presente, mostra login
+  // Protegge da casi edge (rete lenta, Supabase irraggiungibile, OAuth incompleto)
+  const safetyTimer = setTimeout(() => {
+    if (!appStarted) {
+      console.warn('[boot] Timeout 4s — mostro auth screen per sicurezza');
+      showAuthScreen();
+    }
+  }, 4000);
+
+  // OAuth callback: aspetta SIGNED_IN da onAuthStateChange
   if (isOAuthCallback) {
-    setTimeout(() => {
-      if (!appStarted) {
-        console.warn('OAuth timeout o sessione non rilevata');
-        hideLs(); // Mostra auth screen invece di loop
-      }
-    }, 6000);
+    // Il timer da 4s sopra fa già da fallback — nessun return necessario
     return;
   }
 
@@ -4625,15 +4657,16 @@ async function wizComplete() {
     const { data: { session }, error } = await sb.auth.getSession();
     if (error) throw error;
     if (session?.user) {
+      clearTimeout(safetyTimer);
       startApp(session.user);
     } else {
-      // Nessuna sessione: resta su auth screen (permette il login)
-      hideLs();
+      clearTimeout(safetyTimer);
+      showAuthScreen();
     }
   } catch(e) {
-    console.error('boot error:', e.message);
-    // Errore: resta su auth screen
-    hideLs();
+    console.error('[boot] getSession error:', e.message);
+    clearTimeout(safetyTimer);
+    showAuthScreen();
   }
 })();
 
