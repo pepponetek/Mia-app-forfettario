@@ -1409,6 +1409,20 @@ async function initAppData() {
   loadDocumenti(); // carica documenti in parallelo (non blocca)
   onAnnoChange();
   setSync('ok', 'Sincronizzato');
+
+  // Event delegation per pulsanti documenti nell'archivio
+  // Evita problemi con onclick inline e caratteri speciali nei nomi file
+  document.addEventListener('click', function(e) {
+    const dlBtn  = e.target.closest('.doc-dl-btn');
+    const delBtn = e.target.closest('.doc-del-btn');
+    if (dlBtn) {
+      e.preventDefault();
+      downloadDoc(dlBtn.dataset.path, dlBtn.dataset.name);
+    } else if (delBtn) {
+      e.preventDefault();
+      richiediDelDoc(delBtn.dataset.id, delBtn.dataset.path, parseInt(delBtn.dataset.anno), delBtn.dataset.name);
+    }
+  });
 }
 
 function resetApp() {
@@ -2769,6 +2783,7 @@ function renderDocumentiAnno(anno) {
     const dim    = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
     const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
     const ico    = icona[doc.tipo_doc] || '📄';
+    // FIX: usa data-attributes per evitare problemi con apostrofi e caratteri speciali nei parametri onclick
     return `<div class="doc-row">
       <span class="doc-ico">${ico}</span>
       <div class="doc-info">
@@ -2776,8 +2791,14 @@ function renderDocumentiAnno(anno) {
         <div class="doc-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
       </div>
       <div class="doc-actions">
-        <button class="btn btn-xs btn-ol" onclick="downloadDoc('${doc.storage_path}','${sanitizeHTML(doc.nome_file)}')">⬇️ Scarica</button>
-        <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${doc.storage_path}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️</button>
+        <button class="btn btn-xs btn-ol doc-dl-btn"
+          data-path="${doc.storage_path}"
+          data-name="${sanitizeHTML(doc.nome_file)}">⬇️ Scarica</button>
+        <button class="btn btn-xs btn-ol doc-del-btn" style="color:var(--re)"
+          data-id="${doc.id}"
+          data-path="${doc.storage_path}"
+          data-anno="${anno}"
+          data-name="${sanitizeHTML(doc.nome_file)}">🗑️</button>
       </div>
     </div>`;
   }).join('');
@@ -2794,17 +2815,14 @@ async function downloadDoc(storagePath, nomeFile) {
     const { data, error } = await sb.storage
       .from('documenti-fiscali')
       .createSignedUrl(storagePath, 300); // URL valido 5 minuti
-
     if (error) throw error;
-    // Apre in nuova scheda (mobile: tenta download diretto)
-    const a = document.createElement('a');
-    a.href = data.signedUrl;
-    a.download = nomeFile;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+
+    // Su mobile window.open() funziona meglio di a.click() che viene bloccato
+    const opened = window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      // Fallback se popup bloccati: link cliccabile nel toast
+      toast(`📄 <a href="${data.signedUrl}" target="_blank" style="color:var(--ac);text-decoration:underline">Tocca qui per aprire il PDF</a>`, 'info', 10000);
+    }
   } catch(e) {
     toast('❌ Impossibile aprire il file: ' + e.message, 'err', 5000);
   }
@@ -2812,7 +2830,9 @@ async function downloadDoc(storagePath, nomeFile) {
 
 // Apre il modal di conferma eliminazione documento
 function richiediDelDoc(docId, storagePath, anno, nomeFile) {
-  _delDoc = { id: docId, storagePath, anno };
+  // Trova il tipo_doc del documento dalla cache locale
+  const docInCache = (_documenti[anno] || []).find(d => d.id === docId);
+  _delDoc = { id: docId, storagePath, anno, tipo_doc: docInCache?.tipo_doc || 'sconosciuto' };
   g('del-doc-name').textContent = nomeFile;
   openModal('modal-del-doc');
 }
@@ -2824,28 +2844,44 @@ async function confDelDoc() {
 
   setSync('busy', 'Eliminazione...');
   try {
-    // 1. Elimina da Storage (ignora errori di file non trovato)
+    // 1. Elimina da Storage (ignora errori se file già rimosso)
     await sb.storage.from('documenti-fiscali').remove([storagePath]);
-    // 2. Elimina dalla tabella
+
+    // 2. Elimina dalla tabella documenti_fiscali
     const { error } = await sb.from('documenti_fiscali')
       .delete()
       .eq('id', docId)
       .eq('user_id', _user.id);
     if (error) throw error;
 
-    // 3. Aggiorna cache locale e ricarica da DB per coerenza
+    // 3. Aggiorna cache locale
     if (_documenti[anno]) {
       _documenti[anno] = _documenti[anno].filter(d => d.id !== docId);
     }
-    // Ricarica anche da DB per avere stato consistente (gestisce doc con id null)
-    loadDocumenti().then(() => {
-      renderArchivio();
-      renderDocumentiView();
-    });
+
+    // 4. FIX INDICATORI: se era un F24 e non ci sono altri F24 rimasti,
+    //    azzera inps_versata_anno_solare nel DB e in locale
+    const eraF24 = _delDoc.tipo_doc === 'f24';
+    const altriF24 = (_documenti[anno] || []).filter(d => d.tipo_doc === 'f24');
+    if (eraF24 && altriF24.length === 0 && _anni[anno]?.inps_versata_anno_solare > 0) {
+      const { error: updErr } = await sb.from('anni_fiscali')
+        .update({ inps_versata_anno_solare: null, updated_at: new Date().toISOString() })
+        .eq('user_id', _user.id)
+        .eq('anno', anno);
+      if (!updErr && _anni[anno]) {
+        _anni[anno].inps_versata_anno_solare = null;
+      }
+    }
+
+    // 5. Ricarica documenti dal DB e aggiorna UI
+    await loadDocumenti();
+    renderArchivio();
+    if (g('view-documenti')?.classList.contains('active')) renderDocumentiView();
+
     _delDoc = null;
     closeModal('modal-del-doc');
     setSync('ok', 'Sincronizzato');
-    toast('🗑️ Documento eliminato definitivamente', 'ok');
+    toast('🗑️ Documento eliminato. Tutti gli indicatori sono stati aggiornati.', 'ok', 4000);
   } catch(e) {
     setSync('err', 'Errore');
     toast('❌ Errore eliminazione: ' + e.message, 'err');
