@@ -1113,6 +1113,25 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <div class="ai-note-base" id="ai-note-txt"></div>
     </div>
 
+    <!-- PANNELLO DEBUG RAW TEXT — visibile solo quando parsing fallisce -->
+    <div id="ai-debug-wrap" style="display:none; margin-top:10px">
+      <details>
+        <summary style="font-size:0.8rem;color:var(--t2);cursor:pointer;user-select:none">
+          🔍 Testo grezzo estratto dal PDF (debug)
+        </summary>
+        <textarea id="ai-debug-txt" readonly
+          style="width:100%;height:120px;margin-top:6px;font-size:0.72rem;
+                 font-family:monospace;background:var(--bg2);color:var(--t2);
+                 border:1px solid var(--bd);border-radius:6px;padding:6px;
+                 resize:vertical;line-height:1.3"></textarea>
+        <button onclick="navigator.clipboard?.writeText(document.getElementById('ai-debug-txt').value).then(()=>toast('📋 Testo copiato','ok',2000))"
+          style="font-size:0.75rem;margin-top:4px;padding:3px 10px;border-radius:4px;
+                 border:1px solid var(--bd);background:transparent;color:var(--t2);cursor:pointer">
+          📋 Copia testo
+        </button>
+      </details>
+    </div>
+
     <div class="btn-row" style="margin-top:14px">
       <button class="btn btn-gr btn-sm" id="ai-btn-apply" onclick="confermaAiResult()">✅ Applica al cloud</button>
       <button class="btn btn-ol btn-sm" onclick="closeModal('modal-ai-result')">Annulla</button>
@@ -1639,26 +1658,20 @@ function tryParseRPF(text) {
   ═══════════════════════════════════════════════════════════════════════ */
 
   /* ── STEP 0: Normalizzazione testo PDF.js ─────────────────────────────
-     I PDF XFA dell'Agenzia delle Entrate estraggono le cifre separate:
-     "3 4 . 8 2 7 , 0 0" — il punto interrompe la sequenza e il singolo
-     passaggio regex fallisce. Usiamo un loop iterativo (radice del bug).  */
-  let t = text;
-  let _prev;
-  do {
-    _prev = t;
-    t = t.replace(/(\d) (\d)/g, '$1$2'); // collassa coppie: 2 pass per "3 4", 3 per "3 4 8"…
-  } while (t !== _prev);
-  // Spazi residui attorno a punto migliaia / virgola decimale
+     Stessa logica di tryParseF24: spazi Unicode + loop iterativo.          */
+  // Normalizza whitespace Unicode → ASCII space
+  let t = text.replace(/[\u00A0\u00AD\u2000-\u200B\u2009\u202F\u205F\u3000\t]/g, ' ')
+               .replace(/\r\n?/g, '\n');
+  // Collassa cifre spaziate con loop iterativo
+  let _prev; let _n = 0;
+  do { _prev = t; t = t.replace(/(\d) (\d)/g, '$1$2'); _n++; } while (t !== _prev && _n < 40);
+  // Pulisce separatori rimasti
   t = t
-    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')   // "34 . 827" → "34.827"
-    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')    // "34. 827" → "34.827"
-    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')       // "827 , 00" → "827,00"
-    .replace(/(\d+), (\d{2})\b/g, '$1,$2')        // "827, 00" → "827,00"
-    // Secondo passaggio per residui
-    .replace(/\b(\d)(?: (\d))+(?!\.\d)/g, m => m.replace(/ /g, ''))
-    // BUG FIX "LM39+valore": PDF.js può unire etichetta e valore → "LM392.021,00"
-    // Separa il rigo dal valore monetario che gli è appiccicato.
-    // Pattern: LM seguito da 2 cifre rigo, poi immediatamente 1-3 cifre + separatore
+    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')
+    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')
+    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')
+    .replace(/(\d+), (\d{2})\b/g, '$1,$2')
+    // BUG FIX "LM39+valore": "LM392.021,00" → "LM39 2.021,00"
     .replace(/\b(LM\d{2})(\d{1,3}(?:[.,]\d{3})*,\d{2})/gi, '$1 $2');
 
   /* ── STEP 1: Riconoscimento documento RPF ─────────────────────────── */
@@ -1898,113 +1911,100 @@ function tryParseRPF(text) {
    PDF da intermediari, layout PDF.js con testo spezzato.
    ============================================================ */
 function tryParseF24(text) {
+  /* ── RILEVAMENTO F24 ─────────────────────────────────────────────── */
   const isF24 = /\bF24\b|MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|\bDPPI\b|\b1791\b|\b1792\b|\bCF29\b|\bCF30\b|\bCF31\b|\bCF32\b|\bPXX\b|CONTRIBUTI\s+INPS/i.test(text);
   if (!isF24) return null;
 
-  /* ── NORMALIZZAZIONE ITERATIVA (FIX ROOT-CAUSE) ────────────────────
-     I PDF XFA dell'Agenzia delle Entrate estraggono le cifre separate
-     da spazi singoli: "4 . 9 0 4 , 0 0"
-     La regex semplice fallisce perché il punto interrompe la sequenza:
-       "9 0 4" → pass1 → "90 4" → pass2 → "904"  (serve il loop)
-       ", 0 0" → pass1 → ", 00" poi la virgola-spazio viene gestita dopo
-     ALGORITMO: ripeti (\d) (\d) → $1$2 fino a che il testo non cambia. */
-  let t = text;
-  let prev;
-  do {
-    prev = t;
-    t = t.replace(/(\d) (\d)/g, '$1$2');
-  } while (t !== prev);
-  // Ora i separatori hanno ancora spazi attorno (es: "4 . 904 , 00")
-  // Rimuovi gli spazi attorno al punto migliaia e alla virgola decimale
+  /* ── NORMALIZZAZIONE COMPLETA ─────────────────────────────────────────
+     ADE usa spazi Unicode non-standard (U+00A0, U+2009 ecc.) tra le cifre.
+     Regex (\d) (\d) cercava solo ASCII 0x20 — ecco perché falliva.        */
+  let t = text
+    .replace(/[\u00A0\u00AD\u2000-\u200B\u2009\u202F\u205F\u3000\t]/g, ' ')
+    .replace(/\r\n?/g, '\n');
+
+  // Collassa coppie di cifre-spazio iterativamente:
+  // "4 9 0 4" → pass1:"49 04" → pass2:"4904"
+  let prev; let n = 0;
+  do { prev = t; t = t.replace(/(\d) (\d)/g, '$1$2'); n++; } while (t !== prev && n < 40);
+
+  // Pulisce separatori rimasti
   t = t
-    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')   // "4 . 904" → "4.904"
-    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')    // "4. 904" → "4.904"
-    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')       // "904 , 00" → "904,00"
-    .replace(/(\d+), (\d{2})\b/g, '$1,$2');       // "904, 00" → "904,00"
+    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')
+    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')
+    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')
+    .replace(/(\d+), (\d{2})\b/g, '$1,$2')
+    .replace(/(\d+) \. (\d{2})\b/g, '$1.$2')
+    .replace(/(\d+)\. (\d{2})\b/g, '$1.$2');
 
-  // Log diagnostico: mostra campione testo normalizzato (aiuta il debug)
-  const sample = t.slice(0, 300).replace(/\n/g, ' ');
-  console.log('[tryParseF24] Testo normalizzato (300 chars):', sample);
+  console.log('[F24] Normalizzato in', n, 'iterazioni. Campione:', t.slice(0, 400));
+  window._f24DebugText = '[Normalizzato]\n' + t.slice(0, 1500) + '\n\n[Grezzo]\n' + text.slice(0, 500);
 
-  // parseITA: gestisce importi con e senza punto migliaia (2.760,00 e 2760,00)
-  function parseITA(str) {
-    if (!str) return 0;
-    // Rimuove i punti migliaia SOLO se seguiti da esattamente 3 cifre poi virgola
-    const clean = str.replace(/\.(\d{3})(?=[,])/g, '$1').replace(',', '.');
-    return parseFloat(clean) || 0;
+  /* ── PARSER IMPORTO ─────────────────────────────────────────────── */
+  function parseAny(s) {
+    if (!s) return 0;
+    s = s.trim();
+    if (/,/.test(s)) return parseFloat(s.replace(/\.(?=\d{3}[,])/g, '').replace(',', '.')) || 0;
+    return parseFloat(s.replace(/\.(?=\d{3}\.)/g, '')) || 0;
   }
 
-  // Pattern importo monetario: con o senza punto migliaia
-  // \d{1,3}(?:[.,]\d{3})*,\d{2}  → cattura 2.760,00 e 2760,00 e 12.345,67
-  // |\d{4,},\d{2}                  → cattura 2760,00 direttamente
-  const IMO = '(\\d{1,3}(?:[.,]\\d{3})*,\\d{2}|\\d{4,},\\d{2})';
-
-  // ── STEP 1: Anno di riferimento (obbligatorio per identificare l'anno fiscale)
+  /* ── ANNO ────────────────────────────────────────────────────────── */
   const annoMatch =
     t.match(/ANNO\s+(?:DI\s+)?RIFERIMENTO[\s:]*(\d{4})/i) ||
-    t.match(/ANNO\s+RIF\.?[\s:]*(\d{4})/i)               ||
-    t.match(/COMPETENZA[\s:]*(\d{4})/i)                    ||
+    t.match(/ANNO\s+RIF\.?[\s:]*(\d{4})/i) ||
+    t.match(/COMPETENZA[\s:]*(\d{4})/i) ||
     t.match(/PERIODO[\s:]+(?:DI\s+IMPOSTA[\s:]+)?(\d{4})/i) ||
-    t.match(/\b(20\d{2})\b/);   // fallback: primo anno 20xx trovato
+    t.match(/\b(20\d{2})\b/);
   const anno = annoMatch ? parseInt(annoMatch[1]) : null;
 
-  // ── STEP 2: Importo INPS (causali DPPI, GS, PXX, CF29-32, 1791/1792)
-  // Cerca causale + importo sulla stessa riga o sulle successive (finestra 200 char)
-  const causaliINPS = /DPPI|GS\b|PXX|CF29|CF30|CF31|CF32|1791|1792|CONTRIBUTI\s+INPS|INPS\s+ARTIG|INPS\s+COMM/i;
-  const inpsMatch =
-    t.match(new RegExp('(?:' + causaliINPS.source + ')[\\s\\S]{0,200}?' + IMO, 'i'));
-  const inpsF24 = inpsMatch ? parseITA(inpsMatch[1]) : 0;
+  /* ── RACCOLTA TUTTI I VALORI MONETARI ────────────────────────────── */
+  const reIT = /\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2}/g;
+  const reUS = /\b\d{1,3}(?:\.\d{3})+\.\d{2}\b|\b\d{4,}\.\d{2}\b/g;
+  const vIT = [...t.matchAll(reIT)].map(m => parseAny(m[0]));
+  const vUS = [...t.matchAll(reUS)].map(m => parseAny(m[0]));
+  const tutti = [...new Set([...vIT, ...vUS])].filter(v => v >= 10 && v < 500000).sort((a,b) => b-a);
+  console.log('[F24] Valori trovati:', tutti.slice(0, 15));
 
-  // ── STEP 3: Importo totale (fallback se INPS non trovato)
-  const totMatch =
-    t.match(new RegExp('(?:TOTALE\\s+(?:DA\\s+)?VERSARE|SALDO\\s+FINALE|IMPORTO\\s+A\\s+DEBITO\\s+VERSATO)[^\\n]{0,60}\\n?[^\\n]{0,30}?' + IMO, 'i')) ||
-    t.match(new RegExp('(?:TOTALE|SALDO)[\\s:]' + IMO, 'i'));
-  const importoTotale = totMatch ? parseITA(totMatch[1]) : 0;
+  /* ── CAUSALI INPS ────────────────────────────────────────────────── */
+  const causREG = /(?:DPPI|GS\b|PXX|CF29|CF30|CF31|CF32|1791|1792|CONTRIBUTI\s+INPS|INPS\s+ARTIG|INPS\s+COMM)/i;
+  const reIMO_IT = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2})';
+  const reIMO_US = '(\\d{1,3}(?:\\.\\d{3})+\\.\\d{2}|\\d{4,}\\.\\d{2})';
 
-  // ── STEP 4: Fallback aggressivo — tutti i numeri monetari nel testo normalizzato
+  let inpsF24 = 0;
+  const mIT = t.match(new RegExp(causREG.source + '[\\s\\S]{0,300}?' + reIMO_IT, 'i'));
+  const mUS = t.match(new RegExp(causREG.source + '[\\s\\S]{0,300}?' + reIMO_US, 'i'));
+  if (mIT) inpsF24 = parseAny(mIT[1]);
+  else if (mUS) inpsF24 = parseAny(mUS[1]);
+
+  /* ── SALDO FINALE ────────────────────────────────────────────────── */
+  let importoTotale = 0;
+  const saldoPat = /(?:TOTALE\s+(?:DA\s+)?VERSARE|SALDO\s+FINALE|IMPORTO\s+A\s+DEBITO\s+VERSATO|TOTALE|SALDO)[\s\S]{0,200}?/i;
+  const sIT = t.match(new RegExp(saldoPat.source + reIMO_IT, 'i'));
+  const sUS = t.match(new RegExp(saldoPat.source + reIMO_US, 'i'));
+  if (sIT) importoTotale = parseAny(sIT[1]);
+  else if (sUS) importoTotale = parseAny(sUS[1]);
+
+  /* ── BEST-GUESS FALLBACK ─────────────────────────────────────────── */
   let importoFallback = 0;
-  if (inpsF24 === 0 && importoTotale === 0) {
-    // Pattern 1: formato italiano "4.904,00" o "2760,00"
-    const tuttiIT = [...t.matchAll(/(\d{1,3}(?:[.,]\d{3})*,\d{2}|\d{4,},\d{2})/g)]
-      .map(m => parseITA(m[1]))
-      .filter(v => v > 50 && v < 200000);
-    // Pattern 2: formato US "4904.00" o "2760.04" (PDF.js può usare il punto come decimale)
-    const tuttiUS = [...t.matchAll(/\b(\d{1,3}(?:\.\d{3})*\.\d{2}|\d{4,}\.\d{2})\b/g)]
-      .map(m => parseFloat(m[1].replace(/(\d)\.(\d{3})/g, '$1$2'))) // rimuove separatori migliaia US
-      .filter(v => v > 50 && v < 200000);
-    const tutti = [...tuttiIT, ...tuttiUS];
-    if (tutti.length > 0) {
-      importoFallback = Math.max(...tutti);
-      console.log('[tryParseF24] Fallback aggressivo trovato:', importoFallback, '— tutti i valori:', tutti.slice(0, 10));
-    } else {
-      console.warn('[tryParseF24] Fallback vuoto — campione testo:', t.slice(0, 500));
-    }
+  if (!inpsF24 && !importoTotale) {
+    const plaus = tutti.filter(v => v >= 50 && v <= 50000);
+    importoFallback = plaus[0] || 0;
+    if (importoFallback) console.log('[F24] Fallback best-guess:', importoFallback);
+    else console.error('[F24] NESSUN VALORE — verifica pannello debug nella UI');
   }
 
-  // FIX P4: priorità a SALDO FINALE (importo netto effettivo) vs lordo causale PXX
   const importoFinale = importoTotale || inpsF24 || importoFallback;
-  if (importoFinale < 10) return null; // nessun dato trovato
+  if (importoFinale < 10) return null;
 
-  // ── STEP 5: Determina nota diagnostica
-  let nota = '⚡ F24 estratto localmente (0 token AI)';
-  if (!anno) nota += ' · ⚠️ Anno non trovato: verifica manualmente';
-  else       nota += ` · Anno rif.: ${anno}`;
-  if (inpsF24 > 0)       nota += ` · INPS causale: ${inpsF24.toLocaleString('it-IT',{minimumFractionDigits:2})}`;
-  else if (importoTotale > 0) nota += ` · Totale F24: ${importoTotale.toLocaleString('it-IT',{minimumFractionDigits:2})}`;
-  else                        nota += ` · ⚠️ Importo da fallback: ${importoFallback.toLocaleString('it-IT',{minimumFractionDigits:2})} — verifica`;
+  const sorgente = importoTotale && importoTotale === importoFinale ? '(SALDO FINALE)' :
+                   inpsF24 && inpsF24 === importoFinale ? '(causale INPS)' : '(stima)';
+  const nota = `\u26A1 F24 estratto ${sorgente} · Anno: ${anno || '?'} · €${importoFinale.toLocaleString('it-IT', {minimumFractionDigits:2})}${!anno ? ' · \u26A0\uFE0F Anno non trovato' : ''}`;
 
   const result = {
-    tipo:                'f24',
-    anno:                anno,
-    ateco:               null,
-    fatturato_lm2:       0,
-    inps_dedotta_lm7:    0,
-    imposta_dovuta_lm11: 0,
-    inps_versata_f24:    importoFinale,
-    note:                nota
+    tipo: 'f24', anno,
+    ateco: null, fatturato_lm2: 0, inps_dedotta_lm7: 0, imposta_dovuta_lm11: 0,
+    inps_versata_f24: importoFinale, note: nota
   };
-
-  console.log('[tryParseF24] Risultato:', result);
+  console.log('[F24] \u2705 Risultato:', result);
   return result;
 }
 
@@ -3202,9 +3202,17 @@ function apriModalAiResult(anno, r) {
         ? 'Il PDF è in formato XFA (modulo Agenzia Entrate non leggibile). ' +
           'Apri il PDF, trova il totale e inseriscilo manualmente sopra.'
         : 'Estratti ' + nChar + ' caratteri ma nessun importo riconosciuto. ' +
-          'Il formato tabellare potrebbe non essere supportato. ' +
-          'Inserisci manualmente l\'importo totale F24 sopra.';
+          'Espandi "Testo grezzo estratto" qui sotto → copia il testo → mandamelo: ' +
+          'aggiorno il parser per il tuo formato specifico.';
       g('ai-conv-corpo').textContent = diagMsg;
+      // Mostra pannello debug con testo grezzo + normalizzato
+      const dbgWrap = g('ai-debug-wrap');
+      const dbgTxt  = g('ai-debug-txt');
+      if (dbgWrap && dbgTxt) {
+        const debugContent = window._f24DebugText || _lastPdfText?.slice(0, 2000) || '(nessun testo)';
+        dbgTxt.value = debugContent;
+        dbgWrap.style.display = 'block';
+      }
       openModal('modal-ai-result');
       return;
     }
