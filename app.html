@@ -1586,12 +1586,12 @@ function onAnnoChange() {
    ============================================================ */
 function cleanTaxValue(str) {
   if (!str) return 0;
-  // 1) Rimuove TUTTI gli spazi interni alla stringa numerica
-  let s = str.replace(/\s+/g, '');
-  // 2) Il punto è separatore migliaia (rimuovilo solo se seguito da 3 cifre + virgola)
-  s = s.replace(/\.(\d{3})(?=[,])/g, '$1');
-  // 3) La virgola è il decimale → sostituisci con punto per parseFloat
-  s = s.replace(',', '.');
+  // Normalizzazione iterativa: "9 0 4 , 0 0" → "904,00" in 2-3 passaggi
+  let s = str;
+  let prev;
+  do { prev = s; s = s.replace(/(\d) (\d)/g, '$1$2'); } while (s !== prev);
+  // Rimuovi punto migliaia, converti virgola decimale in punto per parseFloat
+  s = s.replace(/\.(\d{3})(?=[,])/g, '$1').replace(',', '.');
   return parseFloat(s) || 0;
 }
 
@@ -1639,20 +1639,21 @@ function tryParseRPF(text) {
   ═══════════════════════════════════════════════════════════════════════ */
 
   /* ── STEP 0: Normalizzazione testo PDF.js ─────────────────────────────
-     PDF.js può estrarre "3 4 . 8 2 7 , 0 0" (cifre separate).
-     Ricostruiamo i numeri prima di qualsiasi altra analisi.            */
-  let t = text
-    // Unisce sequenze di singole cifre es. "3 4 8 2 7" → "34827"
-    // Lookahead negativo (?!\.\d): NON unisce se il digit finale
-    // è immediatamente seguito da "." + cifra (inizio di importo monetario)
-    // Es: "2 2.021,00" NON diventa "22.021,00"
-    .replace(/\b(\d)(?: (\d))+(?!\.\d)/g, m => m.replace(/ /g, ''))
-    // "34 . 827" → "34.827" (migliaia con spazi)
-    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')
-    // "34. 827" → "34.827" (spazio dopo il punto — FIX P1)
-    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')
-    // "827 , 00" → "827,00" (decimale con spazi)
-    .replace(/(\d{1,3}) , (\d{2})\b/g, '$1,$2')
+     I PDF XFA dell'Agenzia delle Entrate estraggono le cifre separate:
+     "3 4 . 8 2 7 , 0 0" — il punto interrompe la sequenza e il singolo
+     passaggio regex fallisce. Usiamo un loop iterativo (radice del bug).  */
+  let t = text;
+  let _prev;
+  do {
+    _prev = t;
+    t = t.replace(/(\d) (\d)/g, '$1$2'); // collassa coppie: 2 pass per "3 4", 3 per "3 4 8"…
+  } while (t !== _prev);
+  // Spazi residui attorno a punto migliaia / virgola decimale
+  t = t
+    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')   // "34 . 827" → "34.827"
+    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')    // "34. 827" → "34.827"
+    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')       // "827 , 00" → "827,00"
+    .replace(/(\d+), (\d{2})\b/g, '$1,$2')        // "827, 00" → "827,00"
     // Secondo passaggio per residui
     .replace(/\b(\d)(?: (\d))+(?!\.\d)/g, m => m.replace(/ /g, ''))
     // BUG FIX "LM39+valore": PDF.js può unire etichetta e valore → "LM392.021,00"
@@ -1900,13 +1901,30 @@ function tryParseF24(text) {
   const isF24 = /\bF24\b|MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|\bDPPI\b|\b1791\b|\b1792\b|\bCF29\b|\bCF30\b|\bCF31\b|\bCF32\b|\bPXX\b|CONTRIBUTI\s+INPS/i.test(text);
   if (!isF24) return null;
 
-  // FIX B: normalizza spazi interni ai numeri (pattern Agenzia delle Entrate)
-  // Es: "2 . 7 6 0 , 0 4" → "2.760,04" prima di applicare qualsiasi regex
-  const t = text
-    .replace(/\b(\d)(?: (\d))+(?!\.\d)/g, m => m.replace(/ /g, ''))  // cifre singole spaziate
-    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')   // "2 . 760" → "2.760"
-    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')    // "2. 760" → "2.760"
-    .replace(/(\d{1,3}) , (\d{2})\b/g, '$1,$2'); // "760 , 04" → "760,04"
+  /* ── NORMALIZZAZIONE ITERATIVA (FIX ROOT-CAUSE) ────────────────────
+     I PDF XFA dell'Agenzia delle Entrate estraggono le cifre separate
+     da spazi singoli: "4 . 9 0 4 , 0 0"
+     La regex semplice fallisce perché il punto interrompe la sequenza:
+       "9 0 4" → pass1 → "90 4" → pass2 → "904"  (serve il loop)
+       ", 0 0" → pass1 → ", 00" poi la virgola-spazio viene gestita dopo
+     ALGORITMO: ripeti (\d) (\d) → $1$2 fino a che il testo non cambia. */
+  let t = text;
+  let prev;
+  do {
+    prev = t;
+    t = t.replace(/(\d) (\d)/g, '$1$2');
+  } while (t !== prev);
+  // Ora i separatori hanno ancora spazi attorno (es: "4 . 904 , 00")
+  // Rimuovi gli spazi attorno al punto migliaia e alla virgola decimale
+  t = t
+    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')   // "4 . 904" → "4.904"
+    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')    // "4. 904" → "4.904"
+    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')       // "904 , 00" → "904,00"
+    .replace(/(\d+), (\d{2})\b/g, '$1,$2');       // "904, 00" → "904,00"
+
+  // Log diagnostico: mostra campione testo normalizzato (aiuta il debug)
+  const sample = t.slice(0, 300).replace(/\n/g, ' ');
+  console.log('[tryParseF24] Testo normalizzato (300 chars):', sample);
 
   // parseITA: gestisce importi con e senza punto migliaia (2.760,00 e 2760,00)
   function parseITA(str) {
@@ -1943,16 +1961,23 @@ function tryParseF24(text) {
     t.match(new RegExp('(?:TOTALE|SALDO)[\\s:]' + IMO, 'i'));
   const importoTotale = totMatch ? parseITA(totMatch[1]) : 0;
 
-  // ── STEP 4: Fallback aggressivo — somma tutti gli importi vicino a causali INPS
+  // ── STEP 4: Fallback aggressivo — tutti i numeri monetari nel testo normalizzato
   let importoFallback = 0;
   if (inpsF24 === 0 && importoTotale === 0) {
-    // Estrai TUTTI i numeri monetari dal testo normalizzato
-    const tuttiImporti = [...t.matchAll(/(\d{1,3}(?:[.,]\d{3})*,\d{2}|\d{4,},\d{2})/g)]
+    // Pattern 1: formato italiano "4.904,00" o "2760,00"
+    const tuttiIT = [...t.matchAll(/(\d{1,3}(?:[.,]\d{3})*,\d{2}|\d{4,},\d{2})/g)]
       .map(m => parseITA(m[1]))
-      .filter(v => v > 50 && v < 200000);  // range plausibile contributi INPS
-    // Prendi il valore più grande (solitamente il totale)
-    if (tuttiImporti.length > 0) {
-      importoFallback = Math.max(...tuttiImporti);
+      .filter(v => v > 50 && v < 200000);
+    // Pattern 2: formato US "4904.00" o "2760.04" (PDF.js può usare il punto come decimale)
+    const tuttiUS = [...t.matchAll(/\b(\d{1,3}(?:\.\d{3})*\.\d{2}|\d{4,}\.\d{2})\b/g)]
+      .map(m => parseFloat(m[1].replace(/(\d)\.(\d{3})/g, '$1$2'))) // rimuove separatori migliaia US
+      .filter(v => v > 50 && v < 200000);
+    const tutti = [...tuttiIT, ...tuttiUS];
+    if (tutti.length > 0) {
+      importoFallback = Math.max(...tutti);
+      console.log('[tryParseF24] Fallback aggressivo trovato:', importoFallback, '— tutti i valori:', tutti.slice(0, 10));
+    } else {
+      console.warn('[tryParseF24] Fallback vuoto — campione testo:', t.slice(0, 500));
     }
   }
 
