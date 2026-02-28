@@ -987,6 +987,14 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <label>Note (opzionale)</label>
         <input type="text" id="wiz-note" placeholder="Es: dati da 730, dichiarazione...">
       </div>
+
+      <!-- BANNER VERIFICA AI — visibile solo dopo parsing PDF (FIX BUG #8) -->
+      <div id="wiz-ai-banner" style="display:none; margin-top:10px; padding:10px 14px;
+           background:#fff8e1; border:1.5px solid #f59e0b; border-radius:8px;
+           font-size:0.88rem; color:#92400e; line-height:1.5">
+        <strong>⚠️ Valori estratti dall'AI — verifica prima di salvare</strong>
+        <div id="wiz-ai-banner-body" style="margin-top:6px"></div>
+      </div>
       <!-- Anteprima calcolo in tempo reale -->
       <div class="wiz-preview" id="wiz-preview" style="display:none">
         <div class="wp-row"><span class="wp-lbl">Reddito forfettario</span><span class="wp-val" id="wp-redd">—</span></div>
@@ -1606,6 +1614,8 @@ function tryParseRPF(text) {
     .replace(/\b(\d)(?: (\d))+(?!\.\d)/g, m => m.replace(/ /g, ''))
     // "34 . 827" → "34.827" (migliaia con spazi)
     .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')
+    // "34. 827" → "34.827" (spazio dopo il punto, non prima — FIX BUG #3)
+    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')
     // "827 , 00" → "827,00" (decimale con spazi)
     .replace(/(\d{1,3}) , (\d{2})\b/g, '$1,$2')
     // Secondo passaggio per residui
@@ -1685,7 +1695,9 @@ function tryParseRPF(text) {
   // BUG 1 FIX: rimosso il cap a 150.000 — il fatturato dichiarato può superare
   // ampiamente il limite di accesso al regime (es. 683.201 € per chi è uscito).
   // Cap alzato a 5.000.000 per coprire qualsiasi scenario reale.
-  const candidatiFatt = tuttiMonetari.filter(v => v > 1000 && v <= 5000000);
+  const candidatiFatt = tuttiMonetari
+    .filter(v => v > 1000 && v <= 5000000)
+    .sort((a, b) => b - a); // FIX BUG #4: ordine decrescente → il fatturato (valore più grande) viene testato prima
 
   outer:
   for (const F of candidatiFatt) {
@@ -1756,9 +1768,9 @@ function tryParseRPF(text) {
   }
 
   // Fallback testuale LM35 — finestra estesa, verifica plausibilità (BUG 2 FIX)
+  // FIX BUG #5: rimosso LM34 come alternativa. LM34 = reddito lordo, NON contributi INPS.
   if (inps === 0) {
-    const mLM35 = t.match(/LM35[\s\S]{0,1500}?(\d{1,3}(?:\.\d{3})*,\d{2})/i) ||
-                  t.match(/LM34[\s\S]{0,1500}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
+    const mLM35 = t.match(/LM35[\s\S]{0,1500}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
     if (mLM35) {
       const v = parseITA(mLM35[1]);
       if (v > 500 && v < fatturato) inps = v;
@@ -1885,7 +1897,10 @@ function tryParseF24(text) {
     }
   }
 
-  const importoFinale = inpsF24 || importoTotale || importoFallback;
+  // FIX BUG #6: priorità a SALDO FINALE (netto effettivo pagato) rispetto
+  // all'importo lordo della causale PXX (che non tiene conto dei crediti compensati).
+  // Ordine: totale netto → importo causale INPS → fallback aggressivo
+  const importoFinale = importoTotale || inpsF24 || importoFallback;
   if (importoFinale < 10) return null; // nessun dato trovato
 
   // ── STEP 5: Determina nota diagnostica
@@ -1915,7 +1930,7 @@ function tryParseF24(text) {
    PROMPT ESPERTO COMMERCIALISTA — inviato alla Edge Function
    Gemini lo usa come system instruction. Aggiornato per
    gestire correttamente i righi variabili tra anni di modello:
-   • Modello 2025 (redditi 2024): contributi = LM34, imposta = LM38
+   • Modello 2025 (redditi 2024): contributi = LM35, imposta = LM39
    • Modello 2024 (redditi 2023): contributi = LM35, imposta = LM39
    ============================================================ */
 const EXPERT_PROMPT = `# KNOWLEDGE BASE FISCALE: QUADRO LM — REGIME FORFETTARIO ITALIANO
@@ -1926,7 +1941,7 @@ const EXPERT_PROMPT = `# KNOWLEDGE BASE FISCALE: QUADRO LM — REGIME FORFETTARI
 - **Separazione rigo+valore**: se trovi una stringa come "LM392.021,00", il rigo è LM39 e il valore è 2.021,00. Separa sempre etichetta dal numero.
 
 ## REGOLE PER ANNO DI MODELLO
-- **Modello 2025 (redditi 2024)**: Fatturato → LM22 col.3, Contributi INPS → LM34, Imposta → LM38. Attenzione LM32/LM33 per il Concordato Preventivo Biennale.
+- **Modello 2025 (redditi 2024)**: Fatturato → LM22 col.3, Contributi INPS → LM35, Imposta → LM39 col. "Art. 1 L. 190/2014". Attenzione LM32/LM33 per il Concordato Preventivo Biennale. [FIX: LM34=reddito lordo, LM38=reddito netto perdite — NON usarli per INPS/imposta]
 - **Modello 2024 (redditi 2023)**: Fatturato → LM22 col.3, Contributi INPS → LM35, Imposta → LM39 col. "Art. 1 L. 190/2014".
 - **Modelli 2019-2023**: soglia accesso 65k€ (85k€ dal 2023), righi LM21 (ATECO), LM22 (Fatturato), LM35 (INPS), LM39 (Imposta).
 - **Modelli 2010-2014 (Regime dei Minimi)**: imposta sostitutiva al 5% o 20%, struttura diversa dal forfettario moderno.
@@ -2190,6 +2205,10 @@ async function parseTaxPDF(file) {
   if (!pdf_text || pdf_text.trim().length < 20) {
     throw new Error('Nessun testo trovato nel PDF. Assicurati che non sia una scansione.');
   }
+
+  // Salva per diagnostica — accessibile da console: copy(_lastPdfText)
+  _lastPdfText = pdf_text;
+  console.log('[parseTaxPDF] Testo estratto (' + pdf_text.length + ' char):\n' + pdf_text.slice(0, 800));
 
   // 1b. Layer parsing locale — tenta RPF prima, poi F24, poi Gemini come fallback
   //     Ordine: RPF → F24 → Gemini (risparmio token AI in entrambi i casi locali)
@@ -2929,6 +2948,7 @@ async function deleteDoc(docId, storagePath, anno) {
 let _aiAnno    = null; // anno target dell'analisi corrente
 let _aiResult  = null; // risultato raw dalla Edge Function
 let _aiFile    = null; // file PDF originale (per upload su Storage dopo conferma)
+let _lastPdfText = '';  // testo grezzo estratto (diagnostica)
 let _documenti = {};   // { anno: [{ id, nome_file, storage_path, tipo_doc, uploaded_at }] }
 
 // 1. L'utente clicca "Analizza Dich." → apri file picker e ricorda l'anno
@@ -3048,17 +3068,23 @@ function apriModalAiResult(anno, r) {
   // Solo per dichiarazioni con tutti zero blocchiamo con toast.
   if (!hasFatt && !hasInps && !hasImp) {
     if (r.tipo === 'f24') {
-      // F24 rilevato ma importi non trovati: mostra campo INPS vuoto editabile
+      // F24: importi non trovati — mostra campo INPS vuoto + diagnostica
       g('ai-f-inps-versata').style.display = 'block';
       g('ai-v-inps-versata').textContent   = '—';
       g('ai-e-inps-versata').value         = '';
-      // Aggiunge nota di avviso nel box convalida
       const convBox = g('ai-conv-box');
       convBox.className = 'ai-conv-box show giallo';
       g('ai-conv-icona').textContent  = '⚠️';
-      g('ai-conv-titolo').textContent = 'Importo non rilevato automaticamente';
-      g('ai-conv-corpo').textContent  = "Il PDF non contiene le keyword standard. Inserisci manualmente l'importo INPS versata nel campo sopra prima di applicare.";
-      // Apri il modal comunque
+      g('ai-conv-titolo').textContent = 'Importo non rilevato — inserisci manualmente';
+      // Mostra quanti caratteri sono stati estratti per capire il tipo di problema
+      const nChar = (_lastPdfText || '').length;
+      const diagMsg = nChar < 150
+        ? 'Il PDF è in formato XFA (modulo Agenzia Entrate non leggibile). ' +
+          'Apri il PDF, trova il totale e inseriscilo manualmente sopra.'
+        : 'Estratti ' + nChar + ' caratteri ma nessun importo riconosciuto. ' +
+          'Il formato tabellare potrebbe non essere supportato. ' +
+          'Inserisci manualmente l\'importo totale F24 sopra.';
+      g('ai-conv-corpo').textContent = diagMsg;
       openModal('modal-ai-result');
       return;
     }
@@ -4427,6 +4453,7 @@ function wizRenderStep() {
   if (g('wiz-primo-anno')) g('wiz-primo-anno').checked = false;
   if (g('wiz-pdf'))        g('wiz-pdf').value           = '';
   if (g('wiz-pdf-lbl'))    g('wiz-pdf-lbl').textContent = 'Nessun file scelto';
+  if (g('wiz-ai-banner'))  g('wiz-ai-banner').style.display = 'none';
   g('wiz-preview').style.display = 'none';
   g('wiz-btn-next').textContent  = idx < tot - 1 ? 'Salva e continua →' : 'Salva e chiudi ✓';
   g('wiz-fatt').focus();
@@ -4458,6 +4485,18 @@ async function wizParsePDF(input) {
     const anno = _wiz.steps[_wiz.stepIdx];
     const noteAI = `AI: ${result.tipo||'doc'} anno ${result.anno||anno}` + (result.note ? ` — ${result.note}` : '');
     g('wiz-note').value = noteAI;
+
+    // FIX BUG #8: mostra banner di verifica con i valori estratti
+    const banner = g('wiz-ai-banner');
+    const bannerBody = g('wiz-ai-banner-body');
+    const righe = [];
+    if (result.fatturato_lm2 > 0)       righe.push(`📊 Fatturato: <strong>€ ${result.fatturato_lm2.toLocaleString('it-IT', {minimumFractionDigits:2})}</strong>`);
+    if (result.inps_versata_f24 > 0)     righe.push(`🏛️ INPS versata (F24): <strong>€ ${result.inps_versata_f24.toLocaleString('it-IT', {minimumFractionDigits:2})}</strong>`);
+    else if (result.inps_dedotta_lm7>0)  righe.push(`🏛️ INPS dedotta (LM35): <strong>€ ${result.inps_dedotta_lm7.toLocaleString('it-IT', {minimumFractionDigits:2})}</strong>`);
+    if (result.imposta_dovuta_lm11 > 0)  righe.push(`💰 Imposta sostitutiva: <strong>€ ${result.imposta_dovuta_lm11.toLocaleString('it-IT', {minimumFractionDigits:2})}</strong>`);
+    bannerBody.innerHTML = righe.length ? righe.join('<br>') : 'Nessun valore estratto — inserisci manualmente.';
+    banner.style.display = 'block';
+
     toast(`✅ AI ha compilato i campi per l'anno ${result.anno || anno}`, 'ok');
   } catch(err) {
     spinner.style.display = 'none';
@@ -4468,6 +4507,9 @@ async function wizParsePDF(input) {
 function wizPreview() {
   const fatt = parseFloat(g('wiz-fatt').value) || 0;
   if (fatt <= 0) { g('wiz-preview').style.display = 'none'; return; }
+
+  // FIX BUG #7: _last può essere null se il wizard viene aperto prima del primo calcolo
+  if (!_last) { g('wiz-preview').style.display = 'none'; return; }
 
   // Eredita i parametri dal calcolo corrente (_last)
   const gr     = GRUPPI[_last.gruppo_idx];
