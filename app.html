@@ -1679,12 +1679,25 @@ function tryParseRPF(text) {
     .replace(/(\d+) , (\d{2})\b/g, '$1,$2')
     .replace(/(\d+), (\d{2})\b/g, '$1,$2')
     // BUG FIX "LM39+valore": "LM392.021,00" → "LM39 2.021,00"
-    .replace(/\b(LM\d{2})(\d{1,3}(?:[.,]\d{3})*,\d{2})/gi, '$1 $2');
+    .replace(/\b(LM\d{2})(\d{1,3}(?:[.,]\d{3})*,\d{2})/gi, '$1 $2')
+    // FIX DETECTION: "L M 2 2" → "LM22" (lettere+cifre spaziate nei PDF ADE)
+    // Il loop precedente collassa solo coppie di cifre, non lettera+cifra
+    .replace(/\bL\s+M\s*(\d\s*\d)\b/gi, (_, nn) => 'LM' + nn.replace(/\s/g, ''))
+    .replace(/\bL\s+M(\d{2})\b/gi, 'LM$1');
 
   /* ── STEP 1: Riconoscimento documento RPF ─────────────────────────── */
-  const hasLM = /QUADRO\s*LM/i.test(t) || /\bLM2[2-9]\b|\bLM3[4-9]\b/i.test(t);
-  const hasDoc = /PERSONE\s*FISICHE/i.test(t) || /MODELLO\s*R(?:PF|EDDITI)/i.test(t) || /PERIODO\s*D['']?\s*IMPOSTA\s*20\d{2}/i.test(t);
-  if (!hasDoc || !hasLM) return null;
+  // LOGICA CORRETTA: separare detection da LM presence
+  // "PERSONE FISICHE" + "RPF" / "Periodo d'imposta" → sempre un RPF
+  // hasLM è usato solo come confidence boost, non come blocco
+  const hasDoc = /PERSONE\s*FISICHE/i.test(t)
+              || /\bRPF\b/i.test(t)
+              || /MODELLO\s*R(?:PF|EDDITI)/i.test(t)
+              || /PERIODO\s*D['']?\s*IMPOSTA\s*20\d{2}/i.test(t)
+              || /QUADRO\s*LM/i.test(t);
+  const hasLM  = /QUADRO\s*LM/i.test(t)
+              || /\bLM2[2-9]\b|\bLM3[0-9]\b/i.test(t);
+
+  if (!hasDoc) return null; // documento non riconosciuto come RPF/dichiarazione
 
   /* ── STEP 2: Utilità ─────────────────────────────────────────────── */
   const parseITA = s => {
@@ -1891,13 +1904,16 @@ function tryParseRPF(text) {
   }
 
   // Log diagnostico finale
-  console.log('[RPF] Risultato finale — fatturato:', fatturato, '| INPS:', inps, '| imposta:', imposta);
+  console.log('[RPF] Risultato finale — fatturato:', fatturato, '| INPS:', inps, '| imposta:', imposta, '| hasLM:', hasLM);
   if (fatturato === 0) {
-    // Mostra campione del testo attorno a LM22 per debug
     const lm22idx = t.indexOf('LM22');
-    if (lm22idx >= 0) console.log('[RPF] Testo attorno a LM22:', JSON.stringify(t.slice(lm22idx, lm22idx+200)));
-    else console.warn('[RPF] LM22 NON TROVATO nel testo — testo normalizzato completo (prime 1000):', t.slice(0, 1000));
+    if (lm22idx >= 0) console.log('[RPF] Testo attorno a LM22:', JSON.stringify(t.slice(lm22idx, lm22idx + 300)));
+    else console.warn('[RPF] LM22 NON TROVATO — prime 1500 chars:', t.slice(0, 1500));
   }
+
+  // IMPORTANTE: restituisce SEMPRE un oggetto non-null se hasDoc è true
+  // Anche con fatturato=0, parseTaxPDF saprà che è un RPF e non chiamerà F24.
+  // Se i valori sono zero, parseTaxPDF li manderà a Gemini con contesto RPF.
 
   const result = {
     tipo:                'dichiarazione',
