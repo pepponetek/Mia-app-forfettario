@@ -1623,15 +1623,22 @@ function cleanTaxValue(str) {
    Usato come extraction fallback primary in tryParseRPF.
    ============================================================ */
 const QUADRO_LM_MAP = {
-  fatturato: /LM22[\s\S]{0,600}?([\d\s.,]+)/i,
-  inps:      /LM35[\s\S]{0,600}?([\d\s.,]+)/i,
-  imposta:   /LM39[\s\S]{0,600}?([\d\s.,]+)/i
+  // Pattern: trova il rigo, poi cerca il PRIMO valore monetario valido
+  // dopo normalizzazione (es: "34.827,00" o "34827,00")
+  // [\s\S]{0,800} permette distanza per layout multi-colonna PDF.js
+  fatturato: /LM22[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i,
+  inps:      /LM35[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i,
+  imposta:   /LM39[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i
 };
 
-function extractLMField(text, pattern) {
-  const m = text.match(pattern);
-  if (!m) return 0;
-  return cleanTaxValue(m[1]);
+function extractLMField(normalizedText, pattern) {
+  const m = normalizedText.match(pattern);
+  if (!m || !m[1]) return 0;
+  const s = m[1].trim();
+  // Il testo in input è già normalizzato (Unicode + loop iterativo)
+  // Formato atteso: "34.827,00" o "34827,00"
+  const v = parseFloat(s.replace(/\.(?=\d{3}[,])/g, '').replace(',', '.'));
+  return isNaN(v) ? 0 : v;
 }
 
 function tryParseRPF(text) {
@@ -1869,20 +1876,27 @@ function tryParseRPF(text) {
   }
 
   /* ── STEP 10: Risultato ──────────────────────────────────────────── */
-  // FIX B: se il motore matematico non ha trovato i valori,
-  // prova il mapping esplicito QUADRO_LM_MAP (LM22/LM35/LM39)
-  // con cleanTaxValue che gestisce cifre separate da spazi (formato ADE)
+  // FIX B: mapping esplicito LM22/LM35/LM39 come fallback finale
   if (fatturato === 0) {
     const v = extractLMField(t, QUADRO_LM_MAP.fatturato);
-    if (v > 100) fatturato = v;
+    if (v > 100) { fatturato = v; console.log('[RPF] LM22 fallback:', v); }
   }
   if (inps === 0) {
     const v = extractLMField(t, QUADRO_LM_MAP.inps);
-    if (v > 100) inps = v;
+    if (v > 100) { inps = v; console.log('[RPF] LM35 fallback:', v); }
   }
   if (imposta === 0) {
     const v = extractLMField(t, QUADRO_LM_MAP.imposta);
-    if (v > 0) imposta = v;
+    if (v > 0) { imposta = v; console.log('[RPF] LM39 fallback:', v); }
+  }
+
+  // Log diagnostico finale
+  console.log('[RPF] Risultato finale — fatturato:', fatturato, '| INPS:', inps, '| imposta:', imposta);
+  if (fatturato === 0) {
+    // Mostra campione del testo attorno a LM22 per debug
+    const lm22idx = t.indexOf('LM22');
+    if (lm22idx >= 0) console.log('[RPF] Testo attorno a LM22:', JSON.stringify(t.slice(lm22idx, lm22idx+200)));
+    else console.warn('[RPF] LM22 NON TROVATO nel testo — testo normalizzato completo (prime 1000):', t.slice(0, 1000));
   }
 
   const result = {
@@ -2292,27 +2306,32 @@ async function parseTaxPDF(file) {
   _lastPdfText = pdf_text;
   console.log('[parseTaxPDF] Testo estratto (' + pdf_text.length + ' char):\n' + pdf_text.slice(0, 800));
 
-  // 1b. Layer parsing locale — tenta RPF prima, poi F24, poi Gemini come fallback
-  //     Ordine: RPF → F24 → Gemini (risparmio token AI in entrambi i casi locali)
+  // 1b. FLUSSO PARSING LOCALE — logica corretta
+  // Se tryParseRPF riconosce RPF (non-null): MAI provare F24
+  // "CONTRIBUTI INPS" appare anche nell'RPF → causerebbe falso positivo F24
   const rpfLocal = tryParseRPF(pdf_text);
-  if (rpfLocal && rpfLocal.fatturato_lm2 > 0) {
-    console.log('[parseTaxPDF] RPF locale riuscito — Gemini non chiamato.');
-    toast('⚡ Dati estratti localmente dal Modello RPF (0 token Gemini usati)', 'ok', 4000);
-    return normalizzaRisultato(rpfLocal, null);
+
+  if (rpfLocal) {
+    if (rpfLocal.fatturato_lm2 > 0) {
+      console.log('[parseTaxPDF] RPF locale riuscito — Gemini non chiamato.');
+      toast('⚡ Dati estratti localmente dal Modello RPF (0 token Gemini usati)', 'ok', 4000);
+      return normalizzaRisultato(rpfLocal, null);
+    }
+    // RPF rilevato ma valori mancanti → Gemini con contesto RPF (no F24)
+    console.log('[parseTaxPDF] RPF rilevato, valori mancanti → Gemini');
+    toast('🤖 Dichiarazione rilevata — analisi AI in corso...', 'info', 3000);
+  } else {
+    // Documento non-RPF → prova F24 locale
+    const f24Local = tryParseF24(pdf_text);
+    if (f24Local && f24Local.inps_versata_f24 > 0) {
+      console.log('[parseTaxPDF] F24 locale riuscito — Gemini non chiamato.');
+      toast('⚡ F24 estratto localmente (0 token Gemini usati)', 'ok', 4000);
+      return normalizzaRisultato(f24Local, null);
+    }
   }
 
-  // 1c. Tenta parsing F24 locale prima di chiamare Gemini
-  const f24Local = tryParseF24(pdf_text);
-  if (f24Local && f24Local.inps_versata_f24 > 0) {
-    console.log('[parseTaxPDF] F24 locale riuscito — Gemini non chiamato.');
-    toast('⚡ F24 estratto localmente (0 token Gemini usati)', 'ok', 4000);
-    return normalizzaRisultato(f24Local, null);
-  }
-
-  // 1d. FIX F24 ANNO — rileva se documento è un F24 per istruire il server
-  // FIX: rilevamento F24 più robusto — include "VERSAMENTI UNIFICATI",
-  // "SALDO FINALE", codici tributo INPS tipici, intestazione F24 semplificato
-  const isLikelyF24 = /\bF24\b|MODELLO\s+F24|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|DPPI|1791|1792|CF29|CF30|CF31|CF32|PXX/i.test(pdf_text);
+  // Tipo documento per Gemini: RPF se rilevato, F24 altrimenti
+  const isLikelyF24 = !rpfLocal && /\bF24\b|MODELLO\s+F24|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|DPPI|1791|1792|CF29|CF30|CF31|CF32|PXX/i.test(pdf_text);
 
   // 2. Forza il refresh del token — evita 401 da JWT scaduto
   //    refreshSession() chiama il server e restituisce sempre un token fresco
