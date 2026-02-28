@@ -987,8 +987,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <label>Note (opzionale)</label>
         <input type="text" id="wiz-note" placeholder="Es: dati da 730, dichiarazione...">
       </div>
-
-      <!-- BANNER VERIFICA AI — visibile solo dopo parsing PDF (FIX BUG #8) -->
+      <!-- FIX P7: Banner verifica AI — visibile dopo parsing PDF -->
       <div id="wiz-ai-banner" style="display:none; margin-top:10px; padding:10px 14px;
            background:#fff8e1; border:1.5px solid #f59e0b; border-radius:8px;
            font-size:0.88rem; color:#92400e; line-height:1.5">
@@ -1414,7 +1413,7 @@ async function initAppData() {
   g('f-anno').value = now.getFullYear();
 
   await loadAnni();
-  loadDocumenti(); // carica documenti in parallelo (non blocca)
+  await loadDocumenti(); // FIX A: attende documenti (non più fire-and-forget)
   onAnnoChange();
   setSync('ok', 'Sincronizzato');
 
@@ -1580,6 +1579,42 @@ function onAnnoChange() {
    Questa funzione intercetta il testo ed estrae i dati direttamente
    senza consumare quota Gemini (~98% risparmio token).
    ============================================================ */
+/* ============================================================
+   FIX B — cleanTaxValue: normalizza valori numerici Agenzia delle Entrate
+   I PDF ufficiali hanno cifre separate da spazi: "1 5 . 0 0 0 , 0 0"
+   Questa funzione li pulisce in un float valido prima del parsing.
+   ============================================================ */
+function cleanTaxValue(str) {
+  if (!str) return 0;
+  // 1) Rimuove TUTTI gli spazi interni alla stringa numerica
+  let s = str.replace(/\s+/g, '');
+  // 2) Il punto è separatore migliaia (rimuovilo solo se seguito da 3 cifre + virgola)
+  s = s.replace(/\.(\d{3})(?=[,])/g, '$1');
+  // 3) La virgola è il decimale → sostituisci con punto per parseFloat
+  s = s.replace(',', '.');
+  return parseFloat(s) || 0;
+}
+
+/* ============================================================
+   MAPPING ESPLICITO REGIME FORFETTARIO — codici campo ufficiali
+   Quadro LM Modello Redditi Persone Fisiche:
+     LM22 col.3 → Componenti positivi (Fatturato)
+     LM35       → Contributi previdenziali deducibili (INPS)
+     LM39       → Imposta sostitutiva dovuta
+   Usato come extraction fallback primary in tryParseRPF.
+   ============================================================ */
+const QUADRO_LM_MAP = {
+  fatturato: /LM22[\s\S]{0,600}?([\d\s.,]+)/i,
+  inps:      /LM35[\s\S]{0,600}?([\d\s.,]+)/i,
+  imposta:   /LM39[\s\S]{0,600}?([\d\s.,]+)/i
+};
+
+function extractLMField(text, pattern) {
+  const m = text.match(pattern);
+  if (!m) return 0;
+  return cleanTaxValue(m[1]);
+}
+
 function tryParseRPF(text) {
   /* ═══════════════════════════════════════════════════════════════════════
      APPROCCIO: RELAZIONI MATEMATICHE (immune all'ordine di estrazione PDF)
@@ -1614,7 +1649,7 @@ function tryParseRPF(text) {
     .replace(/\b(\d)(?: (\d))+(?!\.\d)/g, m => m.replace(/ /g, ''))
     // "34 . 827" → "34.827" (migliaia con spazi)
     .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')
-    // "34. 827" → "34.827" (spazio dopo il punto, non prima — FIX BUG #3)
+    // "34. 827" → "34.827" (spazio dopo il punto — FIX P1)
     .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')
     // "827 , 00" → "827,00" (decimale con spazi)
     .replace(/(\d{1,3}) , (\d{2})\b/g, '$1,$2')
@@ -1697,7 +1732,7 @@ function tryParseRPF(text) {
   // Cap alzato a 5.000.000 per coprire qualsiasi scenario reale.
   const candidatiFatt = tuttiMonetari
     .filter(v => v > 1000 && v <= 5000000)
-    .sort((a, b) => b - a); // FIX BUG #4: ordine decrescente → il fatturato (valore più grande) viene testato prima
+    .sort((a, b) => b - a); // FIX P2: valori grandi prima → fatturato trovato prima di falsi positivi
 
   outer:
   for (const F of candidatiFatt) {
@@ -1767,8 +1802,8 @@ function tryParseRPF(text) {
     }
   }
 
-  // Fallback testuale LM35 — finestra estesa, verifica plausibilità (BUG 2 FIX)
-  // FIX BUG #5: rimosso LM34 come alternativa. LM34 = reddito lordo, NON contributi INPS.
+  // Fallback testuale LM35 — finestra estesa, verifica plausibilità (FIX P3)
+  // RIMOSSO LM34 come alternativa: LM34 = reddito lordo, NON contributi INPS
   if (inps === 0) {
     const mLM35 = t.match(/LM35[\s\S]{0,1500}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
     if (mLM35) {
@@ -1820,6 +1855,22 @@ function tryParseRPF(text) {
   }
 
   /* ── STEP 10: Risultato ──────────────────────────────────────────── */
+  // FIX B: se il motore matematico non ha trovato i valori,
+  // prova il mapping esplicito QUADRO_LM_MAP (LM22/LM35/LM39)
+  // con cleanTaxValue che gestisce cifre separate da spazi (formato ADE)
+  if (fatturato === 0) {
+    const v = extractLMField(t, QUADRO_LM_MAP.fatturato);
+    if (v > 100) fatturato = v;
+  }
+  if (inps === 0) {
+    const v = extractLMField(t, QUADRO_LM_MAP.inps);
+    if (v > 100) inps = v;
+  }
+  if (imposta === 0) {
+    const v = extractLMField(t, QUADRO_LM_MAP.imposta);
+    if (v > 0) imposta = v;
+  }
+
   const result = {
     tipo:                'dichiarazione',
     anno,
@@ -1849,6 +1900,14 @@ function tryParseF24(text) {
   const isF24 = /\bF24\b|MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|\bDPPI\b|\b1791\b|\b1792\b|\bCF29\b|\bCF30\b|\bCF31\b|\bCF32\b|\bPXX\b|CONTRIBUTI\s+INPS/i.test(text);
   if (!isF24) return null;
 
+  // FIX B: normalizza spazi interni ai numeri (pattern Agenzia delle Entrate)
+  // Es: "2 . 7 6 0 , 0 4" → "2.760,04" prima di applicare qualsiasi regex
+  const t = text
+    .replace(/\b(\d)(?: (\d))+(?!\.\d)/g, m => m.replace(/ /g, ''))  // cifre singole spaziate
+    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')   // "2 . 760" → "2.760"
+    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')    // "2. 760" → "2.760"
+    .replace(/(\d{1,3}) , (\d{2})\b/g, '$1,$2'); // "760 , 04" → "760,04"
+
   // parseITA: gestisce importi con e senza punto migliaia (2.760,00 e 2760,00)
   function parseITA(str) {
     if (!str) return 0;
@@ -1864,31 +1923,31 @@ function tryParseF24(text) {
 
   // ── STEP 1: Anno di riferimento (obbligatorio per identificare l'anno fiscale)
   const annoMatch =
-    text.match(/ANNO\s+(?:DI\s+)?RIFERIMENTO[\s:]*(\d{4})/i) ||
-    text.match(/ANNO\s+RIF\.?[\s:]*(\d{4})/i)               ||
-    text.match(/COMPETENZA[\s:]*(\d{4})/i)                    ||
-    text.match(/PERIODO[\s:]+(?:DI\s+IMPOSTA[\s:]+)?(\d{4})/i) ||
-    text.match(/\b(20\d{2})\b/);   // fallback: primo anno 20xx trovato
+    t.match(/ANNO\s+(?:DI\s+)?RIFERIMENTO[\s:]*(\d{4})/i) ||
+    t.match(/ANNO\s+RIF\.?[\s:]*(\d{4})/i)               ||
+    t.match(/COMPETENZA[\s:]*(\d{4})/i)                    ||
+    t.match(/PERIODO[\s:]+(?:DI\s+IMPOSTA[\s:]+)?(\d{4})/i) ||
+    t.match(/\b(20\d{2})\b/);   // fallback: primo anno 20xx trovato
   const anno = annoMatch ? parseInt(annoMatch[1]) : null;
 
   // ── STEP 2: Importo INPS (causali DPPI, GS, PXX, CF29-32, 1791/1792)
   // Cerca causale + importo sulla stessa riga o sulle successive (finestra 200 char)
   const causaliINPS = /DPPI|GS\b|PXX|CF29|CF30|CF31|CF32|1791|1792|CONTRIBUTI\s+INPS|INPS\s+ARTIG|INPS\s+COMM/i;
   const inpsMatch =
-    text.match(new RegExp('(?:' + causaliINPS.source + ')[\\s\\S]{0,200}?' + IMO, 'i'));
+    t.match(new RegExp('(?:' + causaliINPS.source + ')[\\s\\S]{0,200}?' + IMO, 'i'));
   const inpsF24 = inpsMatch ? parseITA(inpsMatch[1]) : 0;
 
   // ── STEP 3: Importo totale (fallback se INPS non trovato)
   const totMatch =
-    text.match(new RegExp('(?:TOTALE\\s+(?:DA\\s+)?VERSARE|SALDO\\s+FINALE|IMPORTO\\s+A\\s+DEBITO\\s+VERSATO)[^\\n]{0,60}\\n?[^\\n]{0,30}?' + IMO, 'i')) ||
-    text.match(new RegExp('(?:TOTALE|SALDO)[\\s:]' + IMO, 'i'));
+    t.match(new RegExp('(?:TOTALE\\s+(?:DA\\s+)?VERSARE|SALDO\\s+FINALE|IMPORTO\\s+A\\s+DEBITO\\s+VERSATO)[^\\n]{0,60}\\n?[^\\n]{0,30}?' + IMO, 'i')) ||
+    t.match(new RegExp('(?:TOTALE|SALDO)[\\s:]' + IMO, 'i'));
   const importoTotale = totMatch ? parseITA(totMatch[1]) : 0;
 
   // ── STEP 4: Fallback aggressivo — somma tutti gli importi vicino a causali INPS
   let importoFallback = 0;
   if (inpsF24 === 0 && importoTotale === 0) {
-    // Estrai TUTTI i numeri monetari dal documento
-    const tuttiImporti = [...text.matchAll(/(\d{1,3}(?:[.,]\d{3})*,\d{2}|\d{4,},\d{2})/g)]
+    // Estrai TUTTI i numeri monetari dal testo normalizzato
+    const tuttiImporti = [...t.matchAll(/(\d{1,3}(?:[.,]\d{3})*,\d{2}|\d{4,},\d{2})/g)]
       .map(m => parseITA(m[1]))
       .filter(v => v > 50 && v < 200000);  // range plausibile contributi INPS
     // Prendi il valore più grande (solitamente il totale)
@@ -1897,9 +1956,7 @@ function tryParseF24(text) {
     }
   }
 
-  // FIX BUG #6: priorità a SALDO FINALE (netto effettivo pagato) rispetto
-  // all'importo lordo della causale PXX (che non tiene conto dei crediti compensati).
-  // Ordine: totale netto → importo causale INPS → fallback aggressivo
+  // FIX P4: priorità a SALDO FINALE (importo netto effettivo) vs lordo causale PXX
   const importoFinale = importoTotale || inpsF24 || importoFallback;
   if (importoFinale < 10) return null; // nessun dato trovato
 
@@ -1941,7 +1998,7 @@ const EXPERT_PROMPT = `# KNOWLEDGE BASE FISCALE: QUADRO LM — REGIME FORFETTARI
 - **Separazione rigo+valore**: se trovi una stringa come "LM392.021,00", il rigo è LM39 e il valore è 2.021,00. Separa sempre etichetta dal numero.
 
 ## REGOLE PER ANNO DI MODELLO
-- **Modello 2025 (redditi 2024)**: Fatturato → LM22 col.3, Contributi INPS → LM35, Imposta → LM39 col. "Art. 1 L. 190/2014". Attenzione LM32/LM33 per il Concordato Preventivo Biennale. [FIX: LM34=reddito lordo, LM38=reddito netto perdite — NON usarli per INPS/imposta]
+- **Modello 2025 (redditi 2024)**: Fatturato → LM22 col.3, Contributi INPS → LM35, Imposta → LM39 col. "Art. 1 L. 190/2014". [NOTA: LM34=reddito lordo, LM38=reddito netto — NON sono INPS/imposta]. Attenzione LM32/LM33 per il Concordato Preventivo Biennale.
 - **Modello 2024 (redditi 2023)**: Fatturato → LM22 col.3, Contributi INPS → LM35, Imposta → LM39 col. "Art. 1 L. 190/2014".
 - **Modelli 2019-2023**: soglia accesso 65k€ (85k€ dal 2023), righi LM21 (ATECO), LM22 (Fatturato), LM35 (INPS), LM39 (Imposta).
 - **Modelli 2010-2014 (Regime dei Minimi)**: imposta sostitutiva al 5% o 20%, struttura diversa dal forfettario moderno.
@@ -2858,22 +2915,43 @@ function renderDocumentiAnno(anno) {
   </div>`;
 }
 
-// Genera URL firmato e apre/scarica il PDF
+// FIX C: Scarica PDF tramite blob con createObjectURL → download diretto senza popup bloccati
+// revokeObjectURL chiamato dopo 60s per liberare memoria
 async function downloadDoc(storagePath, nomeFile) {
   try {
+    toast('⏳ Download in corso...', 'info', 2000);
+
+    // Tentativo 1: download diretto come blob (evita popup bloccati su mobile)
+    const { data: blobData, error: dlErr } = await sb.storage
+      .from('documenti-fiscali')
+      .download(storagePath);
+
+    if (!dlErr && blobData) {
+      const url = URL.createObjectURL(blobData);
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = nomeFile || 'documento.pdf';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoca URL dopo 60s per non saturare la memoria
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return;
+    }
+
+    // Tentativo 2: signed URL (fallback se download diretto non disponibile)
     const { data, error } = await sb.storage
       .from('documenti-fiscali')
-      .createSignedUrl(storagePath, 300); // URL valido 5 minuti
+      .createSignedUrl(storagePath, 300);
     if (error) throw error;
 
-    // Su mobile window.open() funziona meglio di a.click() che viene bloccato
     const opened = window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
     if (!opened) {
-      // Fallback se popup bloccati: link cliccabile nel toast
       toast(`📄 <a href="${data.signedUrl}" target="_blank" style="color:var(--ac);text-decoration:underline">Tocca qui per aprire il PDF</a>`, 'info', 10000);
     }
   } catch(e) {
-    toast('❌ Impossibile aprire il file: ' + e.message, 'err', 5000);
+    toast('❌ Impossibile scaricare il file: ' + e.message, 'err', 5000);
   }
 }
 
@@ -2890,6 +2968,23 @@ function richiediDelDoc(docId, storagePath, anno, nomeFile) {
 async function confDelDoc() {
   if (!_delDoc) return;
   const { id: docId, storagePath, anno } = _delDoc;
+
+  // FIX C (CRUD Integrity): se l'ID è null, l'elemento non è stato
+  // ancora sincronizzato con il DB → forza refresh cache e riprova
+  if (!docId || docId === 'null') {
+    toast('⏳ ID documento non ancora sincronizzato, aggiornamento cache...', 'info', 3000);
+    await loadDocumenti();
+    // Cerca il documento per storage_path (identificatore sempre presente)
+    const docRicaricato = Object.values(_documenti).flat().find(d => d.storage_path === storagePath);
+    if (!docRicaricato) {
+      toast('❌ Documento non trovato nel database. Potrebbe essere già stato eliminato.', 'err', 5000);
+      closeModal('modal-del-doc');
+      _delDoc = null;
+      return;
+    }
+    _delDoc = { ..._delDoc, id: docRicaricato.id };
+    return confDelDoc(); // richiama con ID reale
+  }
 
   setSync('busy', 'Eliminazione...');
   try {
@@ -4453,7 +4548,6 @@ function wizRenderStep() {
   if (g('wiz-primo-anno')) g('wiz-primo-anno').checked = false;
   if (g('wiz-pdf'))        g('wiz-pdf').value           = '';
   if (g('wiz-pdf-lbl'))    g('wiz-pdf-lbl').textContent = 'Nessun file scelto';
-  if (g('wiz-ai-banner'))  g('wiz-ai-banner').style.display = 'none';
   g('wiz-preview').style.display = 'none';
   g('wiz-btn-next').textContent  = idx < tot - 1 ? 'Salva e continua →' : 'Salva e chiudi ✓';
   g('wiz-fatt').focus();
@@ -4485,18 +4579,18 @@ async function wizParsePDF(input) {
     const anno = _wiz.steps[_wiz.stepIdx];
     const noteAI = `AI: ${result.tipo||'doc'} anno ${result.anno||anno}` + (result.note ? ` — ${result.note}` : '');
     g('wiz-note').value = noteAI;
-
-    // FIX BUG #8: mostra banner di verifica con i valori estratti
+    // FIX P7: mostra banner giallo con i valori estratti per verifica utente
     const banner = g('wiz-ai-banner');
-    const bannerBody = g('wiz-ai-banner-body');
-    const righe = [];
-    if (result.fatturato_lm2 > 0)       righe.push(`📊 Fatturato: <strong>€ ${result.fatturato_lm2.toLocaleString('it-IT', {minimumFractionDigits:2})}</strong>`);
-    if (result.inps_versata_f24 > 0)     righe.push(`🏛️ INPS versata (F24): <strong>€ ${result.inps_versata_f24.toLocaleString('it-IT', {minimumFractionDigits:2})}</strong>`);
-    else if (result.inps_dedotta_lm7>0)  righe.push(`🏛️ INPS dedotta (LM35): <strong>€ ${result.inps_dedotta_lm7.toLocaleString('it-IT', {minimumFractionDigits:2})}</strong>`);
-    if (result.imposta_dovuta_lm11 > 0)  righe.push(`💰 Imposta sostitutiva: <strong>€ ${result.imposta_dovuta_lm11.toLocaleString('it-IT', {minimumFractionDigits:2})}</strong>`);
-    bannerBody.innerHTML = righe.length ? righe.join('<br>') : 'Nessun valore estratto — inserisci manualmente.';
-    banner.style.display = 'block';
-
+    if (banner) {
+      const body = g('wiz-ai-banner-body');
+      const righe = [];
+      if (result.fatturato_lm2 > 0)      righe.push(`📊 Fatturato (LM22): <strong>€ ${result.fatturato_lm2.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+      if (result.inps_versata_f24 > 0)   righe.push(`🏛️ INPS versata (F24): <strong>€ ${result.inps_versata_f24.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+      else if (result.inps_dedotta_lm7>0) righe.push(`🏛️ INPS dedotta (LM35): <strong>€ ${result.inps_dedotta_lm7.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+      if (result.imposta_dovuta_lm11>0)  righe.push(`💰 Imposta (LM39): <strong>€ ${result.imposta_dovuta_lm11.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+      body.innerHTML = righe.length ? righe.join('<br>') : '⚠️ Nessun valore estratto — inserisci manualmente.';
+      banner.style.display = 'block';
+    }
     toast(`✅ AI ha compilato i campi per l'anno ${result.anno || anno}`, 'ok');
   } catch(err) {
     spinner.style.display = 'none';
@@ -4508,7 +4602,7 @@ function wizPreview() {
   const fatt = parseFloat(g('wiz-fatt').value) || 0;
   if (fatt <= 0) { g('wiz-preview').style.display = 'none'; return; }
 
-  // FIX BUG #7: _last può essere null se il wizard viene aperto prima del primo calcolo
+  // FIX P6: _last null se wizard aperto prima del primo calcolo → evita crash TypeError
   if (!_last) { g('wiz-preview').style.display = 'none'; return; }
 
   // Eredita i parametri dal calcolo corrente (_last)
@@ -4705,14 +4799,20 @@ async function wizComplete() {
     if (as) as.style.display = '';
   }
 
-  function startApp(user) {
+  async function startApp(user) {
     if (appStarted) return;
     appStarted = true;
     _user = user;
     g('auth-screen').style.display = 'none';
+    // FIX A (Boot Integrity): dati caricati PRIMA che la UI diventi visibile
+    // L'utente vede lo splash finché profile + anni + documenti non sono pronti
+    try {
+      await initAppData();
+    } catch(e) {
+      console.error('[startApp] Errore inizializzazione dati:', e);
+    }
     g('app').classList.add('show');
     hideLs();
-    initAppData();
   }
 
   // FIX LOOP INFINITO:
