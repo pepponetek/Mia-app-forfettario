@@ -1806,91 +1806,122 @@ function tryParseRPF(text) {
    ============================================================ */
 function tryParseF24(text) {
   /* ═══════════════════════════════════════════════════════════════
-     PARSER F24 — basato sulla struttura REALE del PDF ADE
+     PARSER F24 MULTI-PAGINA — basato sulla struttura reale del PDF ADE
      
-     Struttura estratta da pdfminer/PDF.js:
-       PXX \n 01 2025 \n 12 2025         4.904 00
-       DPPI\n 01 2025 \n 12 2025            11 04
-       2.760,00          ← SALDO FINALE (formato con virgola = netto)
-       2.771 04          ← SALDO (con spazio tra interi e centesimi)
+     Ogni pagina del PDF contiene un F24 separato con la struttura:
+       "Scadenza del DD-MM-YYYY"
+       [dati contribuente e righe INPS]
+       "X.XXX 04" (saldo finale con spazio come separatore decimale)
+       "ITDELEGA..." (inizio template fisso — fine dati reali)
      
-     Valori da estrarre:
-     - SALDO FINALE (o "2.771 04" → 2771,04) = importo effettivamente versato
-     - Anno di riferimento
+     Algoritmo per pagina:
+     1. Taglia il testo PRIMA di "ITDELEGA" (fine zona dati)
+     2. L'ULTIMO valore "X.XXX YY" in quella zona = SALDO FINALE della pagina
+     3. Somma tutti i saldi per ottenere il totale INPS versata nell'anno
   ═══════════════════════════════════════════════════════════════ */
 
   const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*FINALE|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|1791|1792|CF29|CF30|CF31|CF32/i.test(text);
   if (!isF24) return null;
 
-  // Normalizzazione
-  const t = normalizePdfText(text);
+  /* ── SPLIT PER PAGINA (\f = form feed, separatore pagine PDF.js) ── */
+  const pagineSplit = text.split(/\f|--- PAGINA \d+ ---/);
+  const pagine = pagineSplit.filter(p => p.trim().length > 50);
 
-  /* ── ANNO ── */
-  const annoM = t.match(/Scadenza\s+del\s+\d{2}-\d{2}-(20\d{2})/i) ||
-                t.match(/\b(20\d{2})\b/);
-  const anno = annoM ? parseInt(annoM[1]) : null;
+  console.log('[F24] Pagine rilevate:', pagine.length);
 
   /* ── PARSER IMPORTO F24 ──
-     Formato reale trovato nel PDF:
-     A) "2.760,00"  → virgola decimale → formato italiano standard
-     B) "2.771 04"  → spazio tra interi e centesimi → normalizzare
-     C) "4.904 00"  → stessa cosa
+     Formato reale nel PDF estratto:
+     A) "2.771 04" → spazio tra interi e centesimi (saldo con DPPI)
+     B) "3.904 00" → stessa cosa (saldo senza crediti)
+     C) "2.760,00" → virgola decimale (importo PXX prima dei crediti — NON il saldo finale)
   */
-  const parseF24 = s => {
+  function parseSaldo(s) {
     if (!s) return 0;
     s = s.trim();
-    // Formato "2.760,00" (italiano)
-    if (/,/.test(s)) return parseFloat(s.replace(/\./g,'').replace(',','.')) || 0;
-    // Formato "2.771 04" (spazio come separatore decimale)
+    // Formato "X.XXX YY" (spazio come separatore decimale)
     const mSp = s.match(/^([\d.]+)\s+(\d{2})$/);
-    if (mSp) return parseFloat(mSp[1].replace(/\./g,'') + '.' + mSp[2]) || 0;
-    return parseFloat(s.replace(/\./g,'')) || 0;
-  };
+    if (mSp) return parseFloat(mSp[1].replace(/\./g, '') + '.' + mSp[2]) || 0;
+    // Formato "X.XXX,YY" (virgola)
+    if (/,/.test(s)) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+    return 0;
+  }
 
-  /* ── CERCA SALDO FINALE (priorità massima) ── */
-  let importoFinale = 0;
+  /* ── ELABORA OGNI PAGINA ── */
+  const f24Pages = [];
 
-  // Pattern 1: "SALDO FINALE" seguito da importo (già normalizzato potrebbe essere "2.760,00")
-  const mSaldo = t.match(/SALDO\s*FINALE[\s\S]{0,200}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-  if (mSaldo) importoFinale = parseF24(mSaldo[1]);
+  for (let i = 0; i < pagine.length; i++) {
+    const pageRaw = pagine[i];
 
-  // Pattern 2: nel testo grezzo (prima della normalizzazione) cerca il formato "X.XXX,00"
-  // che è il saldo netto effettivamente versato (quello con la virgola, non lo spazio)
-  if (!importoFinale) {
-    const mVirgola = text.match(/(\d{1,3}\.\d{3},\d{2})/g);
-    if (mVirgola) {
-      const vals = mVirgola.map(v => parseF24(v)).filter(v => v > 100 && v < 100000);
-      if (vals.length > 0) importoFinale = vals[0]; // primo valore con virgola = saldo netto
+    // Verifica che la pagina contenga dati F24 reali (non solo template)
+    const hasDati = /PXX|DPPI|1791|1792|CF29|CF3[012]|Scadenza\s+del/i.test(pageRaw);
+    if (!hasDati) continue;
+
+    // Taglia al template fisso "ITDELEGA" (fine dati reali, inizio boilerplate)
+    const cutIdx = pageRaw.indexOf('ITDELEGA');
+    const dataPart = cutIdx > 0 ? pageRaw.slice(0, cutIdx) : pageRaw.slice(0, 1200);
+
+    // Estrai scadenza
+    const mSc = dataPart.match(/Scadenza\s+del\s+(\d{2}-\d{2}-(\d{4}))/i);
+    const scadenza = mSc ? mSc[1] : null;
+    const annoSc   = mSc ? parseInt(mSc[2]) : null;
+
+    // Anno di riferimento contributi (es: "01 2025 12 2025" → 2025)
+    const mAnno = dataPart.match(/\b(20\d{2})\b/);
+    const anno = annoSc || (mAnno ? parseInt(mAnno[1]) : null);
+
+    // Causale principale (PXX = imposta sostitutiva, DPPI = INPS)
+    const causali = (dataPart.match(/\b(PXX|DPPI|1791|1792|CF\d{2})\b/gi) || [])
+      .filter((v, i, a) => a.indexOf(v) === i);
+
+    // Trova il SALDO FINALE della pagina:
+    // Cerca tutti i valori "X.XXX YY" nel testo dati, prendi l'ULTIMO
+    // (il saldo finale appare sempre come ultima riga numerica prima del template)
+    const tuttiSaldi = [...dataPart.matchAll(/\b(\d{1,3}\.\d{3})\s+(\d{2})\b/g)]
+      .map(m => ({ raw: m[0], val: parseSaldo(m[1] + ' ' + m[2]) }))
+      .filter(x => x.val > 10 && x.val < 100000);
+
+    const saldoFinale = tuttiSaldi.length > 0
+      ? tuttiSaldi[tuttiSaldi.length - 1].val   // ULTIMO = saldo netto finale
+      : 0;
+
+    console.log(`[F24] Pag.${i+1} — scadenza:${scadenza} causali:${causali} saldo:${saldoFinale} (tutti: ${tuttiSaldi.map(x=>x.val).join(',')})`);
+
+    if (saldoFinale > 0) {
+      f24Pages.push({ pagina: i + 1, scadenza, anno, causali, saldo: saldoFinale });
     }
   }
 
-  // Pattern 3: cerca "+  X.XXX 04" (il saldo finale totale nel documento reale)
-  if (!importoFinale) {
-    const mPlus = text.match(/\+\s+([\d.]+\s+\d{2})\s*$/m);
-    if (mPlus) importoFinale = parseF24(mPlus[1]);
-  }
-
-  // Pattern 4: tutti i valori DPPI/PXX nel testo normalizzato
-  if (!importoFinale) {
-    const causRE = /(?:DPPI|PXX|1791|1792|CF2[9-9]|CF3[0-2])\s*[\s\S]{0,200}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:\.\d{3})+\s+\d{2})/gi;
-    const matches = [...t.matchAll(causRE)];
-    if (matches.length > 0) importoFinale = parseF24(matches[0][1]);
-  }
-
-  if (importoFinale < 10) {
-    console.warn('[F24] Nessun importo trovato — testo grezzo (300 chars):', text.slice(0, 300));
+  if (f24Pages.length === 0) {
+    console.warn('[F24] Nessun saldo trovato — testo grezzo (400):', text.slice(0, 400));
     return null;
   }
 
-  console.log('[F24] \u2705 importoFinale:', importoFinale, '| anno:', anno);
+  /* ── AGGREGAZIONE ── */
+  // Anno di riferimento = anno più frequente tra le pagine
+  const anniConti = {};
+  f24Pages.forEach(p => { if (p.anno) anniConti[p.anno] = (anniConti[p.anno]||0) + 1; });
+  const anno = parseInt(Object.entries(anniConti).sort((a,b)=>b[1]-a[1])[0]?.[0]) || null;
+
+  // Totale = somma di tutti i saldi delle pagine
+  const totale = f24Pages.reduce((s, p) => s + p.saldo, 0);
+
+  // Nota dettagliata
+  const dettaglio = f24Pages
+    .map(p => `${p.scadenza||'?'}: €${p.saldo.toLocaleString('it-IT',{minimumFractionDigits:2})}`)
+    .join(' | ');
+
+  const nota = `⚡ F24 estratto (${f24Pages.length} pag.) · Totale: €${totale.toLocaleString('it-IT',{minimumFractionDigits:2})} · ${dettaglio}`;
+  console.log('[F24] ✅', nota);
 
   return {
-    tipo: 'f24', anno, ateco: null,
-    fatturato_lm2: 0, inps_dedotta_lm7: 0, imposta_dovuta_lm11: 0,
-    inps_versata_f24: importoFinale,
-    note: `\u26A1 F24 estratto (0 token AI) · \u20AC${importoFinale.toLocaleString('it-IT',{minimumFractionDigits:2})} · Anno: ${anno || '?'}`
+    tipo: 'f24', anno,
+    ateco: null, fatturato_lm2: 0, inps_dedotta_lm7: 0, imposta_dovuta_lm11: 0,
+    inps_versata_f24: totale,
+    note: nota,
+    f24_pagine: f24Pages   // dati per-pagina per eventuale display dettagliato
   };
 }
+
 
 
 /* ============================================================
@@ -1971,7 +2002,8 @@ function normalizzaRisultato(raw, annoFallback) {
     inps_versata_f24: parseFloat(raw.inps_versata_f24) ||
                       ((raw.tipo === 'f24') ? (parseFloat(raw.inps_versata) || inps) : 0),
     note:               raw.note || null,
-    convalida:          null
+    convalida:          null,
+    f24_pagine:         raw.f24_pagine || null   // dettaglio per-pagina F24 multi-modulo
   };
 
   // Normalizza congruente (nuovo campo dal prompt aggiornato)
@@ -3078,6 +3110,17 @@ function apriModalAiResult(anno, r) {
   const hasInps = inpsVal > 0;
   g('ai-f-inps-versata').style.display = hasInps ? 'block' : 'none';
   if (hasInps) {
+    // Se ci sono più pagine F24, mostra dettaglio per-pagina nel label
+    const lbl = g('ai-f-inps-versata').querySelector('.arf-lbl');
+    if (lbl && r.f24_pagine && r.f24_pagine.length > 1) {
+      const righe = r.f24_pagine.map(p =>
+        `${p.scadenza||'?'}: €${p.saldo.toLocaleString('it-IT',{minimumFractionDigits:2})}`
+      ).join(' · ');
+      lbl.innerHTML = `🏛️ INPS VERSATA — TOTALE ${r.f24_pagine.length} F24 (€)<br>
+        <span style="font-size:0.78rem;color:var(--t2);font-weight:normal">${righe}</span>`;
+    } else if (lbl) {
+      lbl.textContent = '🏛️ Contributi previdenziali — LM34/LM35 (€)';
+    }
     g('ai-v-inps-versata').textContent = fmt(inpsVal);
     g('ai-e-inps-versata').value       = inpsVal;
   }
