@@ -1641,6 +1641,39 @@ function extractLMField(normalizedText, pattern) {
   return isNaN(v) ? 0 : v;
 }
 
+/* ============================================================
+   NORMALIZZAZIONE TESTO PDF — funzione condivisa
+   Usata da tryParseRPF, tryParseF24 E inviata a Gemini.
+   I PDF XFA dell'ADE estraggono ogni cifra come item separato:
+   "3 4 . 8 2 7 , 0 0" — il loop iterativo le ricompone.
+   ============================================================ */
+function normalizePdfText(text) {
+  // 1) Unicode whitespace → spazio ASCII
+  let t = text
+    .replace(/[\u00A0\u00AD\u2000-\u200B\u2009\u202F\u205F\u3000\t]/g, ' ')
+    .replace(/\r\n?/g, '\n');
+
+  // 2) Loop iterativo: collassa coppie (\d) (\d) → finché non cambia
+  //    "3 4 . 8 2 7" → pass1:"34 . 82 7" → pass2:"34 . 827" → pass3:"34 . 827" (stop)
+  //    poi il punto viene gestito sotto
+  let prev; let n = 0;
+  do { prev = t; t = t.replace(/(\d) (\d)/g, '$1$2'); n++; } while (t !== prev && n < 50);
+
+  // 3) Separa i separatori rimasti
+  t = t
+    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')   // "34 . 827" → "34.827"
+    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')    // "34. 827" → "34.827"
+    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')       // "827 , 00" → "827,00"
+    .replace(/(\d+), (\d{2})\b/g, '$1,$2')        // "827, 00" → "827,00"
+    // "LM392.021,00" → "LM39 2.021,00" (etichetta incollata al valore)
+    .replace(/\b(LM\d{2})(\d{1,3}(?:[.,]\d{3})*,\d{2})/gi, '$1 $2')
+    // "L M 2 2" → "LM22" (etichette con lettere spaziate)
+    .replace(/\bL\s+M\s*(\d\s*\d)\b/gi, (_, nn) => 'LM' + nn.replace(/\s/g, ''))
+    .replace(/\bL\s+M(\d{2})\b/gi, 'LM$1');
+
+  return t;
+}
+
 function tryParseRPF(text) {
   /* ═══════════════════════════════════════════════════════════════════════
      APPROCCIO: RELAZIONI MATEMATICHE (immune all'ordine di estrazione PDF)
@@ -1667,23 +1700,8 @@ function tryParseRPF(text) {
   /* ── STEP 0: Normalizzazione testo PDF.js ─────────────────────────────
      Stessa logica di tryParseF24: spazi Unicode + loop iterativo.          */
   // Normalizza whitespace Unicode → ASCII space
-  let t = text.replace(/[\u00A0\u00AD\u2000-\u200B\u2009\u202F\u205F\u3000\t]/g, ' ')
-               .replace(/\r\n?/g, '\n');
-  // Collassa cifre spaziate con loop iterativo
-  let _prev; let _n = 0;
-  do { _prev = t; t = t.replace(/(\d) (\d)/g, '$1$2'); _n++; } while (t !== _prev && _n < 40);
-  // Pulisce separatori rimasti
-  t = t
-    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')
-    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')
-    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')
-    .replace(/(\d+), (\d{2})\b/g, '$1,$2')
-    // BUG FIX "LM39+valore": "LM392.021,00" → "LM39 2.021,00"
-    .replace(/\b(LM\d{2})(\d{1,3}(?:[.,]\d{3})*,\d{2})/gi, '$1 $2')
-    // FIX DETECTION: "L M 2 2" → "LM22" (lettere+cifre spaziate nei PDF ADE)
-    // Il loop precedente collassa solo coppie di cifre, non lettera+cifra
-    .replace(/\bL\s+M\s*(\d\s*\d)\b/gi, (_, nn) => 'LM' + nn.replace(/\s/g, ''))
-    .replace(/\bL\s+M(\d{2})\b/gi, 'LM$1');
+  // Normalizzazione condivisa (Unicode + loop iterativo)
+  let t = normalizePdfText(text);
 
   /* ── STEP 1: Riconoscimento documento RPF ─────────────────────────── */
   // LOGICA CORRETTA: separare detection da LM presence
@@ -1945,28 +1963,9 @@ function tryParseF24(text) {
   const isF24 = /\bF24\b|MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|\bDPPI\b|\b1791\b|\b1792\b|\bCF29\b|\bCF30\b|\bCF31\b|\bCF32\b|\bPXX\b|CONTRIBUTI\s+INPS/i.test(text);
   if (!isF24) return null;
 
-  /* ── NORMALIZZAZIONE COMPLETA ─────────────────────────────────────────
-     ADE usa spazi Unicode non-standard (U+00A0, U+2009 ecc.) tra le cifre.
-     Regex (\d) (\d) cercava solo ASCII 0x20 — ecco perché falliva.        */
-  let t = text
-    .replace(/[\u00A0\u00AD\u2000-\u200B\u2009\u202F\u205F\u3000\t]/g, ' ')
-    .replace(/\r\n?/g, '\n');
-
-  // Collassa coppie di cifre-spazio iterativamente:
-  // "4 9 0 4" → pass1:"49 04" → pass2:"4904"
-  let prev; let n = 0;
-  do { prev = t; t = t.replace(/(\d) (\d)/g, '$1$2'); n++; } while (t !== prev && n < 40);
-
-  // Pulisce separatori rimasti
-  t = t
-    .replace(/(\d{1,3}) \. (\d{3})/g, '$1.$2')
-    .replace(/(\d{1,3})\. (\d{3})/g, '$1.$2')
-    .replace(/(\d+) , (\d{2})\b/g, '$1,$2')
-    .replace(/(\d+), (\d{2})\b/g, '$1,$2')
-    .replace(/(\d+) \. (\d{2})\b/g, '$1.$2')
-    .replace(/(\d+)\. (\d{2})\b/g, '$1.$2');
-
-  console.log('[F24] Normalizzato in', n, 'iterazioni. Campione:', t.slice(0, 400));
+  // Normalizzazione condivisa (stessa usata per RPF e per Gemini)
+  const t = normalizePdfText(text);
+  console.log('[F24] Normalizzato. Campione:', t.slice(0, 400));
   window._f24DebugText = '[Normalizzato]\n' + t.slice(0, 1500) + '\n\n[Grezzo]\n' + text.slice(0, 500);
 
   /* ── PARSER IMPORTO ─────────────────────────────────────────────── */
@@ -2386,6 +2385,11 @@ async function parseTaxPDF(file) {
   // Tipo per Gemini: RPF = is_f24:false, F24 = is_f24:true
   const isLikelyF24 = isDefinitelyF24;
 
+  // Normalizza il testo PRIMA di inviarlo a Gemini
+  // Senza questo, Gemini riceve "3 4 . 8 2 7 , 0 0" e non trova nessun valore
+  const pdf_text_norm = normalizePdfText(pdf_text);
+  console.log('[parseTaxPDF] Testo normalizzato per Gemini (campione):', pdf_text_norm.slice(0, 300));
+
   // 2. Forza il refresh del token — evita 401 da JWT scaduto
   //    refreshSession() chiama il server e restituisce sempre un token fresco
   let token = null;
@@ -2409,7 +2413,7 @@ async function parseTaxPDF(file) {
       'apikey':        SKEY
     },
     body: JSON.stringify({
-      pdf_text,
+      pdf_text:      pdf_text_norm,   // testo normalizzato: numeri leggibili da Gemini
       is_f24:        isLikelyF24,
       page_count:    _numPages || 1,
       expert_prompt: EXPERT_PROMPT
