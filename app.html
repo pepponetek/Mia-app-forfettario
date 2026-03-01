@@ -1675,282 +1675,128 @@ function normalizePdfText(text) {
 }
 
 function tryParseRPF(text) {
-  /* ═══════════════════════════════════════════════════════════════════════
-     APPROCCIO: RELAZIONI MATEMATICHE (immune all'ordine di estrazione PDF)
+  /* ═══════════════════════════════════════════════════════════════
+     PARSER RPF — basato sulla struttura REALE del PDF ADE
      
-     PDF.js estrae le tabelle RPF in ordine non predicibile (riga o colonna).
-     Invece di cercare valori per prossimità testuale all'etichetta (fragile),
-     usiamo le relazioni aritmetiche intrinseche del Regime Forfettario:
+     Il PDF estratto da PDF.js ha questa struttura nella pagina del Quadro LM:
+       [ATECO_var1]\n[ATECO_ufficiale]\n[COEFF_pct]\n[LM22_fatturato]\n[LM34_lordo]
+       poi i valori successivi in ordine: LM34_dup, LM35_inps, ..., LM39_imposta
      
-       LM34 (reddito lordo)  = LM22 col.3 (fatturato)  × coeff ATECO
-       LM36 (reddito netto)  = LM34 - LM35 (INPS)
-       LM38 (al netto perd.) ≈ LM36
-       LM39 (imposta)        = LM38 × 15% (ord.) o × 5% (start-up)
+     Esempio reale:
+       683201\n683200\n86\n34.827\n29.951\n...\n16.475\n...\n2.021
      
-     Algoritmo:
-     1) Estrarre TUTTI i valori monetari (formato "34.827,00") → lista ordinata
-        per posizione nel testo. I codici ATECO e gli anni NON hanno la virgola
-        decimale → esclusi automaticamente.
-     2) Trovare FATTURATO: cerca coppia (F, R) dove F × coeff ≈ R (tolleranza 1%)
-     3) Trovare INPS: cerca C tale che (R - C) appare nel documento (tolleranza 1%)
-     4) Trovare IMPOSTA: cerca I ≈ (R - C) × 15% o × 5% (tolleranza 5%)
-     5) Fallback testuale su LM35 e LM39 se la matematica non trova niente.
-  ═══════════════════════════════════════════════════════════════════════ */
+     Strategia:
+     1. Normalizza Unicode whitespace
+     2. Trova il blocco con pattern ATECO(6)+ATECO(6)+coeff+valore
+     3. Estrai fatturato come primo numero > 1000 DOPO il coeff
+     4. LM34 = fatturato × coeff — verifica matematica
+     5. LM35 (INPS) = primo numero < LM34 > 1000 dopo LM34
+     6. LM39 (imposta) = ≈ (LM34-LM35) × 15%
+  ═══════════════════════════════════════════════════════════════ */
 
-  /* ── STEP 0: Normalizzazione testo PDF.js ─────────────────────────────
-     Stessa logica di tryParseF24: spazi Unicode + loop iterativo.          */
-  // Normalizza whitespace Unicode → ASCII space
-  // Normalizzazione condivisa (Unicode + loop iterativo)
-  let t = normalizePdfText(text);
+  // Detection: documento RPF?
+  const isRPF = /PERSONE\s*FISICHE|\bRPF\b|MODELLO\s*R(?:PF|EDDITI)|PERIODO\s*D.\s*IMPOSTA\s*20\d{2}|QUADRO\s*LM/i.test(text);
+  if (!isRPF) return null;
 
-  /* ── STEP 1: Riconoscimento documento RPF ─────────────────────────── */
-  // LOGICA CORRETTA: separare detection da LM presence
-  // "PERSONE FISICHE" + "RPF" / "Periodo d'imposta" → sempre un RPF
-  // hasLM è usato solo come confidence boost, non come blocco
-  const hasDoc = /PERSONE\s*FISICHE/i.test(t)
-              || /\bRPF\b/i.test(t)
-              || /MODELLO\s*R(?:PF|EDDITI)/i.test(t)
-              || /PERIODO\s*D['']?\s*IMPOSTA\s*20\d{2}/i.test(t)
-              || /QUADRO\s*LM/i.test(t);
-  const hasLM  = /QUADRO\s*LM/i.test(t)
-              || /\bLM2[2-9]\b|\bLM3[0-9]\b/i.test(t);
+  // Normalizzazione Unicode + loop iterativo (shared function)
+  const t = normalizePdfText(text);
 
-  if (!hasDoc) return null; // documento non riconosciuto come RPF/dichiarazione
+  /* ── ANNO ── */
+  const annoM = t.match(/PERIODO\s*D.\s*IMPOSTA\s*(20\d{2})/i) ||
+                t.match(/\b(20\d{2})\b/);
+  const anno = annoM ? parseInt(annoM[1]) : null;
 
-  /* ── STEP 2: Utilità ─────────────────────────────────────────────── */
-  const parseITA = s => {
-    if (!s) return 0;
-    return parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0;
-  };
+  /* ── HELPER parse numero italiano ── */
+  const parseIT = s => s ? parseFloat(String(s).replace(/\./g,'').replace(',','.')) || 0 : 0;
 
-  /* ── STEP 3: Anno fiscale ─────────────────────────────────────────── */
-  const mAnno = t.match(/[Pp]eriodo\s*d['']?\s*[Ii]mposta[\s:]*(20\d{2})/i) || t.match(/\b(202\d)\b/);
-  const anno = mAnno ? parseInt(mAnno[1]) : null;
+  /* ══════════════════════════════════════════════════════════════
+     METODO 1: Pattern strutturale ATECO+coeff+valori
+     Funziona quando PDF.js estrae le celle in ordine colonna.
+  ══════════════════════════════════════════════════════════════ */
+  let fatturato = 0, inps = 0, imposta = 0, ateco = null, coeff = null;
 
-  /* ── STEP 4: Codice ATECO ─────────────────────────────────────────────
-     L'ATECO è un intero a 6 cifre SENZA separatore decimale.
-     Cerca specificamente vicino a LM21 (Modello 2025 = redditi 2024)
-     o LM22 colonna 1, o etichetta "Codice attività".               */
-  const mAteco =
-    t.match(/LM21[\s\S]{0,50}?(\d{6})(?!\s*,)/i)   ||
-    t.match(/ATECO\s*2025[\s\S]{0,20}?(\d{6})/i)     ||
-    t.match(/[Cc]odice\s+attivit[àa][\s\S]{0,30}?(\d{6})(?!\s*,)/i) ||
-    t.match(/LM22[\s\S]{0,30}?(\d{6})(?!\s*,)/i);
-  const ateco = mAteco ? mAteco[1] : (() => {
-    // Fallback: prima sequenza di 6 cifre NON seguita da virgola
-    const fb = t.match(/\b(\d{6})(?!\s*,)/);
-    return fb ? fb[1] : null;
-  })();
+  // Pattern: ATECO(6) [sep] ATECO(6) [sep] coeff(2-3) [sep] valore
+  // PDF.js separa le celle con \n, talvolta con spazi
+  const patBlock = /(6\d{5})\s*[\n\s]+(6\d{5})\s*[\n\s]+(\d{2,3})\s*[\n\s]+([\d.]+)\s*[\n\s]+([\d.]+)/;
+  const mBlock = t.match(patBlock);
 
-  /* ── STEP 5: Coefficiente ATECO ────────────────────────────────────────
-     Usa la tabella GRUPPI già definita nell'applicazione.
-     Se non trovato, tenta tutti i coefficienti noti.                  */
-  let coeffAteco = null;
-  if (ateco && typeof GRUPPI !== 'undefined') {
-    const raw6 = String(ateco).replace(/\D/g, '').padStart(6, '0');
-    for (const gr of GRUPPI) {
-      if ((gr.ex || []).some(e => raw6.startsWith(e.replace(/\./g, '')))) continue;
-      if (gr.pre.some(p => raw6.startsWith(p.replace(/\./g, '')))) {
-        coeffAteco = gr.coeff;
-        break;
+  if (mBlock) {
+    ateco = mBlock[2];                        // ATECO ufficiale (2a occorrenza)
+    coeff = parseInt(mBlock[3]) / 100;
+    const lm22_raw = mBlock[4];
+    const lm34_raw = mBlock[5];
+    fatturato = parseIT(lm22_raw);
+    const lm34 = parseIT(lm34_raw);
+
+    // Verifica matematica: LM34 ≈ LM22 × coeff (tolleranza 2%)
+    const lm34_atteso = fatturato * coeff;
+    const ok = lm34 > 0 && Math.abs(lm34 - lm34_atteso) / lm34_atteso < 0.02;
+    console.log('[RPF] M1 — fatturato:', fatturato, '| coeff:', coeff, '| LM34:', lm34, '| atteso:', lm34_atteso.toFixed(0), '| ok:', ok);
+
+    if (ok) {
+      // Estrai valori dopo LM34
+      const afterBlock = t.slice(mBlock.index + mBlock[0].length, mBlock.index + mBlock[0].length + 600);
+      const nums = [...afterBlock.matchAll(/\b(\d{1,3}(?:\.\d{3})+|\d{4,})\b/g)]
+        .map(m => parseIT(m[1]))
+        .filter(v => v > 100 && v < 500000 && v !== parseIT(ateco));
+
+      console.log('[RPF] M1 — numeri dopo LM34:', nums.slice(0, 10));
+
+      // LM35 = primo numero < LM34 e < fatturato nella lista
+      for (const n of nums) {
+        if (n < lm34 && n > 1000) { inps = n; break; }
       }
-    }
-  }
-  // Tutti i coefficienti possibili (dal più alto al più basso per evitare false matches)
-  const COEFFS_ALL = [0.86, 0.78, 0.67, 0.62, 0.54, 0.40];
-  const coeffsDaTentare = coeffAteco ? [coeffAteco] : COEFFS_ALL;
 
-  /* ── STEP 6: Estrai TUTTI i valori monetari non-zero dal testo ────────
-     Pattern: "34.827,00" → incluso | "683200" (niente virgola) → escluso
-     "2024" (anno, niente virgola) → escluso | ",00" (zero solo) → escluso.
-     Questo filtraggio automatico è il cuore del nuovo approccio.     */
-  const reMonetario = /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g;
-  const tuttiMonetari = [];
-  let mm;
-  while ((mm = reMonetario.exec(t)) !== null) {
-    const v = parseITA(mm[1]);
-    if (v > 0) tuttiMonetari.push(v);
-  }
-
-  /* ── STEP 7: FATTURATO — relazione F × coeff ≈ reddito_lordo ─────────
-     Candidati: valori monetari > 1.000 e ≤ 150.000 (cap forfettario).
-     Per ogni coppia (F, c) verifica se F × c ≈ qualche altro valore
-     nel documento (tolleranza 1% = 0.01).
-     Con coefficiente noto (dall'ATECO), il falso positivo è praticamente
-     impossibile. Senza coefficiente, la tolleranza 1% è sufficiente.  */
-  let fatturato = 0, redditoLordo = 0;
-  // BUG 1 FIX: rimosso il cap a 150.000 — il fatturato dichiarato può superare
-  // ampiamente il limite di accesso al regime (es. 683.201 € per chi è uscito).
-  // Cap alzato a 5.000.000 per coprire qualsiasi scenario reale.
-  const candidatiFatt = tuttiMonetari
-    .filter(v => v > 1000 && v <= 5000000)
-    .sort((a, b) => b - a); // FIX P2: valori grandi prima → fatturato trovato prima di falsi positivi
-
-  outer:
-  for (const F of candidatiFatt) {
-    for (const c of coeffsDaTentare) {
-      const R_atteso = F * c;
-      const found = tuttiMonetari.find(v => v !== F && Math.abs(v - R_atteso) <= R_atteso * 0.01);
-      if (found) {
-        // Verifica ulteriore: F NON deve essere plausibilmente un codice
-        // (ATECO numerici < 100000 potrebbero apparire come monetari se
-        // erroneamente seguiti da ",00" — la soglia 150000 li esclude già)
-        fatturato = F;
-        redditoLordo = found;
-        break outer;
+      // LM39 = ≈ (LM34 - LM35) × aliquota (15% o 5%)
+      const reddito_netto = lm34 - inps;
+      for (const aliq of [0.15, 0.05]) {
+        const imp_attesa = reddito_netto * aliq;
+        for (const n of nums) {
+          if (Math.abs(n - imp_attesa) / Math.max(imp_attesa, 1) < 0.05) {
+            imposta = n; break;
+          }
+        }
+        if (imposta > 0) break;
       }
     }
   }
 
-  // Fallback A: LM34 è il reddito lordo → fatturato = LM34 / coeff
-  if (fatturato === 0 && coeffAteco) {
-    const mLM34 = t.match(/LM34[\s\S]{0,600}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-    if (mLM34) {
-      const rl = parseITA(mLM34[1]);
-      const f = Math.round(rl / coeffAteco);
-      const fInDoc = tuttiMonetari.find(v => Math.abs(v - f) <= f * 0.02);
-      if (fInDoc) { fatturato = fInDoc; redditoLordo = rl; }
-    }
-  }
-
-  // Fallback B: LM22 — BUG 1 FIX: prende il valore monetario PIÙ GRANDE
-  // trovato nella finestra LM22, non il primo (che spesso è una colonna vuota o piccola).
+  /* ══════════════════════════════════════════════════════════════
+     METODO 2: Regex esplicite su LM22/LM35/LM39 (fallback)
+     Funziona quando il testo è estratto in modo più lineare.
+  ══════════════════════════════════════════════════════════════ */
   if (fatturato === 0) {
-    const winLM22 = t.match(/LM22([\s\S]{0,2000})/i);
-    if (winLM22) {
-      const reB = /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g;
-      let mB; let maxV = 0;
-      while ((mB = reB.exec(winLM22[1])) !== null) {
-        const v = parseITA(mB[1]);
-        if (v > maxV) maxV = v;
-      }
-      if (maxV > 100) fatturato = maxV;
-    }
+    const IMO = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2}|\\d{1,3}(?:\\.\\d{3})+)';
+    const mLM22 = t.match(new RegExp('LM22[\\s\\S]{0,800}?' + IMO, 'i'));
+    const mLM35 = t.match(new RegExp('LM35[\\s\\S]{0,800}?' + IMO, 'i'));
+    const mLM39 = t.match(new RegExp('LM39[\\s\\S]{0,800}?' + IMO, 'i'));
+    if (mLM22) fatturato = parseIT(mLM22[1]);
+    if (mLM35) inps      = parseIT(mLM35[1]);
+    if (mLM39) imposta   = parseIT(mLM39[1]);
+    console.log('[RPF] M2 fallback — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta);
   }
 
-  if (!fatturato || fatturato < 100) return null;
-
-  /* ── STEP 8: INPS — relazione reddito_lordo - INPS ≈ reddito_netto ───
-     Candidati: valori tra 4% e 65% del fatturato e < reddito_lordo.
-     Per ogni C, controlla se (redditoLordo - C) appare nel documento
-     (tolleranza 1%).                                                   */
-  let inps = 0;
-
-  if (redditoLordo > 0) {
-    // BUG 2 FIX: in precedenza il range era calcolato sul fatturato.
-    // Ora usiamo il MAX tra fatturato e redditoLordo come base
-    // per non escludere l'INPS quando il fatturato è molto alto.
-    // Range INPS forfettario reale: min ~1.000 €, max ~35% del fatturato.
-    const baseRange = Math.max(fatturato, redditoLordo);
-    const candidatiInps = tuttiMonetari.filter(v =>
-      v >= 500 && v <= baseRange * 0.70 && v < redditoLordo
-    );
-    for (const C of candidatiInps) {
-      const netto_atteso = redditoLordo - C;
-      const trovato = tuttiMonetari.find(v =>
-        v !== C && v !== redditoLordo && Math.abs(v - netto_atteso) <= netto_atteso * 0.01
-      );
-      if (trovato) { inps = C; break; }
-    }
+  /* ── ATECO (se non trovato dal blocco) ── */
+  if (!ateco) {
+    const mA = t.match(/\b(\d{6})\b/);
+    if (mA && parseInt(mA[1]) > 100000) ateco = mA[1];
   }
 
-  // Fallback testuale LM35 — finestra estesa, verifica plausibilità (FIX P3)
-  // RIMOSSO LM34 come alternativa: LM34 = reddito lordo, NON contributi INPS
-  if (inps === 0) {
-    const mLM35 = t.match(/LM35[\s\S]{0,1500}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-    if (mLM35) {
-      const v = parseITA(mLM35[1]);
-      if (v > 500 && v < fatturato) inps = v;
-    }
-  }
+  console.log('[RPF] FINALE — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta, '| ateco:', ateco, '| anno:', anno);
 
-  /* ── STEP 9: IMPOSTA — relazione imponibile × 5% o × 15% ─────────────
-     imponibile = reddito_lordo - INPS (≈ LM38)
-     Strategia: trova il valore più vicino (entro 5%) a imp15 o imp5.
-     Controlla anche LM39 col.2 (Art. 1 L. 190/2014) e LM42 come fallback. */
-  let imposta = 0;
-  const imponibile = Math.max(0, redditoLordo - inps);
-
-  if (imponibile > 0) {
-    const imp15 = imponibile * 0.15;
-    const imp5  = imponibile * 0.05;
-    // BUG 3 FIX: il vecchio filtro "v < Math.min(inps, fatturato)" escludeva
-    // l'imposta quando inps era basso. Ora il filtro è: valore > 100 e
-    // < fatturato (l'imposta non può mai superare il fatturato)
-    // e non uguale a inps o fatturato (per evitare falsi positivi evidenti).
-    const candidatiImp = tuttiMonetari.filter(v =>
-      v > 100 && v < fatturato && v !== inps && v !== fatturato && v !== redditoLordo
-    );
-    let bestScore = Infinity;
-    for (const I of candidatiImp) {
-      const scarto = Math.min(Math.abs(I - imp15), Math.abs(I - imp5));
-      const pct    = scarto / (I || 1);
-      // Tolleranza alzata a 10% per gestire deduzioni particolari o arrotondamenti
-      if (pct < bestScore && pct < 0.10) { bestScore = pct; imposta = I; }
-    }
-  }
-
-  // Fallback 1: ancora "Art. 1 L. 190/2014" nel testo (colonna corretta LM39)
-  if (imposta === 0) {
-    const mArt1 = t.match(/(?:190\/2014|Art\.?\s*1\s+L\.?\s*190)[\s\S]{0,100}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-    if (mArt1) imposta = parseITA(mArt1[1]);
-  }
-  // Fallback 2: LM39 — sequenza LM38→LM39 per finestra corretta
-  if (imposta === 0) {
-    const mSeq = t.match(/LM38[\s\S]{0,500}?LM39[\s\S]{0,300}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-    if (mSeq) imposta = parseITA(mSeq[1]);
-  }
-  // Fallback 3: LM42 (differenza = imposta dovuta quando = LM42)
-  if (imposta === 0) {
-    const mLM42 = t.match(/LM42[\s\S]{0,200}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-    if (mLM42) imposta = parseITA(mLM42[1]);
-  }
-
-  /* ── STEP 10: Risultato ──────────────────────────────────────────── */
-  // FIX B: mapping esplicito LM22/LM35/LM39 come fallback finale
-  if (fatturato === 0) {
-    const v = extractLMField(t, QUADRO_LM_MAP.fatturato);
-    if (v > 100) { fatturato = v; console.log('[RPF] LM22 fallback:', v); }
-  }
-  if (inps === 0) {
-    const v = extractLMField(t, QUADRO_LM_MAP.inps);
-    if (v > 100) { inps = v; console.log('[RPF] LM35 fallback:', v); }
-  }
-  if (imposta === 0) {
-    const v = extractLMField(t, QUADRO_LM_MAP.imposta);
-    if (v > 0) { imposta = v; console.log('[RPF] LM39 fallback:', v); }
-  }
-
-  // Log diagnostico finale
-  console.log('[RPF] Risultato finale — fatturato:', fatturato, '| INPS:', inps, '| imposta:', imposta, '| hasLM:', hasLM);
-  if (fatturato === 0) {
-    const lm22idx = t.indexOf('LM22');
-    if (lm22idx >= 0) console.log('[RPF] Testo attorno a LM22:', JSON.stringify(t.slice(lm22idx, lm22idx + 300)));
-    else console.warn('[RPF] LM22 NON TROVATO — prime 1500 chars:', t.slice(0, 1500));
-  }
-
-  // IMPORTANTE: restituisce SEMPRE un oggetto non-null se hasDoc è true
-  // Anche con fatturato=0, parseTaxPDF saprà che è un RPF e non chiamerà F24.
-  // Se i valori sono zero, parseTaxPDF li manderà a Gemini con contesto RPF.
-
-  const result = {
-    tipo:                'dichiarazione',
-    anno,
-    ateco,
+  return {
+    tipo: 'dichiarazione', anno, ateco,
     fatturato_lm2:       fatturato,
     inps_dedotta_lm7:    inps,
     imposta_dovuta_lm11: imposta,
     inps_versata_f24:    0,
-    note: '⚡ Estratto localmente da Modello RPF (0 token AI)' +
-          (ateco ? ` · ATECO ${ateco}` : '') +
-          (anno  ? ` · Anno ${anno}`   : '') +
-          (!inps || !imposta
-            ? ' · ⚠️ Verifica INPS e imposta: potrebbero richiedere correzione manuale.'
-            : '')
+    note: '\u26A1 Estratto da Modello RPF (0 token AI)' +
+          (ateco  ? ` · ATECO ${ateco}` : '') +
+          (anno   ? ` · Anno ${anno}`   : '') +
+          (!inps || !imposta ? ' · \u26A0\uFE0F Verifica INPS/imposta manualmente.' : '')
   };
-  console.log('[tryParseRPF] Risultato:', result);
-  return result;
 }
+
 
 
 /* ============================================================
@@ -1959,83 +1805,93 @@ function tryParseRPF(text) {
    PDF da intermediari, layout PDF.js con testo spezzato.
    ============================================================ */
 function tryParseF24(text) {
-  /* ── RILEVAMENTO F24 ─────────────────────────────────────────────── */
-  const isF24 = /\bF24\b|MODELLO\s*F24|F24\s*ORDINARIO|F24\s*SEMPLIFICATO|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|\bDPPI\b|\b1791\b|\b1792\b|\bCF29\b|\bCF30\b|\bCF31\b|\bCF32\b|\bPXX\b|CONTRIBUTI\s+INPS/i.test(text);
+  /* ═══════════════════════════════════════════════════════════════
+     PARSER F24 — basato sulla struttura REALE del PDF ADE
+     
+     Struttura estratta da pdfminer/PDF.js:
+       PXX \n 01 2025 \n 12 2025         4.904 00
+       DPPI\n 01 2025 \n 12 2025            11 04
+       2.760,00          ← SALDO FINALE (formato con virgola = netto)
+       2.771 04          ← SALDO (con spazio tra interi e centesimi)
+     
+     Valori da estrarre:
+     - SALDO FINALE (o "2.771 04" → 2771,04) = importo effettivamente versato
+     - Anno di riferimento
+  ═══════════════════════════════════════════════════════════════ */
+
+  const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*FINALE|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|1791|1792|CF29|CF30|CF31|CF32/i.test(text);
   if (!isF24) return null;
 
-  // Normalizzazione condivisa (stessa usata per RPF e per Gemini)
+  // Normalizzazione
   const t = normalizePdfText(text);
-  console.log('[F24] Normalizzato. Campione:', t.slice(0, 400));
-  window._f24DebugText = '[Normalizzato]\n' + t.slice(0, 1500) + '\n\n[Grezzo]\n' + text.slice(0, 500);
 
-  /* ── PARSER IMPORTO ─────────────────────────────────────────────── */
-  function parseAny(s) {
+  /* ── ANNO ── */
+  const annoM = t.match(/Scadenza\s+del\s+\d{2}-\d{2}-(20\d{2})/i) ||
+                t.match(/\b(20\d{2})\b/);
+  const anno = annoM ? parseInt(annoM[1]) : null;
+
+  /* ── PARSER IMPORTO F24 ──
+     Formato reale trovato nel PDF:
+     A) "2.760,00"  → virgola decimale → formato italiano standard
+     B) "2.771 04"  → spazio tra interi e centesimi → normalizzare
+     C) "4.904 00"  → stessa cosa
+  */
+  const parseF24 = s => {
     if (!s) return 0;
     s = s.trim();
-    if (/,/.test(s)) return parseFloat(s.replace(/\.(?=\d{3}[,])/g, '').replace(',', '.')) || 0;
-    return parseFloat(s.replace(/\.(?=\d{3}\.)/g, '')) || 0;
-  }
-
-  /* ── ANNO ────────────────────────────────────────────────────────── */
-  const annoMatch =
-    t.match(/ANNO\s+(?:DI\s+)?RIFERIMENTO[\s:]*(\d{4})/i) ||
-    t.match(/ANNO\s+RIF\.?[\s:]*(\d{4})/i) ||
-    t.match(/COMPETENZA[\s:]*(\d{4})/i) ||
-    t.match(/PERIODO[\s:]+(?:DI\s+IMPOSTA[\s:]+)?(\d{4})/i) ||
-    t.match(/\b(20\d{2})\b/);
-  const anno = annoMatch ? parseInt(annoMatch[1]) : null;
-
-  /* ── RACCOLTA TUTTI I VALORI MONETARI ────────────────────────────── */
-  const reIT = /\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2}/g;
-  const reUS = /\b\d{1,3}(?:\.\d{3})+\.\d{2}\b|\b\d{4,}\.\d{2}\b/g;
-  const vIT = [...t.matchAll(reIT)].map(m => parseAny(m[0]));
-  const vUS = [...t.matchAll(reUS)].map(m => parseAny(m[0]));
-  const tutti = [...new Set([...vIT, ...vUS])].filter(v => v >= 10 && v < 500000).sort((a,b) => b-a);
-  console.log('[F24] Valori trovati:', tutti.slice(0, 15));
-
-  /* ── CAUSALI INPS ────────────────────────────────────────────────── */
-  const causREG = /(?:DPPI|GS\b|PXX|CF29|CF30|CF31|CF32|1791|1792|CONTRIBUTI\s+INPS|INPS\s+ARTIG|INPS\s+COMM)/i;
-  const reIMO_IT = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2})';
-  const reIMO_US = '(\\d{1,3}(?:\\.\\d{3})+\\.\\d{2}|\\d{4,}\\.\\d{2})';
-
-  let inpsF24 = 0;
-  const mIT = t.match(new RegExp(causREG.source + '[\\s\\S]{0,300}?' + reIMO_IT, 'i'));
-  const mUS = t.match(new RegExp(causREG.source + '[\\s\\S]{0,300}?' + reIMO_US, 'i'));
-  if (mIT) inpsF24 = parseAny(mIT[1]);
-  else if (mUS) inpsF24 = parseAny(mUS[1]);
-
-  /* ── SALDO FINALE ────────────────────────────────────────────────── */
-  let importoTotale = 0;
-  const saldoPat = /(?:TOTALE\s+(?:DA\s+)?VERSARE|SALDO\s+FINALE|IMPORTO\s+A\s+DEBITO\s+VERSATO|TOTALE|SALDO)[\s\S]{0,200}?/i;
-  const sIT = t.match(new RegExp(saldoPat.source + reIMO_IT, 'i'));
-  const sUS = t.match(new RegExp(saldoPat.source + reIMO_US, 'i'));
-  if (sIT) importoTotale = parseAny(sIT[1]);
-  else if (sUS) importoTotale = parseAny(sUS[1]);
-
-  /* ── BEST-GUESS FALLBACK ─────────────────────────────────────────── */
-  let importoFallback = 0;
-  if (!inpsF24 && !importoTotale) {
-    const plaus = tutti.filter(v => v >= 50 && v <= 50000);
-    importoFallback = plaus[0] || 0;
-    if (importoFallback) console.log('[F24] Fallback best-guess:', importoFallback);
-    else console.error('[F24] NESSUN VALORE — verifica pannello debug nella UI');
-  }
-
-  const importoFinale = importoTotale || inpsF24 || importoFallback;
-  if (importoFinale < 10) return null;
-
-  const sorgente = importoTotale && importoTotale === importoFinale ? '(SALDO FINALE)' :
-                   inpsF24 && inpsF24 === importoFinale ? '(causale INPS)' : '(stima)';
-  const nota = `\u26A1 F24 estratto ${sorgente} · Anno: ${anno || '?'} · €${importoFinale.toLocaleString('it-IT', {minimumFractionDigits:2})}${!anno ? ' · \u26A0\uFE0F Anno non trovato' : ''}`;
-
-  const result = {
-    tipo: 'f24', anno,
-    ateco: null, fatturato_lm2: 0, inps_dedotta_lm7: 0, imposta_dovuta_lm11: 0,
-    inps_versata_f24: importoFinale, note: nota
+    // Formato "2.760,00" (italiano)
+    if (/,/.test(s)) return parseFloat(s.replace(/\./g,'').replace(',','.')) || 0;
+    // Formato "2.771 04" (spazio come separatore decimale)
+    const mSp = s.match(/^([\d.]+)\s+(\d{2})$/);
+    if (mSp) return parseFloat(mSp[1].replace(/\./g,'') + '.' + mSp[2]) || 0;
+    return parseFloat(s.replace(/\./g,'')) || 0;
   };
-  console.log('[F24] \u2705 Risultato:', result);
-  return result;
+
+  /* ── CERCA SALDO FINALE (priorità massima) ── */
+  let importoFinale = 0;
+
+  // Pattern 1: "SALDO FINALE" seguito da importo (già normalizzato potrebbe essere "2.760,00")
+  const mSaldo = t.match(/SALDO\s*FINALE[\s\S]{0,200}?(\d{1,3}(?:\.\d{3})*,\d{2})/i);
+  if (mSaldo) importoFinale = parseF24(mSaldo[1]);
+
+  // Pattern 2: nel testo grezzo (prima della normalizzazione) cerca il formato "X.XXX,00"
+  // che è il saldo netto effettivamente versato (quello con la virgola, non lo spazio)
+  if (!importoFinale) {
+    const mVirgola = text.match(/(\d{1,3}\.\d{3},\d{2})/g);
+    if (mVirgola) {
+      const vals = mVirgola.map(v => parseF24(v)).filter(v => v > 100 && v < 100000);
+      if (vals.length > 0) importoFinale = vals[0]; // primo valore con virgola = saldo netto
+    }
+  }
+
+  // Pattern 3: cerca "+  X.XXX 04" (il saldo finale totale nel documento reale)
+  if (!importoFinale) {
+    const mPlus = text.match(/\+\s+([\d.]+\s+\d{2})\s*$/m);
+    if (mPlus) importoFinale = parseF24(mPlus[1]);
+  }
+
+  // Pattern 4: tutti i valori DPPI/PXX nel testo normalizzato
+  if (!importoFinale) {
+    const causRE = /(?:DPPI|PXX|1791|1792|CF2[9-9]|CF3[0-2])\s*[\s\S]{0,200}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:\.\d{3})+\s+\d{2})/gi;
+    const matches = [...t.matchAll(causRE)];
+    if (matches.length > 0) importoFinale = parseF24(matches[0][1]);
+  }
+
+  if (importoFinale < 10) {
+    console.warn('[F24] Nessun importo trovato — testo grezzo (300 chars):', text.slice(0, 300));
+    return null;
+  }
+
+  console.log('[F24] \u2705 importoFinale:', importoFinale, '| anno:', anno);
+
+  return {
+    tipo: 'f24', anno, ateco: null,
+    fatturato_lm2: 0, inps_dedotta_lm7: 0, imposta_dovuta_lm11: 0,
+    inps_versata_f24: importoFinale,
+    note: `\u26A1 F24 estratto (0 token AI) · \u20AC${importoFinale.toLocaleString('it-IT',{minimumFractionDigits:2})} · Anno: ${anno || '?'}`
+  };
 }
+
 
 /* ============================================================
    PROMPT ESPERTO COMMERCIALISTA — inviato alla Edge Function
@@ -3297,8 +3153,35 @@ function apriModalAiResult(anno, r) {
       openModal('modal-ai-result');
       return;
     }
-    // Dichiarazione con zero dati → blocca con toast
-    toast('⚠️ Nessun dato fiscale trovato nel PDF. Carica una Dichiarazione Redditi PF o un F24.', 'err', 6000);
+    // Dichiarazione con zero dati → mostra modale con debug panel (NON toast bloccante)
+    // L'utente può copiare il testo estratto per diagnostica e inserire valori manualmente
+    g('ai-f-fatturato').style.display   = 'block';
+    g('ai-v-fatturato').textContent     = '—';
+    g('ai-e-fatturato').value           = '';
+    g('ai-f-inps-versata').style.display = 'block';
+    g('ai-v-inps-versata').textContent  = '—';
+    g('ai-e-inps-versata').value        = '';
+    g('ai-f-imposta').style.display     = 'block';
+    g('ai-v-imposta').textContent       = '—';
+    g('ai-e-imposta').value             = '';
+    const convBoxD = g('ai-conv-box');
+    convBoxD.className = 'ai-conv-box show giallo';
+    g('ai-conv-icona').textContent  = '⚠️';
+    g('ai-conv-titolo').textContent = 'Valori non estratti — inserisci manualmente';
+    const nCharD = (_lastPdfText || '').length;
+    g('ai-conv-corpo').textContent = nCharD > 150
+      ? `Estratti ${nCharD} caratteri ma i valori non sono stati riconosciuti. ` +
+        `Espandi "Testo grezzo" qui sotto → copia → mandamelo per aggiornare il parser. ` +
+        `Oppure inserisci manualmente Fatturato, INPS e Imposta nei campi sopra.`
+      : 'PDF non leggibile (formato XFA/scansione). Inserisci i valori manualmente.';
+    // Pannello debug
+    const dbgWrapD = g('ai-debug-wrap');
+    const dbgTxtD  = g('ai-debug-txt');
+    if (dbgWrapD && dbgTxtD) {
+      dbgTxtD.value = window._f24DebugText || (_lastPdfText || '').slice(0, 2000) || '(nessun testo)';
+      dbgWrapD.style.display = 'block';
+    }
+    openModal('modal-ai-result');
     return;
   }
 
