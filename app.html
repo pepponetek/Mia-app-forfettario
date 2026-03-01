@@ -584,15 +584,12 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   border:1px solid var(--bd);border-radius:6px;color:var(--t1);font-family:monospace;
   font-size:14px;outline:none}
 .ai-result-field .arf-edit:focus{border-color:var(--ac)}
-.ai-result-field.non-congruente{border-color:var(--ye-b);background:var(--ye-d)}
-.ai-result-field.non-congruente .arf-lbl{color:var(--ye)}
-.ai-result-field.non-congruente .arf-edit{border-color:var(--ye-b)}
-.ai-result-field.non-congruente .arf-edit:focus{border-color:var(--ye);box-shadow:0 0 0 3px rgba(210,153,34,.18)}
+/* non-congruente rimosso — sistema "Dati Master da PDF" v15 */
 .ai-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;
   background:rgba(188,140,255,.1);border:1px solid var(--pu-b);color:var(--pu);
   font-size:11px;font-weight:700;margin-bottom:14px}
 
-/* ── Semaforo convalida esperto commercialista ───────────── */
+/* ── Semaforo: solo giallo/rosso per casi diagnostici (verde rimosso — Dati Master da PDF) */
 .ai-conv-box{display:none;border-radius:8px;overflow:hidden;margin-bottom:10px;
   border:1px solid var(--bd)}
 .ai-conv-box.show{display:block}
@@ -600,12 +597,11 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
 .ai-conv-body{padding:9px 12px;font-size:12px;line-height:1.65;
   color:var(--t2);background:var(--s1);border-top:1px solid var(--bd)}
-.ai-conv-box.verde  .ai-conv-head{background:rgba(63,185,80,.12); color:#3fb950;border-left:3px solid #3fb950}
 .ai-conv-box.giallo .ai-conv-head{background:rgba(210,153,34,.12);color:#d29922;border-left:3px solid #d29922}
 .ai-conv-box.rosso  .ai-conv-head{background:rgba(248,81,73,.12); color:#f85149;border-left:3px solid #f85149}
-.ai-conv-box.verde  .ai-conv-body{border-left:3px solid #3fb950}
 .ai-conv-box.giallo .ai-conv-body{border-left:3px solid #d29922}
 .ai-conv-box.rosso  .ai-conv-body{border-left:3px solid #f85149}
+
 
 /* ── Note tecniche parser ─────────────────────────────────── */
 .ai-note-base{font-size:11px;color:var(--t3);margin-bottom:10px;padding:8px 11px;
@@ -838,6 +834,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
             <div class="btn-row">
               <button class="btn btn-gr" id="btn-salva" onclick="salvaAnno()">☁️ Salva nel cloud</button>
               <button class="btn btn-ol" onclick="exportPDF(null)">📄 Esporta PDF</button>
+              <button class="btn btn-ol" onclick="generaF24Facsimile(null)" style="margin-left:4px">🏛️ F24 Facsimile</button>
               <button class="btn btn-ol" onclick="printAnno(null)">🖨️ Stampa fascicolo</button>
             </div>
           </div>
@@ -895,14 +892,71 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <!-- ADMIN -->
       <div class="view" id="view-admin">
         <div class="ph">
-          <div><h1>🛡️ Pannello Amministratore</h1><p>Anagrafica clienti · Peppone Tek</p></div>
-          <button class="btn btn-sm btn-gr" onclick="exportCSV()">📊 Esporta CSV</button>
+          <div><h1>🛡️ Pannello Amministratore</h1><p>Anagrafica clienti · Parametri Fiscali · Peppone Tek</p></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm btn-ol" onclick="loadTaxRules()" id="btn-tax-rules">⚙️ Parametri</button>
+            <button class="btn btn-sm btn-gr" onclick="exportCSV()">📊 CSV</button>
+          </div>
         </div>
-        <div class="sg sg4" id="adm-stats" style="margin-bottom:14px"></div>
-        <div class="card">
-          <div class="card-t">Clienti registrati — solo dati anagrafici</div>
-          <input class="adm-search" id="adm-search" type="text" placeholder="🔍 Cerca per nome, email o ATECO..." oninput="filterAdmin(this.value)">
-          <div id="adm-tbl"><div class="loading"><div class="spinner"></div><span>Caricamento...</span></div></div>
+
+        <!-- TAB ADMIN -->
+        <div style="display:flex;gap:2px;margin-bottom:12px;background:var(--s2);border-radius:8px;padding:3px">
+          <button class="btn btn-sm" id="adm-tab-clienti" onclick="switchAdmTab('clienti')"
+            style="flex:1;border-radius:6px;background:var(--s1);border:1px solid var(--bd)">👥 Clienti</button>
+          <button class="btn btn-sm" id="adm-tab-fiscal" onclick="switchAdmTab('fiscal')"
+            style="flex:1;border-radius:6px;background:transparent;border:none;color:var(--t2)">⚙️ Parametri Fiscali</button>
+        </div>
+
+        <!-- PANEL CLIENTI -->
+        <div id="adm-panel-clienti">
+          <div class="sg sg4" id="adm-stats" style="margin-bottom:14px"></div>
+          <div class="card">
+            <div class="card-t">Clienti registrati — solo dati anagrafici</div>
+            <input class="adm-search" id="adm-search" type="text" placeholder="🔍 Cerca per nome, email o ATECO..." oninput="filterAdmin(this.value)">
+            <div id="adm-tbl"><div class="loading"><div class="spinner"></div><span>Caricamento...</span></div></div>
+          </div>
+        </div>
+
+        <!-- PANEL PARAMETRI FISCALI -->
+        <div id="adm-panel-fiscal" style="display:none">
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+              <span>⚙️ Coefficienti ATECO &amp; Parametri Forfettario</span>
+              <div style="display:flex;gap:6px">
+                <span id="sentinel-badge" style="display:none;background:#ef4444;color:#fff;
+                  font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;cursor:pointer"
+                  onclick="confirmSentinelUpdate()">
+                  🔔 Rilevata modifica aliquote — Aggiornare?
+                </span>
+                <button class="btn btn-sm btn-gr" onclick="saveTaxRules()">💾 Salva modifiche</button>
+              </div>
+            </div>
+            <p style="color:var(--t3);font-size:12px;margin:6px 0 12px">
+              Modifica i coefficienti per categoria ATECO e i parametri soglia. Le modifiche si applicano a tutti gli utenti istantaneamente.
+            </p>
+            <div id="tax-rules-tbl"><div class="loading"><div class="spinner"></div><span>Caricamento parametri…</span></div></div>
+          </div>
+
+          <!-- SOGLIA GLOBALE -->
+          <div class="card">
+            <div class="card-t">🎚️ Parametri Globali Forfettario</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+              <div class="fg">
+                <label>Soglia fatturato accesso (€)</label>
+                <div class="iw"><span class="ipre">€</span>
+                  <input type="number" id="tr-soglia" value="85000" min="0" step="1000"
+                    style="padding-left:26px">
+                </div>
+              </div>
+              <div class="fg">
+                <label>Anni aliquota agevolata (5%)</label>
+                <div class="iw">
+                  <input type="number" id="tr-anni-new" value="5" min="1" max="10">
+                  <span class="isuf">anni</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -958,19 +1012,21 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       </div>
 
       <div class="fg">
-        <label>Fatturato imponibile <span id="wiz-year-lbl2"></span> (€)</label>
+        <label>Fatturato imponibile <span id="wiz-year-lbl2"></span> (€) <span style="font-size:10px;color:var(--t3);font-weight:400">— compilato dal PDF</span></label>
         <div class="iw">
           <span class="ipre">€</span>
-          <input type="number" id="wiz-fatt" placeholder="0.00" min="0" step="0.01"
-                 inputmode="decimal" oninput="wizPreview()">
+          <input type="number" id="wiz-fatt" placeholder="In attesa del PDF…" min="0" step="0.01"
+                 inputmode="decimal" readonly
+                 style="background:var(--s2);cursor:not-allowed;color:var(--t2)">
         </div>
       </div>
 
-      <!-- INPS VERSATA nell'anno solare -->
+      <!-- INPS VERSATA nell'anno solare — readonly, compilato da F24 -->
       <div class="fg" style="margin-top:10px">
-        <label>INPS versata nell'anno solare (F24 pagati, €) — opzionale</label>
+        <label>INPS versata nell'anno solare (da F24) <span style="font-size:10px;color:var(--t3);font-weight:400">— compilata dal PDF</span></label>
         <div class="iw"><span class="ipre">€</span>
-          <input type="number" id="wiz-inps-versata" placeholder="0.00 (opzionale)" min="0" step="0.01" inputmode="decimal">
+          <input type="number" id="wiz-inps-versata" placeholder="In attesa del PDF…" min="0" step="0.01" inputmode="decimal" readonly
+                 style="background:var(--s2);cursor:not-allowed;color:var(--t2)">
           <span class="isuf">F24</span>
         </div>
       </div>
@@ -987,11 +1043,11 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <label>Note (opzionale)</label>
         <input type="text" id="wiz-note" placeholder="Es: dati da 730, dichiarazione...">
       </div>
-      <!-- FIX P7: Banner verifica AI — visibile dopo parsing PDF -->
+      <!-- Banner info PDF — visibile dopo parsing nel wizard -->
       <div id="wiz-ai-banner" style="display:none; margin-top:10px; padding:10px 14px;
-           background:#fff8e1; border:1.5px solid #f59e0b; border-radius:8px;
-           font-size:0.88rem; color:#92400e; line-height:1.5">
-        <strong>⚠️ Valori estratti dall'AI — verifica prima di salvare</strong>
+           background:#e6f4ea; border:1.5px solid #3fb950; border-radius:8px;
+           font-size:0.88rem; color:#1a5c28; line-height:1.5">
+        <strong>✅ Dati aggiornati dal documento</strong>
         <div id="wiz-ai-banner-body" style="margin-top:6px"></div>
       </div>
       <!-- Anteprima calcolo in tempo reale -->
@@ -1071,49 +1127,73 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 <!-- MODAL AI — Risultati analisi PDF dichiarazione/F24 -->
 <div class="modal-bg" id="modal-ai-result">
   <div class="modal-box" style="max-width:460px;max-height:90vh;overflow-y:auto">
-    <h3>🤖 Analisi AI completata</h3>
+    <h3>⚠️ Estrazione parziale — Verifica manuale</h3>
     <div class="ai-badge" id="ai-doc-tipo">—</div>
     <p style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.6">
-      Verifica i valori estratti. Puoi modificarli prima di applicarli.
-      Solo i campi con valore &gt; 0 verranno aggiornati nel cloud.
+      Il documento è stato analizzato ma alcuni valori non sono stati rilevati automaticamente.
+      Inserisci o correggi i campi mancanti, poi premi <strong>Applica</strong>.
     </p>
 
     <div class="ai-result-field" id="ai-f-fatturato" style="display:none">
       <div class="arf-lbl">📊 FATTURATO IMPONIBILE — RIGO LM22 COL.3 (€)</div>
       <div class="arf-val" id="ai-v-fatturato">—</div>
       <input type="number" class="arf-edit" id="ai-e-fatturato" min="0" step="0.01"
-             placeholder="Modifica se necessario">
+             placeholder="Inserisci manualmente">
     </div>
 
     <div class="ai-result-field" id="ai-f-inps-versata" style="display:none">
       <div class="arf-lbl">🏛️ Contributi previdenziali — LM34/LM35 (€)</div>
       <div class="arf-val" id="ai-v-inps-versata">—</div>
       <input type="number" class="arf-edit" id="ai-e-inps-versata" min="0" step="0.01"
-             placeholder="Modifica se necessario">
+             placeholder="Inserisci manualmente">
     </div>
 
     <div class="ai-result-field" id="ai-f-imposta" style="display:none">
       <div class="arf-lbl">💰 Imposta sostitutiva — LM38/LM39 (€)</div>
       <div class="arf-val" id="ai-v-imposta">—</div>
       <input type="number" class="arf-edit" id="ai-e-imposta" min="0" step="0.01"
-             placeholder="Modifica se necessario">
+             placeholder="Inserisci manualmente">
     </div>
 
-    <!-- SEMAFORO CONVALIDA ESPERTO COMMERCIALISTA -->
+    <!-- BOX DIAGNOSTICO (solo giallo/rosso — no verde) -->
     <div class="ai-conv-box" id="ai-conv-box">
       <div class="ai-conv-head">
-        <span id="ai-conv-icona">⚪</span>
-        <span id="ai-conv-titolo">Convalida in corso…</span>
+        <span id="ai-conv-icona">⚠️</span>
+        <span id="ai-conv-titolo">Analisi incompleta</span>
       </div>
       <div class="ai-conv-body" id="ai-conv-corpo">—</div>
     </div>
 
-    <!-- NOTE TECNICHE PARSER (parsing locale / sorgente AI) -->
+    <!-- NOTE TECNICHE PARSER -->
     <div id="ai-note-wrap" style="display:none">
       <div class="ai-note-base" id="ai-note-txt"></div>
     </div>
 
-    <!-- PANNELLO DEBUG RAW TEXT — visibile solo quando parsing fallisce -->
+    <!-- PANNELLO DEBUG RAW TEXT -->
+    <div id="ai-debug-wrap" style="display:none; margin-top:10px">
+      <details>
+        <summary style="font-size:0.8rem;color:var(--t2);cursor:pointer;user-select:none">
+          🔍 Testo grezzo estratto dal PDF (debug)
+        </summary>
+        <textarea id="ai-debug-txt" readonly
+          style="width:100%;height:120px;margin-top:6px;font-size:0.72rem;
+                 font-family:monospace;background:var(--bg2);color:var(--t2);
+                 border:1px solid var(--bd);border-radius:6px;padding:6px;
+                 resize:vertical;line-height:1.3"></textarea>
+        <button onclick="navigator.clipboard?.writeText(document.getElementById('ai-debug-txt').value).then(()=>toast('📋 Testo copiato','ok',2000))"
+          style="font-size:0.75rem;margin-top:4px;padding:3px 10px;border-radius:4px;
+                 border:1px solid var(--bd);background:transparent;color:var(--t2);cursor:pointer">
+          📋 Copia testo
+        </button>
+      </details>
+    </div>
+
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn btn-gr btn-sm" id="ai-btn-apply" onclick="confermaAiResult()">✅ Applica al cloud</button>
+      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-ai-result')">Annulla</button>
+    </div>
+  </div>
+</div>
     <div id="ai-debug-wrap" style="display:none; margin-top:10px">
       <details>
         <summary style="font-size:0.8rem;color:var(--t2);cursor:pointer;user-select:none">
@@ -3099,23 +3179,20 @@ function archAnalizzaPDF(anno) {
   inp.click();
 }
 
-// 2. File selezionato → mostra spinner, chiama parseTaxPDF, apri modal
+// 2. File selezionato → chiama parseTaxPDF, poi branch su risultato
 async function onArchPdfSelected(input) {
   const file = input.files[0];
   if (!file || _aiAnno === null) return;
 
-  _aiFile = file; // salva riferimento per upload su Storage dopo conferma
+  _aiFile = file;
   const anno = _aiAnno;
 
-  // Feedback visivo — apri il corpo della card se non è aperto
   const body = g('ayc-b-' + anno);
   if (body && !body.classList.contains('open')) body.classList.add('open');
 
-  // Mostra spinner nella card dell'anno
   const progEl = g('pdf-prog-' + anno);
   if (progEl) progEl.classList.add('show');
 
-  // Mostra toast di attesa (testo da Trae.md §3)
   toast(`🔍 Analizzando la struttura della dichiarazione (Ricerca Quadro LM)…`, 'info', 12000);
 
   try {
@@ -3123,7 +3200,22 @@ async function onArchPdfSelected(input) {
     if (progEl) progEl.classList.remove('show');
     _aiResult = result;
     _aiAnno   = anno;
-    apriModalAiResult(anno, result);
+
+    // ── BRANCH: successo → Dati Master da PDF (sovrascrittura silenziosa)
+    const hasFatt = (result.fatturato_lm2    || 0) > 0;
+    const hasInps = (result.inps_versata_f24 || 0) > 0 || (result.inps_dedotta_lm7 || 0) > 0;
+    const hasImp  = (result.imposta_dovuta_lm11 || 0) > 0;
+
+    const isDichiarazioneValida = result.tipo === 'dichiarazione' && hasFatt;
+    const isF24Valido           = result.tipo === 'f24' && hasInps;
+
+    if (isDichiarazioneValida || isF24Valido) {
+      // Applica silenziosamente senza modal
+      await applicaDatiPDFSilent(anno, result);
+    } else {
+      // Fallback diagnostico — apri modal solo se extraction fallita
+      apriModalFallback(anno, result);
+    }
   } catch(err) {
     if (progEl) progEl.classList.remove('show');
     toast('❌ ' + err.message, 'err', 10000);
@@ -3131,180 +3223,212 @@ async function onArchPdfSelected(input) {
   }
 }
 
-// 3. Popola e apri il modal con i risultati
-function apriModalAiResult(anno, r) {
-  // ── Badge tipo documento ───────────────────────────────────
-  const tipoLabel = r.tipo === 'f24'
-    ? '📋 F24 rilevato'
-    : r.tipo === 'dichiarazione'
-      ? '📑 Dichiarazione rilevata'
-      : `📄 Documento (${r.tipo || 'sconosciuto'})`;
-
-  // Badge: tipo · anno · sezione trovata · affidabilità
-  let badgeText = tipoLabel + ` · Anno ${r.anno || anno}`;
-  if (r.sezione_rilevata) badgeText += ` · ${r.sezione_rilevata}`;
-  const affBadge = r.affidabilita === 'high' ? '🟢' : r.affidabilita === 'medium' ? '🟡' : r.affidabilita === 'low' ? '🔴' : '';
-  if (affBadge) badgeText += ` ${affBadge}`;
-  g('ai-doc-tipo').textContent = badgeText;
-
-  // ── Campo fatturato — LM22 col.3 ──────────────────────────
-  const hasFatt = (r.fatturato_lm2 || 0) > 0;
-  g('ai-f-fatturato').style.display = hasFatt ? 'block' : 'none';
-  if (hasFatt) {
-    g('ai-v-fatturato').textContent = fmt(r.fatturato_lm2);
-    g('ai-e-fatturato').value       = r.fatturato_lm2;
+/* ============================================================
+   DATI MASTER DA PDF — sovrascrittura silenziosa (v15)
+   Sostituisce il vecchio flusso modal+conferma per i casi di
+   estrazione riuscita. Nessun confronto visivo, nessun modal.
+   Flusso: PDF estratto → valori puliti → upsert DB → ricalcolo F24
+           → syncFutureYears → upload Storage → toast successo
+   ============================================================ */
+async function applicaDatiPDFSilent(anno, r) {
+  // ── CORREZIONE ANNO F24 (stesso fix di confermaAiResult) ────────────
+  let annoTarget = anno;
+  const annoF24 = (r.tipo === 'f24' && r.anno) ? parseInt(r.anno) : null;
+  if (annoF24 && annoF24 !== anno && _anni[annoF24]) {
+    console.log(`[applicaDatiPDFSilent] Anno F24 ${annoF24} ≠ card ${anno} → uso ${annoF24}`);
+    annoTarget = annoF24;
   }
 
-  // ── Campo contributi — LM34/LM35 (o F24) ─────────────────
-  const inpsVal = (r.inps_versata_f24 || 0) > 0
-    ? r.inps_versata_f24
-    : (r.inps_dedotta_lm7 || 0) > 0 ? r.inps_dedotta_lm7 : 0;
-  const hasInps = inpsVal > 0;
-  g('ai-f-inps-versata').style.display = hasInps ? 'block' : 'none';
-  if (hasInps) {
-    // Se ci sono più pagine F24, mostra dettaglio per-pagina nel label
-    const lbl = g('ai-f-inps-versata').querySelector('.arf-lbl');
-    if (lbl && r.f24_pagine && r.f24_pagine.length > 1) {
-      const righe = r.f24_pagine.map(p =>
-        `${p.scadenza||'?'}: €${p.saldo.toLocaleString('it-IT',{minimumFractionDigits:2})}`
-      ).join(' · ');
-      lbl.innerHTML = `🏛️ INPS VERSATA — TOTALE ${r.f24_pagine.length} F24 (€)<br>
-        <span style="font-size:0.78rem;color:var(--t2);font-weight:normal">${righe}</span>`;
-    } else if (lbl) {
-      lbl.textContent = '🏛️ Contributi previdenziali — LM34/LM35 (€)';
-    }
-    g('ai-v-inps-versata').textContent = fmt(inpsVal);
-    g('ai-e-inps-versata').value       = inpsVal;
-  }
-
-  // ── Campo imposta — LM38/LM39 ─────────────────────────────
-  const hasImp = (r.imposta_dovuta_lm11 || 0) > 0;
-  g('ai-f-imposta').style.display = hasImp ? 'block' : 'none';
-  if (hasImp) {
-    g('ai-v-imposta').textContent = fmt(r.imposta_dovuta_lm11);
-    g('ai-e-imposta').value       = r.imposta_dovuta_lm11;
-  }
-
-  // ── SEMAFORO CONVALIDA ESPERTO ─────────────────────────────
-  // Usa convalida già calcolata da normalizzaRisultato; fallback locale
-  const convBox = g('ai-conv-box');
-  const conv = r.convalida || convalidaLocale(r);
-  if (conv) {
-    const icona = conv.stato === 'verde' ? '✅'
-                : conv.stato === 'giallo' ? '⚠️' : '🔴';
-    const titolo = conv.stato === 'verde' ? 'Convalida contabile: OK'
-                 : conv.stato === 'giallo' ? 'Verifica consigliata'
-                 : 'Discrepanza rilevata';
-    convBox.className = 'ai-conv-box show ' + conv.stato;   // applica colore
-    g('ai-conv-icona').textContent  = icona;
-    g('ai-conv-titolo').textContent = titolo;
-    g('ai-conv-corpo').textContent  = conv.messaggio;
-  } else {
-    convBox.className = 'ai-conv-box';                       // nasconde il box
-  }
-
-  // ── Note tecniche parser (sorgente estrazione) ────────────
-  const noteWrap = g('ai-note-wrap');
-  if (r.note) {
-    noteWrap.style.display = 'block';
-    const nt = g('ai-note-txt');
-    nt.className   = 'ai-note-base';
-    nt.textContent = '🔧 ' + r.note;
-  } else {
-    noteWrap.style.display = 'none';
-  }
-
-  // ── Nessun dato estratto ─────────────────────────────────────────────
-  // FIX: per F24 con dati non trovati, mostriamo comunque il modal
-  // con il campo INPS editabile a 0 e messaggio guida manuale.
-  // Solo per dichiarazioni con tutti zero blocchiamo con toast.
-  if (!hasFatt && !hasInps && !hasImp) {
-    if (r.tipo === 'f24') {
-      // F24: importi non trovati — mostra campo INPS vuoto + diagnostica
-      g('ai-f-inps-versata').style.display = 'block';
-      g('ai-v-inps-versata').textContent   = '—';
-      g('ai-e-inps-versata').value         = '';
-      const convBox = g('ai-conv-box');
-      convBox.className = 'ai-conv-box show giallo';
-      g('ai-conv-icona').textContent  = '⚠️';
-      g('ai-conv-titolo').textContent = 'Importo non rilevato — inserisci manualmente';
-      // Mostra quanti caratteri sono stati estratti per capire il tipo di problema
-      const nChar = (_lastPdfText || '').length;
-      const diagMsg = nChar < 150
-        ? 'Il PDF è in formato XFA (modulo Agenzia Entrate non leggibile). ' +
-          'Apri il PDF, trova il totale e inseriscilo manualmente sopra.'
-        : 'Estratti ' + nChar + ' caratteri ma nessun importo riconosciuto. ' +
-          'Espandi "Testo grezzo estratto" qui sotto → copia il testo → mandamelo: ' +
-          'aggiorno il parser per il tuo formato specifico.';
-      g('ai-conv-corpo').textContent = diagMsg;
-      // Mostra pannello debug con testo grezzo + normalizzato
-      const dbgWrap = g('ai-debug-wrap');
-      const dbgTxt  = g('ai-debug-txt');
-      if (dbgWrap && dbgTxt) {
-        const debugContent = window._f24DebugText || _lastPdfText?.slice(0, 2000) || '(nessun testo)';
-        dbgTxt.value = debugContent;
-        dbgWrap.style.display = 'block';
-      }
-      openModal('modal-ai-result');
-      return;
-    }
-    // Dichiarazione con zero dati → mostra modale con debug panel (NON toast bloccante)
-    // L'utente può copiare il testo estratto per diagnostica e inserire valori manualmente
-    g('ai-f-fatturato').style.display   = 'block';
-    g('ai-v-fatturato').textContent     = '—';
-    g('ai-e-fatturato').value           = '';
-    g('ai-f-inps-versata').style.display = 'block';
-    g('ai-v-inps-versata').textContent  = '—';
-    g('ai-e-inps-versata').value        = '';
-    g('ai-f-imposta').style.display     = 'block';
-    g('ai-v-imposta').textContent       = '—';
-    g('ai-e-imposta').value             = '';
-    const convBoxD = g('ai-conv-box');
-    convBoxD.className = 'ai-conv-box show giallo';
-    g('ai-conv-icona').textContent  = '⚠️';
-    g('ai-conv-titolo').textContent = 'Valori non estratti — inserisci manualmente';
-    const nCharD = (_lastPdfText || '').length;
-    g('ai-conv-corpo').textContent = nCharD > 150
-      ? `Estratti ${nCharD} caratteri ma i valori non sono stati riconosciuti. ` +
-        `Espandi "Testo grezzo" qui sotto → copia → mandamelo per aggiornare il parser. ` +
-        `Oppure inserisci manualmente Fatturato, INPS e Imposta nei campi sopra.`
-      : 'PDF non leggibile (formato XFA/scansione). Inserisci i valori manualmente.';
-    // Pannello debug
-    const dbgWrapD = g('ai-debug-wrap');
-    const dbgTxtD  = g('ai-debug-txt');
-    if (dbgWrapD && dbgTxtD) {
-      dbgTxtD.value = window._f24DebugText || (_lastPdfText || '').slice(0, 2000) || '(nessun testo)';
-      dbgWrapD.style.display = 'block';
-    }
-    openModal('modal-ai-result');
+  const d = _anni[annoTarget];
+  if (!d) {
+    toast(`⚠️ Anno ${annoTarget} non trovato nell'archivio. Crea prima il record.`, 'err', 6000);
+    _aiFile = null; _aiAnno = null; _aiResult = null;
     return;
   }
 
-  // ── Highlight campi non congruenti (congruente === false) ────────────
-  // Se l'AI segnala incongruenza, evidenzia in arancione tutti i campi
-  // estratti per invitare l'utente a verificarli manualmente
-  const nonCongruente = r.congruente === false ||
-    (r.convalida && r.convalida.stato === 'giallo') ||
-    (r.convalida && r.convalida.stato === 'rosso');
-  const campiAi = ['ai-f-fatturato', 'ai-f-inps-versata', 'ai-f-imposta'];
-  campiAi.forEach(id => {
-    const el = g(id);
-    if (!el) return;
-    if (nonCongruente && el.style.display !== 'none') {
-      el.classList.add('non-congruente');
-    } else {
-      el.classList.remove('non-congruente');
+  // ── PULIZIA VALORI (rimozione spazi, normalizzazione decimali) ───────
+  const cleanNum = v => {
+    if (typeof v === 'number') return v;
+    const s = String(v || '').replace(/\s/g,'').replace(',','.');
+    return parseFloat(s) || 0;
+  };
+
+  const fatt     = cleanNum(r.fatturato_lm2);
+  const inpsVers = cleanNum(r.inps_versata_f24 || r.inps_dedotta_lm7);
+  const imposta  = cleanNum(r.imposta_dovuta_lm11);
+
+  // ── COSTRUZIONE UPDATE ───────────────────────────────────────────────
+  const updates = { updated_at: new Date().toISOString() };
+
+  if (r.tipo === 'f24') {
+    // F24: aggiorna solo INPS versata nell'anno solare
+    if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
+  } else {
+    // Dichiarazione: sovrascrittura completa con ricalcolo derivati
+    if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
+    if (imposta  > 0) updates.imposta_sost = imposta;
+
+    if (fatt > 0) {
+      const gr     = GRUPPI[d.gruppo_idx];
+      const r_forf = fatt * gr.coeff;
+
+      // Contributi INPS teorici (calcolati su reddito forfettario)
+      let c_inps = 0;
+      const tipo = d.inps_tipo;
+      if (tipo === 'gs' || tipo === 'gs-pen') {
+        c_inps = r_forf * INPS_INFO[tipo].a;
+      } else if (tipo === 'art' || tipo === 'com') {
+        const info = INPS_INFO[tipo];
+        c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+      } else if (tipo === 'cassa') {
+        c_inps = r_forf * ((d.cassa_pct || 14.5) / 100);
+      }
+
+      // Reddito imponibile: usa INPS versata reale se disponibile e deducibile
+      const inpsPerDed = (d.deduci_inps && inpsVers > 0) ? inpsVers : c_inps;
+      const r_imp      = d.deduci_inps ? Math.max(0, r_forf - inpsPerDed) : r_forf;
+
+      // Imposta sostitutiva: usa quella estratta dal PDF se presente, altrimenti ricalcola
+      const imp_sost   = imposta > 0 ? imposta : r_imp * d.aliquota;
+      const tot_oneri  = imp_sost + c_inps;
+
+      // Acconti (art. 17 TUIR — metodo storico)
+      let acc1 = 0, acc2 = 0, acc_tot = 0;
+      if (imp_sost > S_ACC) {
+        acc_tot = imp_sost;
+        if (acc_tot > S_DUE) { acc1 = acc_tot * .4; acc2 = acc_tot * .6; }
+        else { acc2 = acc_tot; }
+      }
+
+      Object.assign(updates, {
+        fatturato:       fatt,
+        reddito_forf:    r_forf,
+        contributi_inps: c_inps,
+        reddito_imp:     r_imp,
+        imposta_sost:    imp_sost,
+        totale_oneri:    tot_oneri,
+        acconto_1:       acc1,
+        acconto_2:       acc2,
+        acconto_tot:     acc_tot,
+        acconto_note:    `Dati Master da PDF · ${new Date().toLocaleDateString('it-IT')} · ${r.sezione_rilevata || 'Quadro LM'}`
+      });
     }
+  }
+
+  // ── SALVATAGGIO SU SUPABASE (update con chiave primaria + user_id) ───
+  setSync('busy', 'Aggiornamento Master da PDF…');
+
+  const { error } = await sb.from('anni_fiscali')
+    .update(updates)
+    .eq('id', d.id)
+    .eq('user_id', _user.id);
+
+  if (error) {
+    setSync('err', 'Errore');
+    toast('❌ Errore salvataggio: ' + error.message, 'err');
+    _aiFile = null; _aiAnno = null; _aiResult = null;
+    return;
+  }
+
+  // ── AGGIORNA CACHE LOCALE ─────────────────────────────────────────────
+  Object.assign(_anni[annoTarget], updates);
+
+  setSync('ok', 'Sincronizzato');
+  renderArchivio();
+  renderSidebar();
+
+  // Toast successo semplice (nessun confronto visivo)
+  const tipoDoc = r.tipo === 'f24' ? 'F24' : 'Dichiarazione';
+  const affIco  = r.affidabilita === 'high' ? '🟢' : r.affidabilita === 'medium' ? '🟡' : '';
+  toast(`✅ Dati aggiornati correttamente dal documento ${affIco} (${tipoDoc} · Anno ${annoTarget})`, 'ok', 6000);
+
+  // ── CASCADE ACCONTI ANNO SUCCESSIVO ──────────────────────────────────
+  await syncFutureYears(annoTarget);
+
+  // ── UPLOAD PDF SU STORAGE (asincrono, non blocca la UX) ──────────────
+  if (_aiFile) {
+    try {
+      const ts       = Date.now();
+      const safeName = _aiFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path     = `${_user.id}/${annoTarget}/${ts}_${safeName}`;
+
+      const { error: upErr } = await sb.storage
+        .from('documenti-fiscali')
+        .upload(path, _aiFile, { contentType: 'application/pdf', upsert: false });
+
+      if (!upErr) {
+        const { error: dbErr } = await sb.from('documenti_fiscali').insert({
+          user_id:      _user.id,
+          anno:         annoTarget,
+          nome_file:    _aiFile.name,
+          storage_path: path,
+          tipo_doc:     r.tipo || 'sconosciuto',
+          dimensione:   _aiFile.size
+        });
+        if (!dbErr) {
+          await loadDocumenti();
+          renderArchivio();
+        } else {
+          console.warn('[upload] Metadati:', dbErr.message);
+        }
+      } else {
+        console.warn('[upload] Storage:', upErr.message);
+        toast(`⚠️ Dati salvati, ma il PDF non è stato archiviato: ${upErr.message}`, 'err', 5000);
+      }
+    } catch(upEx) {
+      console.warn('[upload] Eccezione:', upEx.message);
+    }
+  }
+
+  _aiFile = null; _aiAnno = null; _aiResult = null;
+}
+
+/* ============================================================
+   FALLBACK DIAGNOSTICO — aperto solo quando l'estrazione fallisce
+   (zero valori trovati). L'utente può inserire manualmente.
+   ============================================================ */
+function apriModalFallback(anno, r) {
+  // Popola badge tipo documento
+  const tipoLabel = r.tipo === 'f24' ? '📋 F24' : r.tipo === 'dichiarazione' ? '📑 Dichiarazione' : '📄 Documento';
+  g('ai-doc-tipo').textContent = `${tipoLabel} · Anno ${r.anno || anno} — estrazione incompleta`;
+
+  // Mostra tutti i campi vuoti per input manuale
+  ['ai-f-fatturato','ai-f-inps-versata','ai-f-imposta'].forEach(id => {
+    const el = g(id);
+    if (el) el.style.display = 'block';
+  });
+  ['ai-v-fatturato','ai-v-inps-versata','ai-v-imposta'].forEach(id => {
+    const el = g(id); if (el) el.textContent = '—';
+  });
+  ['ai-e-fatturato','ai-e-inps-versata','ai-e-imposta'].forEach(id => {
+    const el = g(id); if (el) el.value = '';
   });
 
-  // ── Warning anno > 2025 ────────────────────────────────────────────
-  const annoDoc = parseInt(r.anno) || 0;
-  if (annoDoc > 2025) {
-    toast(`⚠️ Anno ${annoDoc}: modello non ancora mappato. Verifica i dati con cura prima di applicare.`, 'warn', 8000);
+  // Messaggio diagnostico
+  const nChar  = (_lastPdfText || '').length;
+  const convBox = g('ai-conv-box');
+  convBox.className = 'ai-conv-box show giallo';
+  g('ai-conv-icona').textContent  = '⚠️';
+  g('ai-conv-titolo').textContent = nChar > 150 ? 'Valori non rilevati — inserisci manualmente' : 'PDF non leggibile (XFA/scansione)';
+  g('ai-conv-corpo').textContent  = nChar > 150
+    ? `Estratti ${nChar} caratteri ma nessun valore riconosciuto. Espandi il pannello debug per copiare il testo e diagnosticare il problema.`
+    : 'Il PDF è in formato XFA (modulo Agenzia Entrate) o è una scansione. Inserisci manualmente Fatturato, INPS e Imposta.';
+
+  // Pannello debug
+  const dbgWrap = g('ai-debug-wrap');
+  const dbgTxt  = g('ai-debug-txt');
+  if (dbgWrap && dbgTxt) {
+    dbgTxt.value = window._f24DebugText || (_lastPdfText || '').slice(0, 2000) || '(nessun testo estratto)';
+    dbgWrap.style.display = 'block';
   }
+
+  g('ai-note-wrap').style.display = r.note ? 'block' : 'none';
+  if (r.note) g('ai-note-txt').textContent = '🔧 ' + r.note;
 
   openModal('modal-ai-result');
 }
+
+// apriModalAiResult rimossa — sostituita da apriModalFallback (Dati Master da PDF v15)
 
 // 4. Utente conferma → aggiorna Supabase con i valori (eventualmente corretti)
 async function confermaAiResult() {
@@ -3368,7 +3492,7 @@ async function confermaAiResult() {
       contributi_inps: c_inps, reddito_imp: r_imp,
       imposta_sost: imp_sost, totale_oneri: tot_oneri,
       acconto_1: acc1, acconto_2: acc2, acconto_tot: acc_tot,
-      acconto_note: `Aggiornato via AI · ${new Date().toLocaleDateString('it-IT')}`
+      acconto_note: `Inserimento manuale da PDF · ${new Date().toLocaleDateString('it-IT')}`
     });
   }
 
@@ -3401,13 +3525,12 @@ async function confermaAiResult() {
   renderArchivio();
   renderSidebar();
 
-  // Messaggio di conferma dettagliato — sempre visibile per 7 secondi
   const campiSalvati = [];
-  if (updates.inps_versata_anno_solare) campiSalvati.push(`INPS versata: ${fmt(updates.inps_versata_anno_solare)}`);
+  if (updates.inps_versata_anno_solare) campiSalvati.push(`INPS: ${fmt(updates.inps_versata_anno_solare)}`);
   if (updates.imposta_sost)             campiSalvati.push(`Imposta: ${fmt(updates.imposta_sost)}`);
   if (updates.fatturato)                campiSalvati.push(`Fatturato: ${fmt(updates.fatturato)}`);
-  const dettaglio = campiSalvati.length > 0 ? ` (${campiSalvati.join(' · ')})` : ' — nessun campo aggiornato (valori non variati)';
-  toast(`✅ Anno ${anno} aggiornato${dettaglio}`, 'ok', 7000);
+  const dettaglio = campiSalvati.length > 0 ? ` · ${campiSalvati.join(' · ')}` : '';
+  toast(`✅ Dati aggiornati correttamente dal documento (Anno ${anno}${dettaglio})`, 'ok', 7000);
 
   // FIX 3: CASCADE UPDATE — ricalcola acconti degli anni successivi
   await syncFutureYears(anno);
@@ -3662,19 +3785,72 @@ function richiediDel(rowId, anno) {
 
 async function confDel() {
   if (!_delId) return;
+
+  // Recupera l'anno dal record locale per il cascade delete documenti
+  const annoRecord = Object.keys(_anni).find(k => _anni[k].id === _delId);
+  const anno = annoRecord ? parseInt(annoRecord) : null;
+
   setSync('busy', 'Eliminazione...');
-  const { error } = await sb.from('anni_fiscali')
-    .delete()
-    .eq('id', _delId)
-    .eq('user_id', _user.id);  // sicurezza extra
-  if (error) { setSync('err','Errore'); toast('Errore: '+error.message,'err'); closeModal('modal-del'); return; }
-  // Rimuovi dalla cache locale
-  Object.keys(_anni).forEach(k => { if (_anni[k].id === _delId) delete _anni[k]; });
-  _delId = null;
-  closeModal('modal-del');
-  setSync('ok', 'Sincronizzato');
-  renderSidebar(); renderArchivio(); fillConfSelectors();
-  toast('Anno eliminato dal cloud', 'ok');
+
+  try {
+    // ── STEP 1: Recupera tutti i documenti dell'anno dal DB ──────────────
+    let pathsToDelete = [];
+    if (anno !== null) {
+      const { data: docs } = await sb
+        .from('documenti_fiscali')
+        .select('id, storage_path')
+        .eq('user_id', _user.id)
+        .eq('anno', anno);
+
+      if (docs && docs.length > 0) {
+        // ── STEP 2: Elimina file da Storage ─────────────────────────────
+        pathsToDelete = docs.map(d => d.storage_path).filter(Boolean);
+        if (pathsToDelete.length > 0) {
+          const { error: stErr } = await sb.storage
+            .from('documenti-fiscali')
+            .remove(pathsToDelete);
+          if (stErr) console.warn('[confDel] Storage remove parziale:', stErr.message);
+        }
+
+        // ── STEP 3: Elimina record documenti_fiscali ─────────────────────
+        const { error: docErr } = await sb
+          .from('documenti_fiscali')
+          .delete()
+          .eq('user_id', _user.id)
+          .eq('anno', anno);
+        if (docErr) console.warn('[confDel] documenti_fiscali delete:', docErr.message);
+
+        // Pulisci cache locale documenti
+        if (_documenti[anno]) delete _documenti[anno];
+      }
+    }
+
+    // ── STEP 4: Elimina il record anni_fiscali ───────────────────────────
+    const { error } = await sb.from('anni_fiscali')
+      .delete()
+      .eq('id', _delId)
+      .eq('user_id', _user.id);
+
+    if (error) throw error;
+
+    // ── STEP 5: Aggiorna cache locale ────────────────────────────────────
+    if (annoRecord) delete _anni[annoRecord];
+    _delId = null;
+
+    closeModal('modal-del');
+    setSync('ok', 'Sincronizzato');
+    renderSidebar(); renderArchivio(); fillConfSelectors();
+
+    const nDocs = pathsToDelete.length;
+    toast(
+      `🗑️ Anno ${anno} eliminato${nDocs > 0 ? ` · ${nDocs} documento/i rimosso/i dal cloud` : ''}`,
+      'ok', 5000
+    );
+  } catch(e) {
+    setSync('err', 'Errore');
+    toast('❌ Errore eliminazione: ' + e.message, 'err');
+    closeModal('modal-del');
+  }
 }
 
 /* ============================================================
@@ -4006,8 +4182,174 @@ function exportPDF(annoArg) {
 }
 
 /* ============================================================
-   GRAFICI — statistiche visive pluriennali
+   F24 FACSIMILE — Genera PDF con codici tributo 1790/1791/1792
+   Architettura Ibrida §3: Saldo + due acconti mappati sui codici
    ============================================================ */
+function generaF24Facsimile(annoArg) {
+  // Prende i dati dall'archivio o dal calcolo corrente
+  let d = null;
+  if (annoArg !== null && annoArg !== undefined) {
+    d = _anni[annoArg];
+    if (!d) { toast('Anno non trovato in archivio', 'err'); return; }
+  } else {
+    if (!_last) { toast('\u26a0\ufe0f Esegui prima il calcolo', 'err'); return; }
+    d = _last;
+  }
+
+  const jspdfLib = window.jspdf;
+  if (!jspdfLib?.jsPDF) { toast('\u274c Libreria PDF non caricata.', 'err'); return; }
+  const { jsPDF } = jspdfLib;
+
+  // Sanitizzatore WinAnsi (identico a exportPDF)
+  const ps = str => String(str)
+    .replace(/\u20AC/g,'EUR').replace(/\u2014|\u2013/g,'-')
+    .replace(/\u2212/g,'-').replace(/[^\x00-\xFF]/g,'?');
+
+  // Formattatore euro senza toLocaleString (compatibile PDF)
+  const pf = n => {
+    const num = Number(n)||0, sign = num<0?'-':'', abs = Math.abs(num).toFixed(2);
+    const [ip,dp] = abs.split('.');
+    return sign + ip.replace(/\B(?=(\d{3})+(?!\d))/g,'.') + ',' + dp;
+  };
+
+  // Dati fiscali per il facsimile
+  const anno         = d.anno || new Date().getFullYear();
+  const saldo        = Number(d.imposta_sost) || 0;
+  const acconto1     = Number(d.acconto_1)    || 0;
+  const acconto2     = Number(d.acconto_2)    || 0;
+  const nomeCliente  = ps((`${_profile?.nome||''} ${_profile?.cognome||''}`.trim()) || (_user?.email||''));
+
+  // Codici tributo per Regime Forfettario (imposta sostitutiva)
+  // 1790 = Saldo imposta sostitutiva
+  // 1791 = Primo acconto imposta sostitutiva
+  // 1792 = Secondo acconto imposta sostitutiva
+  const righi = [
+    { codice:'1790', desc:'Saldo imposta sostitutiva',        anno: anno,   importo: saldo,    scadenza: `30/06/${anno+1}` },
+    { codice:'1791', desc:'Primo acconto imposta sostitutiva', anno: anno+1, importo: acconto1, scadenza: `30/06/${anno+1}` },
+    { codice:'1792', desc:'Secondo acconto imposta sostitutiva',anno: anno+1,importo: acconto2, scadenza: `30/11/${anno+1}` },
+  ].filter(r => r.importo > 0);
+
+  let doc;
+  try { doc = new jsPDF({ unit:'mm', format:'a4' }); }
+  catch(e) { toast('\u274c Errore init PDF: ' + e.message, 'err'); return; }
+
+  const W=210, M=15, RW=W-M*2;
+  const C = { bg:[13,17,23], s1:[22,27,34], bd:[42,49,64], ac:[88,166,255],
+              gr:[63,185,80], re:[248,81,73], t1:[230,237,243], t2:[139,148,158] };
+
+  // Sfondo
+  doc.setFillColor(...C.bg); doc.rect(0,0,W,297,'F');
+
+  // Header azzurro
+  doc.setFillColor(...C.s1); doc.rect(0,0,W,40,'F');
+  doc.setFillColor(...C.ac); doc.rect(0,38,W,2,'F');
+
+  doc.setFontSize(20); doc.setFont('helvetica','bold');
+  doc.setTextColor(...C.t1);
+  doc.text('MODELLO F24 - FACSIMILE', M, 16);
+
+  doc.setFontSize(9); doc.setFont('helvetica','normal');
+  doc.setTextColor(...C.t2);
+  doc.text('Regime Forfettario - Imposta Sostitutiva | ForfettarioApp - Peppone Tek', M, 23);
+  doc.text(ps('Contribuente: ' + nomeCliente), M, 30);
+  doc.text(`Anno d'imposta: ${anno}  |  Generato il: ${new Date().toLocaleDateString('it-IT')}`, W-M, 30, {align:'right'});
+
+  let y = 50;
+
+  // Avviso facsimile
+  doc.setFillColor(248,186,53); doc.setDrawColor(248,186,53);
+  doc.roundedRect(M, y, RW, 10, 2, 2, 'F');
+  doc.setFontSize(8); doc.setFont('helvetica','bold');
+  doc.setTextColor(0,0,0);
+  doc.text('\u26a0  FACSIMILE - NON VALIDO AI FINI DEL PAGAMENTO. Usa i dati per compilare il vero F24 su home.agenziaentrate.gov.it', M+3, y+6.5);
+
+  y += 18;
+
+  // Sezione ERARIO — intestazione
+  doc.setFillColor(...C.ac); doc.roundedRect(M, y, RW, 8, 2, 2, 'F');
+  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(0,0,0);
+  doc.text('SEZIONE ERARIO — IMPOSTE SUI REDDITI', M+4, y+5.5);
+  y += 12;
+
+  // Tabella righi
+  const COL = { cod:M, desc:M+25, anno:M+RW-60, imp:M+RW-25 };
+  const ROW_H = 12;
+
+  // Header colonne
+  doc.setFillColor(...C.s1); doc.rect(M, y, RW, 8, 'F');
+  doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(...C.t2);
+  doc.text('COD.TRIBUTO', COL.cod+2, y+5.5);
+  doc.text('DESCRIZIONE', COL.desc+2, y+5.5);
+  doc.text('ANNO RIF.', COL.anno, y+5.5, {align:'right'});
+  doc.text('IMPORTO A DEBITO (EUR)', COL.imp+12, y+5.5, {align:'right'});
+  y += 10;
+
+  righi.forEach((r, i) => {
+    const bg = i%2===0 ? C.s1 : C.bg;
+    doc.setFillColor(...bg); doc.rect(M, y, RW, ROW_H, 'F');
+
+    // Bordo codice tributo (stile F24 ufficiale)
+    doc.setDrawColor(...C.ac); doc.setLineWidth(0.5);
+    doc.rect(COL.cod, y+1.5, 20, ROW_H-3);
+
+    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(...C.ac);
+    doc.text(r.codice, COL.cod+10, y+8, {align:'center'});
+
+    doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(...C.t1);
+    doc.text(ps(r.desc), COL.desc+2, y+7);
+
+    doc.setFontSize(8); doc.setTextColor(...C.t2);
+    doc.text(`Scad. ${r.scadenza}`, COL.desc+2, y+10.5);
+
+    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(...C.t1);
+    doc.text(String(r.anno), COL.anno, y+8, {align:'right'});
+
+    // Box importo
+    doc.setFillColor(...C.ac); doc.roundedRect(COL.imp-2, y+1.5, 30, ROW_H-3, 1.5, 1.5, 'F');
+    doc.setFontSize(10); doc.setTextColor(0,0,0);
+    doc.text(pf(r.importo), COL.imp+26, y+8, {align:'right'});
+    y += ROW_H;
+  });
+
+  // Linea separatrice
+  doc.setDrawColor(...C.ac); doc.setLineWidth(0.8);
+  doc.line(M, y+4, M+RW, y+4);
+  y += 8;
+
+  // TOTALE
+  const totale = righi.reduce((s,r)=>s+r.importo, 0);
+  doc.setFillColor(...C.ac); doc.roundedRect(M, y, RW, 12, 2, 2, 'F');
+  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(0,0,0);
+  doc.text('SALDO TOTALE DA VERSARE', M+4, y+8);
+  doc.text('EUR ' + pf(totale), M+RW-4, y+8, {align:'right'});
+  y += 20;
+
+  // Note informative
+  const note = [
+    '• Cod. 1790: Saldo imposta sostitutiva — da versare entro il 30 giugno dell\'anno successivo.',
+    '• Cod. 1791: Primo acconto (40%) — versamento contestuale al saldo (30 giugno).',
+    '• Cod. 1792: Secondo acconto (60%) — entro il 30 novembre dell\'anno successivo.',
+    '• Per il pagamento utilizza i servizi telematici Agenzia Entrate (home.agenziaentrate.gov.it).',
+    '• I valori sono calcolati automaticamente — verifica sempre con un commercialista abilitato.',
+    `• Fatturato ${anno}: EUR ${pf(d.fatturato||0)}  |  Coeff.: ${((d.coefficiente||0)*100).toFixed(0)}%  |  Aliquota: ${((d.aliquota||0)*100).toFixed(0)}%`,
+  ];
+
+  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(...C.t2);
+  note.forEach(n => { doc.text(ps(n), M, y); y += 5.5; });
+
+  // Footer
+  y = 284;
+  doc.setDrawColor(...C.bd); doc.setLineWidth(0.3); doc.line(M, y-3, M+RW, y-3);
+  doc.setFontSize(7.5); doc.setTextColor(...C.t2);
+  doc.text('ForfettarioApp — Peppone Tek | Questo documento e\' un facsimile per uso informativo. Non sostituisce il Modello F24 ufficiale.', M, y);
+  doc.text(`Pag. 1/1`, W-M, y, {align:'right'});
+
+  const cognome = ps(_profile?.cognome || _user?.email?.split('@')[0] || 'utente');
+  doc.save(`F24_Facsimile_${anno}_${cognome}.pdf`);
+  toast('\u2705 F24 Facsimile generato', 'ok', 4000);
+}
+
+
 let _charts = {};
 
 function renderGrafici() {
@@ -4273,6 +4615,130 @@ async function loadAdmin() {
   renderAdminUsers(_admData);
 }
 
+// ── TAB SWITCHING ADMIN ─────────────────────────────────────────
+function switchAdmTab(tab) {
+  g('adm-panel-clienti').style.display = tab === 'clienti' ? '' : 'none';
+  g('adm-panel-fiscal').style.display  = tab === 'fiscal'  ? '' : 'none';
+  g('adm-tab-clienti').style.background = tab === 'clienti' ? 'var(--s1)' : 'transparent';
+  g('adm-tab-clienti').style.border     = tab === 'clienti' ? '1px solid var(--bd)' : 'none';
+  g('adm-tab-clienti').style.color      = tab === 'clienti' ? 'var(--t1)' : 'var(--t2)';
+  g('adm-tab-fiscal').style.background  = tab === 'fiscal'  ? 'var(--s1)' : 'transparent';
+  g('adm-tab-fiscal').style.border      = tab === 'fiscal'  ? '1px solid var(--bd)' : 'none';
+  g('adm-tab-fiscal').style.color       = tab === 'fiscal'  ? 'var(--t1)' : 'var(--t2)';
+  if (tab === 'fiscal') loadTaxRules();
+}
+
+// ── TAX RULES CRUD ──────────────────────────────────────────────
+let _taxRules = [];
+
+async function loadTaxRules() {
+  if (_profile?.ruolo !== 'admin') return;
+  const tbl = g('tax-rules-tbl');
+  if (!tbl) return;
+  tbl.innerHTML = '<div class="loading"><div class="spinner"></div><span>Caricamento parametri…</span></div>';
+
+  const { data, error } = await sb
+    .from('tax_rules')
+    .select('*')
+    .order('ateco_prefix');
+
+  if (error) { tbl.innerHTML = `<div class="al al-d"><span>Errore DB: ${sanitizeHTML(error.message)}</span></div>`; return; }
+
+  _taxRules = data || [];
+  renderTaxRulesTable(_taxRules);
+}
+
+function renderTaxRulesTable(rules) {
+  const tbl = g('tax-rules-tbl');
+  if (!tbl) return;
+  if (!rules.length) { tbl.innerHTML = '<p style="color:var(--t3);padding:12px">Nessuna regola trovata.</p>'; return; }
+
+  tbl.innerHTML = `
+    <div style="overflow-x:auto">
+    <table class="admin" id="tr-table">
+      <thead><tr>
+        <th>Prefisso ATECO</th>
+        <th>Descrizione</th>
+        <th style="width:90px">Coeff. %</th>
+        <th style="width:100px">Soglia €</th>
+        <th style="width:70px">Attivo</th>
+        <th style="width:60px">Note</th>
+      </tr></thead>
+      <tbody>
+        ${rules.map(r => `
+          <tr data-id="${r.id}">
+            <td class="mo">${sanitizeHTML(r.ateco_prefix)}</td>
+            <td><input type="text" value="${sanitizeHTML(r.descrizione)}"
+              onchange="trEdit(${r.id},'descrizione',this.value)"
+              style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--bd);
+                     color:var(--t1);font-size:12px;padding:2px 0"></td>
+            <td><input type="number" value="${(r.coefficiente*100).toFixed(0)}" min="1" max="100"
+              onchange="trEdit(${r.id},'coefficiente',parseFloat(this.value)/100)"
+              style="width:60px;background:var(--s2);border:1px solid var(--bd);border-radius:4px;
+                     color:var(--t1);font-size:12px;padding:3px 6px;text-align:right">%</td>
+            <td><input type="number" value="${r.soglia_euro}" min="10000" step="5000"
+              onchange="trEdit(${r.id},'soglia_euro',parseInt(this.value))"
+              style="width:80px;background:var(--s2);border:1px solid var(--bd);border-radius:4px;
+                     color:var(--t1);font-size:12px;padding:3px 6px;text-align:right"></td>
+            <td style="text-align:center">
+              <input type="checkbox" ${r.attivo ? 'checked' : ''}
+                onchange="trEdit(${r.id},'attivo',this.checked)"></td>
+            <td style="font-size:10px;color:var(--t3)">${sanitizeHTML(r.note||'')}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    <p style="font-size:11px;color:var(--t3);margin-top:8px">
+      💡 Modifica i valori e premi <strong>Salva modifiche</strong>. I cambiamenti si applicano immediatamente a tutti gli utenti.
+    </p>`;
+}
+
+// Buffer modifiche in memoria prima del salvataggio
+const _trEdits = {};
+function trEdit(id, field, value) {
+  if (!_trEdits[id]) _trEdits[id] = {};
+  _trEdits[id][field] = value;
+}
+
+async function saveTaxRules() {
+  if (!Object.keys(_trEdits).length) { toast('Nessuna modifica da salvare.', 'info'); return; }
+
+  const updates = Object.entries(_trEdits).map(([id, fields]) =>
+    sb.from('tax_rules').update({ ...fields, aggiornato_il: new Date().toISOString(), aggiornato_da: _profile?.email }).eq('id', parseInt(id))
+  );
+
+  const results = await Promise.all(updates);
+  const errors  = results.filter(r => r.error);
+
+  if (errors.length) {
+    toast(`⚠️ ${errors.length} errori nel salvataggio.`, 'err');
+    console.error('[saveTaxRules] Errors:', errors);
+    return;
+  }
+
+  Object.keys(_trEdits).forEach(k => delete _trEdits[k]);
+  toast(`✅ ${results.length} parametri fiscali aggiornati e applicati.`, 'ok', 5000);
+  loadTaxRules(); // Ricarica per conferma visiva
+}
+
+// ── SENTINEL UPDATE (badge rosso per aggiornamenti AdE) ─────────
+// Chiamato quando Gemini rileva discrepanze rispetto alle regole DB
+function showSentinelBadge(message) {
+  const badge = g('sentinel-badge');
+  if (badge) {
+    badge.textContent = `🔔 ${message || 'Rilevata modifica aliquote AdE — Aggiornare?'}`;
+    badge.style.display = 'inline-block';
+  }
+}
+
+function confirmSentinelUpdate() {
+  if (!confirm('Confermi di voler aggiornare le tabelle dei parametri fiscali?\nQuesta operazione non può essere annullata automaticamente.')) return;
+  const badge = g('sentinel-badge');
+  if (badge) badge.style.display = 'none';
+  switchAdmTab('fiscal');
+  toast('✅ Sezione Parametri Fiscali aperta per la revisione manuale.', 'ok', 5000);
+}
+
 let _admAnniAll = []; // mantenuto per compatibilità interna
 
 function renderAdminUsers(profiles) {
@@ -4536,6 +5002,7 @@ function renderF24Precedenti() {
             ${diffTag}
             <span class="rbadge rb-archiviato">archiviato</span>
             <button class="btn btn-sm btn-ol no-print" onclick="exportPDF(${d.anno})">📄 PDF</button>
+            <button class="btn btn-sm btn-ol no-print" onclick="generaF24Facsimile(${d.anno})">🏛️ F24</button>
           </div>
         </div>
         <div class="f24-card-body">
@@ -4654,11 +5121,21 @@ async function wizParsePDF(input) {
   lbl.textContent = file.name;
   spinner.style.display = 'inline-block';
 
+  // Disabilita salvataggio durante analisi
+  const btnSalva = g('wiz-salva-btn');
+  if (btnSalva) btnSalva.disabled = true;
+
   try {
     const result = await parseTaxPDF(file);
     spinner.style.display = 'none';
 
-    // Compila i campi in base al tipo documento
+    // Controlla se Gemini ha restituito errore esplicito (Quadro LM non trovato)
+    if (result.convalida?.stato === 'rosso' && result.convalida?.messaggio?.includes('Quadro LM non rilevato')) {
+      toast('❌ ' + result.convalida.messaggio, 'err', 8000);
+      return;
+    }
+
+    // Compila i campi readonly via .value (funziona anche su readonly)
     if (result.fatturato_lm2 > 0) {
       g('wiz-fatt').value = result.fatturato_lm2;
       wizPreview();
@@ -4668,19 +5145,38 @@ async function wizParsePDF(input) {
     } else if (result.inps_dedotta_lm7 > 0) {
       g('wiz-inps-versata').value = result.inps_dedotta_lm7;
     }
+
     const anno = _wiz.steps[_wiz.stepIdx];
-    const noteAI = `AI: ${result.tipo||'doc'} anno ${result.anno||anno}` + (result.note ? ` — ${result.note}` : '');
+    const noteAI = `AI: ${result.tipo||'doc'} anno ${result.anno||anno}` +
+                   (result.sezione_rilevata ? ` · ${result.sezione_rilevata}` : '') +
+                   (result.affidabilita ? ` [${result.affidabilita}]` : '') +
+                   (result.note ? ` — ${result.note}` : '');
     g('wiz-note').value = noteAI;
-    // FIX P7: mostra banner giallo con i valori estratti per verifica utente
+
+    // Banner giallo con valori estratti per verifica utente
     const banner = g('wiz-ai-banner');
     if (banner) {
       const body = g('wiz-ai-banner-body');
       const righe = [];
-      if (result.fatturato_lm2 > 0)      righe.push(`📊 Fatturato (LM22): <strong>€ ${result.fatturato_lm2.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
-      if (result.inps_versata_f24 > 0)   righe.push(`🏛️ INPS versata (F24): <strong>€ ${result.inps_versata_f24.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
-      else if (result.inps_dedotta_lm7>0) righe.push(`🏛️ INPS dedotta (LM35): <strong>€ ${result.inps_dedotta_lm7.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
-      if (result.imposta_dovuta_lm11>0)  righe.push(`💰 Imposta (LM39): <strong>€ ${result.imposta_dovuta_lm11.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
-      body.innerHTML = righe.length ? righe.join('<br>') : '⚠️ Nessun valore estratto — inserisci manualmente.';
+      if (result.fatturato_lm2 > 0)       righe.push(`📊 Fatturato (LM22): <strong>€ ${result.fatturato_lm2.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+      if (result.inps_versata_f24 > 0)     righe.push(`🏛️ INPS versata (F24): <strong>€ ${result.inps_versata_f24.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+      else if (result.inps_dedotta_lm7>0)  righe.push(`🏛️ INPS dedotta (LM35): <strong>€ ${result.inps_dedotta_lm7.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+      if (result.imposta_dovuta_lm11>0)    righe.push(`💰 Imposta (LM39): <strong>€ ${result.imposta_dovuta_lm11.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+      if (result.sezione_rilevata)         righe.push(`📌 Sezione: <strong>${result.sezione_rilevata}</strong>`);
+      const affIcon = result.affidabilita==='high'?'🟢':result.affidabilita==='medium'?'🟡':'🔴';
+      if (result.affidabilita)             righe.push(`${affIcon} Affidabilità AI: <strong>${result.affidabilita}</strong>`);
+
+      if (!righe.length) {
+        body.innerHTML = '⚠️ Nessun valore estratto — ricarica un documento valido con il Quadro LM.';
+        banner.style.background = '#fff0f0';
+        banner.style.borderColor = '#ef4444';
+      } else {
+        body.innerHTML = righe.join('<br>');
+        banner.style.background = '#fff8e1';
+        banner.style.borderColor = '#f59e0b';
+        // Abilita salvataggio solo se ha fatturato
+        if (btnSalva && result.fatturato_lm2 > 0) btnSalva.disabled = false;
+      }
       banner.style.display = 'block';
     }
     toast(`✅ AI ha compilato i campi per l'anno ${result.anno || anno}`, 'ok');
