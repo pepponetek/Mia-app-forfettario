@@ -1860,31 +1860,38 @@ function tryParseF24(text) {
     const cutIdx = pageRaw.indexOf('ITDELEGA');
     const dataPart = cutIdx > 0 ? pageRaw.slice(0, cutIdx) : pageRaw.slice(0, 1200);
 
-    // Estrai scadenza
+    // Estrai scadenza (es: "30-07-2025") — solo per visualizzazione
     const mSc = dataPart.match(/Scadenza\s+del\s+(\d{2}-\d{2}-(\d{4}))/i);
     const scadenza = mSc ? mSc[1] : null;
-    const annoSc   = mSc ? parseInt(mSc[2]) : null;
 
-    // Anno di riferimento contributi (es: "01 2025 12 2025" → 2025)
-    const mAnno = dataPart.match(/\b(20\d{2})\b/);
-    const anno = annoSc || (mAnno ? parseInt(mAnno[1]) : null);
+    // Anno FISCALE di riferimento = anno MINORE trovato nel testo
+    // La scadenza (2025) non è l'anno fiscale; l'anno del periodo "12 2024" = 2024 lo è.
+    // Prendi tutti gli anni e scegli il minore (= anno della dichiarazione).
+    const tuttiAnni = (dataPart.match(/\b(20\d{2})\b/g) || []).map(Number);
+    const anno = tuttiAnni.length > 0 ? Math.min(...tuttiAnni) : (mSc ? parseInt(mSc[2]) : null);
 
     // Causale principale (PXX = imposta sostitutiva, DPPI = INPS)
     const causali = (dataPart.match(/\b(PXX|DPPI|1791|1792|CF\d{2})\b/gi) || [])
       .filter((v, i, a) => a.indexOf(v) === i);
 
     // Trova il SALDO FINALE della pagina:
-    // Cerca tutti i valori "X.XXX YY" nel testo dati, prendi l'ULTIMO
-    // (il saldo finale appare sempre come ultima riga numerica prima del template)
+    // Pattern: X.XXX YY (punto migliaia, spazio come separatore decimale)
+    // SOGLIA > 100: esclude DPPI minimale (€11,04) e altri importi piccoli
+    // SALDO = ULTIMO valore > 100 nella zona dati (appare alla fine del calcolo)
     const tuttiSaldi = [...dataPart.matchAll(/\b(\d{1,3}\.\d{3})\s+(\d{2})\b/g)]
       .map(m => ({ raw: m[0], val: parseSaldo(m[1] + ' ' + m[2]) }))
-      .filter(x => x.val > 10 && x.val < 100000);
+      .filter(x => x.val >= 100 && x.val < 100000);   // ← soglia 100 (era 10)
 
+    // Deduplica: rimuove valori identici consecutivi (il saldo appare 2× nel PDF)
     const saldoFinale = tuttiSaldi.length > 0
-      ? tuttiSaldi[tuttiSaldi.length - 1].val   // ULTIMO = saldo netto finale
+      ? tuttiSaldi[tuttiSaldi.length - 1].val
       : 0;
 
-    console.log(`[F24] Pag.${i+1} — scadenza:${scadenza} causali:${causali} saldo:${saldoFinale} (tutti: ${tuttiSaldi.map(x=>x.val).join(',')})`);
+    console.log(`[F24] Pag.${i+1} — scadenza:${scadenza} anno:${anno} causali:${causali} saldo:${saldoFinale} (tutti: ${tuttiSaldi.map(x=>x.val).join(',')})`);
+
+    if (saldoFinale > 0) {
+      f24Pages.push({ pagina: i + 1, scadenza, anno, causali, saldo: saldoFinale });
+    }
 
     if (saldoFinale > 0) {
       f24Pages.push({ pagina: i + 1, scadenza, anno, causali, saldo: saldoFinale });
@@ -1897,10 +1904,11 @@ function tryParseF24(text) {
   }
 
   /* ── AGGREGAZIONE ── */
-  // Anno di riferimento = anno più frequente tra le pagine
-  const anniConti = {};
-  f24Pages.forEach(p => { if (p.anno) anniConti[p.anno] = (anniConti[p.anno]||0) + 1; });
-  const anno = parseInt(Object.entries(anniConti).sort((a,b)=>b[1]-a[1])[0]?.[0]) || null;
+  // Anno fiscale di riferimento = il MINORE tra tutti gli anni delle pagine.
+  // Esempio: pagina 1 ha anno 2024 (anno dichiarazione), pagina 2 ha anno 2025 (acconto).
+  // L'anno corretto da associare al cloud è il più vecchio = 2024.
+  const tuttiAnniPagine = f24Pages.map(p => p.anno).filter(Boolean);
+  const anno = tuttiAnniPagine.length > 0 ? Math.min(...tuttiAnniPagine) : null;
 
   // Totale = somma di tutti i saldi delle pagine
   const totale = f24Pages.reduce((s, p) => s + p.saldo, 0);
@@ -1931,44 +1939,56 @@ function tryParseF24(text) {
    • Modello 2025 (redditi 2024): contributi = LM35, imposta = LM39
    • Modello 2024 (redditi 2023): contributi = LM35, imposta = LM39
    ============================================================ */
-const EXPERT_PROMPT = `# KNOWLEDGE BASE FISCALE: QUADRO LM — REGIME FORFETTARIO ITALIANO
+const EXPERT_PROMPT = `# LOGICA DI LOCALIZZAZIONE QUADRO LM — REGIME FORFETTARIO ITALIANO
 
-## REGOLE GENERALI DI LETTURA
-- **Codice ATECO**: sempre 6 cifre intere SENZA virgola decimale (es. 683200). Mai confonderlo con un importo.
-- **Importi monetari**: hanno SEMPRE la virgola decimale (es. 1.250,00). Il punto è separatore migliaia, la virgola i centesimi.
-- **Separazione rigo+valore**: se trovi una stringa come "LM392.021,00", il rigo è LM39 e il valore è 2.021,00. Separa sempre etichetta dal numero.
+## 1. IDENTIFICAZIONE SEZIONE
+Cerca nel testo le intestazioni "QUADRO LM" o "Sezione II - Regime forfettario" o "Determinazione del reddito".
+Non fare affidamento sul numero di pagina — il Quadro LM può trovarsi a pagina 4 (modelli recenti) o pagina 22 (modelli vecchi).
+Ignora righi di altri quadri (Quadro RN, Quadro RS, Quadro RR): analizza SOLO i righi che iniziano con "LM".
 
-## REGOLE PER ANNO DI MODELLO
-- **Modello 2025 (redditi 2024)**: Fatturato → LM22 col.3, Contributi INPS → LM35, Imposta → LM39 col. "Art. 1 L. 190/2014". [NOTA: LM34=reddito lordo, LM38=reddito netto — NON sono INPS/imposta]. Attenzione LM32/LM33 per il Concordato Preventivo Biennale.
-- **Modello 2024 (redditi 2023)**: Fatturato → LM22 col.3, Contributi INPS → LM35, Imposta → LM39 col. "Art. 1 L. 190/2014".
-- **Modelli 2019-2023**: soglia accesso 65k€ (85k€ dal 2023), righi LM21 (ATECO), LM22 (Fatturato), LM35 (INPS), LM39 (Imposta).
-- **Modelli 2010-2014 (Regime dei Minimi)**: imposta sostitutiva al 5% o 20%, struttura diversa dal forfettario moderno.
-- **Anno > 2025**: modello non ancora mappato, segnalalo nel messaggio di convalida.
+## 2. VARIABILITÀ STORICA DEI MODELLI
+- **Modello 2025 (redditi 2024)**: Fatturato → LM22 col.3, INPS → LM35, Imposta → LM39 "Art. 1 L. 190/2014". LM34=reddito lordo, LM38=reddito netto — NON sono INPS né imposta. Verifica LM32/LM33 per Concordato Preventivo Biennale.
+- **Modello 2024 (redditi 2023)**: stessa struttura 2025.
+- **Modelli 2019-2023**: soglia 65k€ (85k€ dal 2023), LM21=ATECO, LM22=Fatturato, LM35=INPS, LM39=Imposta.
+- **Modelli 2015-2018**: struttura simile, verifica che LM39 sia imposta forfettaria e non altro tributo.
+- **Modelli 2010-2014 (Regime dei Minimi)**: imposta sostitutiva 5% o 20%, struttura diversa — cerca "CM" o "reddito minimo". Segnala affidabilità "low" se rilevato.
+- **Anno > 2025**: modello non mappato — segnala nel messaggio, imposta affidabilità "low".
 
-## VALIDAZIONE MATEMATICA OBBLIGATORIA
-1. Reddito Lordo = Fatturato × Coefficiente ATECO (es. 0.86 per costruzioni/immobiliare ATECO 68xxxx)
+## 3. VERIFICA INTEGRITÀ (LM38 → LM39 fallback)
+Se non trovi il rigo LM39 (Imposta sostitutiva), cerca LM38 (Reddito al netto delle perdite) e applica l'aliquota (5% o 15%) per dedurre il valore mancante. Segnalalo come "calcolato" nel messaggio di convalida.
+
+## 4. REGOLE DI LETTURA NUMERI
+- **Codice ATECO**: 6 cifre senza virgola (es. 683200). MAI confonderlo con un importo.
+- **Importi**: virgola decimale (es. 1.250,00). Punto = migliaia, virgola = centesimi.
+- **Rigo incollato al valore**: "LM392.021,00" → rigo LM39, valore 2.021,00.
+
+## 5. VALIDAZIONE MATEMATICA OBBLIGATORIA
+1. Reddito Lordo = Fatturato × Coefficiente ATECO
 2. Reddito Imponibile = Reddito Lordo − Contributi INPS
-3. Imposta teorica = Reddito Imponibile × 5% (start-up, primi 5 anni) oppure × 15% (ordinario)
-4. Se scarto tra imposta dichiarata e teorica > 10%: imposta congruente=false e descrivi la causa nel messaggio.
-5. Se INPS = 0 con fatturato > 5.000€: anomalia, congruente=false.
+3. Imposta teorica = Reddito Imponibile × 5% (start-up) oppure × 15% (ordinario)
+4. Scarto imposta dichiarata vs teorica > 10% → congruente=false, descrivi causa.
+5. INPS = 0 con fatturato > 5.000€ → anomalia, congruente=false.
 
-## FORMATO OUTPUT — SOLO JSON PURO, ZERO TESTO LIBERO, ZERO MARKDOWN
+## 6. FORMATO OUTPUT — SOLO JSON PURO, ZERO TESTO, ZERO MARKDOWN
 {
   "anno": integer,
-  "ateco": "string a 6 cifre",
+  "ateco": "6 cifre",
   "fatturato": float,
   "inps_versata": float,
   "imposta_dovuta": float,
   "tipo": "dichiarazione",
+  "sezione_rilevata": "es: Quadro LM - Sezione II - Regime forfettario",
+  "affidabilita": "high" | "medium" | "low",
   "congruente": boolean,
   "convalida": {
     "status": "verde" | "giallo" | "rosso",
-    "messaggio": "stringa tecnica breve, es: Scarto 7.7%. Fatturato LM22: 683.201. Coeff 86%. Imponibile netto: 552.725. Imposta teorica 5%: 27.636. Imposta dichiarata: 29.951. Possibile aliquota agevolata o arrotondamento."
+    "messaggio": "descrizione tecnica breve"
   }
 }
 
 ## REGOLA ASSOLUTA
-Non inventare mai cifre assenti nel documento. Dati parziali → congruente=false, status=giallo, descrivi cosa manca.`;;
+Non inventare mai cifre assenti. Dati parziali → congruente=false, status=giallo, descrivi cosa manca.
+Se il Quadro LM non è presente nel documento inviato: {"errore": "Quadro LM non rilevato nel documento. Assicurati di aver caricato una dichiarazione completa.", "affidabilita": "low"}`;
 
 /* ============================================================
    NORMALIZZAZIONE RISPOSTA
@@ -2003,8 +2023,17 @@ function normalizzaRisultato(raw, annoFallback) {
                       ((raw.tipo === 'f24') ? (parseFloat(raw.inps_versata) || inps) : 0),
     note:               raw.note || null,
     convalida:          null,
-    f24_pagine:         raw.f24_pagine || null   // dettaglio per-pagina F24 multi-modulo
+    f24_pagine:         raw.f24_pagine || null,
+    sezione_rilevata:   raw.sezione_rilevata || null,
+    affidabilita:       raw.affidabilita || raw.affidabilità || null
   };
+
+  // Se Gemini ha restituito un errore esplicito (Quadro LM non trovato)
+  if (raw.errore) {
+    r.convalida = { stato: 'rosso', messaggio: raw.errore };
+    r.congruente = false;
+    return r;
+  }
 
   // Normalizza congruente (nuovo campo dal prompt aggiornato)
   r.congruente = (raw.congruente === false) ? false : true;
@@ -2174,15 +2203,13 @@ async function parseTaxPDF(file) {
 
     const arrayBuffer = await file.arrayBuffer();
     const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    _numPages = pdfDoc.numPages; // assegnato alla variabile esterna (let, non const)
+    _numPages = pdfDoc.numPages;
 
+    // Estrai testo da ogni pagina con struttura a righe (yDiff)
+    const allPages = [];
     for (let p = 1; p <= _numPages; p++) {
       const page    = await pdfDoc.getPage(p);
       const content = await page.getTextContent();
-      // FIX F24 MULTI-PAGINA: preserva la struttura a righe del PDF
-      // Confrontando la posizione Y di ogni elemento: se cambia di più di 2pt
-      // significa una nuova riga → inserisce \n invece di spazio
-      // Questo permette a Gemini di vedere le righe della tabella F24 in modo leggibile
       let pageText = '';
       for (let k = 0; k < content.items.length; k++) {
         const item = content.items[k];
@@ -2194,8 +2221,33 @@ async function parseTaxPDF(file) {
           pageText += (yDiff > 2 ? '\n' : ' ') + item.str;
         }
       }
-      pdf_text += '--- PAGINA ' + p + ' ---\n' + pageText + '\n';
+      allPages.push(pageText);
     }
+
+    // ── STRATEGIA DI LETTURA DINAMICA (Trae.md §1) ──────────────────
+    // Cerca la pagina con QUADRO LM o "Determinazione del reddito"
+    // Il Quadro LM può trovarsi a pagina 4 (modelli recenti) o 22 (modelli vecchi).
+    // Invia a Gemini SOLO quella pagina + le 2 successive (riduce token ~90%).
+    const LM_KEYWORDS = /QUADRO\s*LM|Determinazione\s+del\s+reddito|Sezione\s+II.*[Rr]egime\s+forfet|REGIME\s+FORFET/i;
+    let lmPageIdx = allPages.findIndex(p => LM_KEYWORDS.test(p));
+
+    let pdf_text_raw;
+    if (lmPageIdx >= 0) {
+      // Trovata: prendi quella pagina + le 2 successive (sicurezza pagine a cavallo)
+      const slice = allPages.slice(lmPageIdx, lmPageIdx + 3);
+      pdf_text_raw = slice.map((t, i) => `--- PAGINA ${lmPageIdx + 1 + i} ---\n${t}`).join('\n');
+      console.log(`[PDF.js] QUADRO LM trovato a pagina ${lmPageIdx + 1}/${_numPages} — invio ${slice.length} pagine a Gemini`);
+      toast(`📑 Quadro LM trovato a pag.${lmPageIdx + 1} — analisi in corso...`, 'info', 4000);
+    } else {
+      // Non trovato: invia tutto il PDF (fallback)
+      pdf_text_raw = allPages.map((t, i) => `--- PAGINA ${i + 1} ---\n${t}`).join('\n');
+      console.log(`[PDF.js] QUADRO LM non trovato in nessuna pagina — invio tutto il PDF (${_numPages} pag.)`);
+    }
+
+    pdf_text = pdf_text_raw;
+    // fullText contiene SEMPRE tutto il PDF — usato per detection tipo documento
+    // (pdf_text può essere solo il QUADRO LM se trovato)
+    _fullPdfText = allPages.join('\n');
   } catch (e) {
     throw new Error('Errore estrazione testo PDF: ' + e.message +
       '. Il PDF potrebbe essere una scansione (immagine) non leggibile.');
@@ -2210,10 +2262,10 @@ async function parseTaxPDF(file) {
   console.log('[parseTaxPDF] Testo estratto (' + pdf_text.length + ' char):\n' + pdf_text.slice(0, 800));
 
   // ── PRE-DETECTION SUL TESTO GREZZO ─────────────────────────────────
-  // Rileva il tipo di documento PRIMA di qualsiasi parser/normalizzazione.
-  // Il testo grezzo contiene già "RPF", "PERSONE FISICHE" etc. come parole intere.
-  // Non serve normalizzazione per questa detection.
-  const rawText = pdf_text.toUpperCase();
+  // Usa il testo COMPLETO del PDF per identificare il tipo di documento.
+  // pdf_text potrebbe essere solo il QUADRO LM (sezione ottimizzata per Gemini).
+  // _fullPdfText contiene sempre tutto il PDF.
+  const rawText = (_fullPdfText || pdf_text).toUpperCase();
 
   const isDefinitelyRPF = rawText.includes('PERSONE FISICHE') ||
                           rawText.includes('\nRPF\n') ||
@@ -2248,25 +2300,23 @@ async function parseTaxPDF(file) {
   let rpfLocal = null;
 
   if (isDefinitelyRPF) {
-    // È un RPF → prova parser locale, poi Gemini. MAI tryParseF24.
-    rpfLocal = tryParseRPF(pdf_text);
+    // Parser locale usa il testo COMPLETO (struttura numerica dipende da tutto il PDF)
+    rpfLocal = tryParseRPF(_fullPdfText || pdf_text);
     if (rpfLocal && rpfLocal.fatturato_lm2 > 0) {
       console.log('[parseTaxPDF] RPF estratto localmente ✅');
       toast('⚡ Dati estratti dal Modello RPF senza AI', 'ok', 4000);
       return normalizzaRisultato(rpfLocal, null);
     }
-    // Valori mancanti → Gemini con contesto RPF
     console.log('[parseTaxPDF] RPF riconosciuto ma valori mancanti → Gemini RPF');
     toast('🤖 RPF rilevato — AI in corso per estrarre i valori...', 'info', 3000);
   } else {
-    // Non è un RPF → prova F24 locale
-    const f24Local = tryParseF24(pdf_text);
+    // F24: usa testo completo per il parser multi-pagina
+    const f24Local = tryParseF24(_fullPdfText || pdf_text);
     if (f24Local && f24Local.inps_versata_f24 > 0) {
       console.log('[parseTaxPDF] F24 estratto localmente ✅');
       toast('⚡ F24 estratto senza AI', 'ok', 4000);
       return normalizzaRisultato(f24Local, null);
     }
-    // F24 non decodificato localmente → Gemini
     console.log('[parseTaxPDF] F24 non decodificato localmente → Gemini F24');
   }
 
@@ -3038,6 +3088,7 @@ let _aiAnno    = null; // anno target dell'analisi corrente
 let _aiResult  = null; // risultato raw dalla Edge Function
 let _aiFile    = null; // file PDF originale (per upload su Storage dopo conferma)
 let _lastPdfText = '';  // testo grezzo estratto (diagnostica)
+let _fullPdfText = '';  // testo completo PDF (tutte le pagine) — per detection tipo documento
 let _documenti = {};   // { anno: [{ id, nome_file, storage_path, tipo_doc, uploaded_at }] }
 
 // 1. L'utente clicca "Analizza Dich." → apri file picker e ricorda l'anno
@@ -3064,8 +3115,8 @@ async function onArchPdfSelected(input) {
   const progEl = g('pdf-prog-' + anno);
   if (progEl) progEl.classList.add('show');
 
-  // Mostra toast di attesa
-  toast(`🤖 Analisi AI in corso per il ${anno}…`, 'info', 12000);
+  // Mostra toast di attesa (testo da Trae.md §3)
+  toast(`🔍 Analizzando la struttura della dichiarazione (Ricerca Quadro LM)…`, 'info', 12000);
 
   try {
     const result = await parseTaxPDF(file);
@@ -3075,12 +3126,7 @@ async function onArchPdfSelected(input) {
     apriModalAiResult(anno, result);
   } catch(err) {
     if (progEl) progEl.classList.remove('show');
-    // FIX 4: messaggio guida per inserimento manuale
-    const guida = `\n\n💡 Se il problema persiste: apri il PDF, individua i campi ` +
-      `LM22 (fatturato), LM35 (INPS versata), LM39 (imposta sostitutiva) e ` +
-      `inseriscili manualmente tramite "Aggiorna Imponibile" nell'archivio. ` +
-      `Il calcolo degli acconti dell'anno successivo si attiverà automaticamente al salvataggio.`;
-    toast('❌ ' + err.message + guida, 'err', 10000);
+    toast('❌ ' + err.message, 'err', 10000);
     console.error('[parseTaxPDF] Errore:', err);
   }
 }
@@ -3093,7 +3139,13 @@ function apriModalAiResult(anno, r) {
     : r.tipo === 'dichiarazione'
       ? '📑 Dichiarazione rilevata'
       : `📄 Documento (${r.tipo || 'sconosciuto'})`;
-  g('ai-doc-tipo').textContent = tipoLabel + ` · Anno ${r.anno || anno}`;
+
+  // Badge: tipo · anno · sezione trovata · affidabilità
+  let badgeText = tipoLabel + ` · Anno ${r.anno || anno}`;
+  if (r.sezione_rilevata) badgeText += ` · ${r.sezione_rilevata}`;
+  const affBadge = r.affidabilita === 'high' ? '🟢' : r.affidabilita === 'medium' ? '🟡' : r.affidabilita === 'low' ? '🔴' : '';
+  if (affBadge) badgeText += ` ${affBadge}`;
+  g('ai-doc-tipo').textContent = badgeText;
 
   // ── Campo fatturato — LM22 col.3 ──────────────────────────
   const hasFatt = (r.fatturato_lm2 || 0) > 0;
