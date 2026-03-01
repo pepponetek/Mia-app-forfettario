@@ -2322,32 +2322,69 @@ async function parseTaxPDF(file) {
   _lastPdfText = pdf_text;
   console.log('[parseTaxPDF] Testo estratto (' + pdf_text.length + ' char):\n' + pdf_text.slice(0, 800));
 
-  // 1b. FLUSSO PARSING LOCALE — logica corretta
-  // Se tryParseRPF riconosce RPF (non-null): MAI provare F24
-  // "CONTRIBUTI INPS" appare anche nell'RPF → causerebbe falso positivo F24
-  const rpfLocal = tryParseRPF(pdf_text);
+  // ── PRE-DETECTION SUL TESTO GREZZO ─────────────────────────────────
+  // Rileva il tipo di documento PRIMA di qualsiasi parser/normalizzazione.
+  // Il testo grezzo contiene già "RPF", "PERSONE FISICHE" etc. come parole intere.
+  // Non serve normalizzazione per questa detection.
+  const rawText = pdf_text.toUpperCase();
 
-  if (rpfLocal) {
-    if (rpfLocal.fatturato_lm2 > 0) {
-      console.log('[parseTaxPDF] RPF locale riuscito — Gemini non chiamato.');
-      toast('⚡ Dati estratti localmente dal Modello RPF (0 token Gemini usati)', 'ok', 4000);
-      return normalizzaRisultato(rpfLocal, null);
-    }
-    // RPF rilevato ma valori mancanti → Gemini con contesto RPF (no F24)
-    console.log('[parseTaxPDF] RPF rilevato, valori mancanti → Gemini');
-    toast('🤖 Dichiarazione rilevata — analisi AI in corso...', 'info', 3000);
+  const isDefinitelyRPF = rawText.includes('PERSONE FISICHE') ||
+                          rawText.includes('\nRPF\n') ||
+                          rawText.includes(' RPF\n') ||
+                          rawText.includes('\nRPF ') ||
+                          rawText.includes('MODELLO REDDITI') ||
+                          rawText.includes('MODELLO RPF') ||
+                          rawText.includes('QUADRO LM') ||
+                          rawText.includes('PERIODO D\'IMPOSTA') ||
+                          rawText.includes("PERIODO D\u2019IMPOSTA"); // apostrofo curvo
+
+  const isDefinitelyF24 = !isDefinitelyRPF && (
+                          rawText.includes('MODELLO F24') ||
+                          rawText.includes('F24 ORDINARIO') ||
+                          rawText.includes('F24 SEMPLIFICATO') ||
+                          rawText.includes('CODICE TRIBUTO') ||
+                          rawText.includes('SALDO FINALE') ||
+                          rawText.includes('SEZIONE ERARIO'));
+
+  // Toast visibile: mostra all'utente quale tipo è stato rilevato
+  if (isDefinitelyRPF) {
+    toast('📑 Dichiarazione RPF rilevata — estrazione in corso...', 'info', 4000);
+  } else if (isDefinitelyF24) {
+    toast('📋 F24 rilevato — estrazione in corso...', 'info', 4000);
   } else {
-    // Documento non-RPF → prova F24 locale
-    const f24Local = tryParseF24(pdf_text);
-    if (f24Local && f24Local.inps_versata_f24 > 0) {
-      console.log('[parseTaxPDF] F24 locale riuscito — Gemini non chiamato.');
-      toast('⚡ F24 estratto localmente (0 token Gemini usati)', 'ok', 4000);
-      return normalizzaRisultato(f24Local, null);
-    }
+    toast('🔍 Tipo documento non identificato — analisi AI...', 'info', 3000);
   }
 
-  // Tipo documento per Gemini: RPF se rilevato, F24 altrimenti
-  const isLikelyF24 = !rpfLocal && /\bF24\b|MODELLO\s+F24|CODICE\s+TRIBUTO|SEZIONE\s+ERARIO|VERSAMENTI\s+UNIFICATI|SALDO\s+FINALE|DPPI|1791|1792|CF29|CF30|CF31|CF32|PXX/i.test(pdf_text);
+  console.log('[parseTaxPDF] Tipo rilevato:', isDefinitelyRPF ? 'RPF' : isDefinitelyF24 ? 'F24' : 'SCONOSCIUTO');
+
+  // 1b. FLUSSO PARSING LOCALE basato sul tipo rilevato
+  let rpfLocal = null;
+
+  if (isDefinitelyRPF) {
+    // È un RPF → prova parser locale, poi Gemini. MAI tryParseF24.
+    rpfLocal = tryParseRPF(pdf_text);
+    if (rpfLocal && rpfLocal.fatturato_lm2 > 0) {
+      console.log('[parseTaxPDF] RPF estratto localmente ✅');
+      toast('⚡ Dati estratti dal Modello RPF senza AI', 'ok', 4000);
+      return normalizzaRisultato(rpfLocal, null);
+    }
+    // Valori mancanti → Gemini con contesto RPF
+    console.log('[parseTaxPDF] RPF riconosciuto ma valori mancanti → Gemini RPF');
+    toast('🤖 RPF rilevato — AI in corso per estrarre i valori...', 'info', 3000);
+  } else {
+    // Non è un RPF → prova F24 locale
+    const f24Local = tryParseF24(pdf_text);
+    if (f24Local && f24Local.inps_versata_f24 > 0) {
+      console.log('[parseTaxPDF] F24 estratto localmente ✅');
+      toast('⚡ F24 estratto senza AI', 'ok', 4000);
+      return normalizzaRisultato(f24Local, null);
+    }
+    // F24 non decodificato localmente → Gemini
+    console.log('[parseTaxPDF] F24 non decodificato localmente → Gemini F24');
+  }
+
+  // Tipo per Gemini: RPF = is_f24:false, F24 = is_f24:true
+  const isLikelyF24 = isDefinitelyF24;
 
   // 2. Forza il refresh del token — evita 401 da JWT scaduto
   //    refreshSession() chiama il server e restituisce sempre un token fresco
@@ -2362,9 +2399,8 @@ async function parseTaxPDF(file) {
   }
   if (!token) throw new Error('Sessione scaduta — effettua di nuovo il login.');
 
-  // 3. Chiama la Edge Function Supabase (chiave Gemini sul server, mai visibile)
-  //    FIX F24: passiamo is_f24=true per far estrarre esplicitamente l'anno dal modulo
-  //    EXPERT_PROMPT: istruisce Gemini da commercialista (LM34 vs LM35, LM38 vs LM39)
+  // 3. Chiama la Edge Function Supabase (Gemini sul server)
+  console.log('[parseTaxPDF] Chiamata Gemini → is_f24:', isLikelyF24, '| pagine:', _numPages);
   const resp = await fetch(EDGE_PDF_URL, {
     method: 'POST',
     headers: {
@@ -2376,7 +2412,7 @@ async function parseTaxPDF(file) {
       pdf_text,
       is_f24:        isLikelyF24,
       page_count:    _numPages || 1,
-      expert_prompt: EXPERT_PROMPT        // ← prompt esperto commercialista
+      expert_prompt: EXPERT_PROMPT
     })
   });
 
@@ -2388,6 +2424,8 @@ async function parseTaxPDF(file) {
     json = {};
   }
 
+  console.log('[parseTaxPDF] Risposta Gemini:', JSON.stringify(json).slice(0, 300));
+
   if (!resp.ok) {
     const msg = json?.error || json?.msg || json?.message || ('Errore server: ' + resp.status +
       (resp.status === 401 ? ' — token scaduto, ricarica la pagina.' :
@@ -2395,7 +2433,11 @@ async function parseTaxPDF(file) {
     throw new Error(msg);
   }
 
-  // Normalizza: unifica vecchio/nuovo formato, aggiunge convalida se assente
+  // Toast con risultato Gemini
+  const gTipo = json?.tipo || json?.document_type || '?';
+  const gFatt = json?.fatturato || json?.fatturato_lm2 || 0;
+  toast(`🤖 AI risposta: tipo=${gTipo} fatturato=${gFatt}`, 'info', 6000);
+
   return normalizzaRisultato(json, null);
 }
 
