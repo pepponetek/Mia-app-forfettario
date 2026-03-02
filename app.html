@@ -1012,21 +1012,23 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       </div>
 
       <div class="fg">
-        <label>Fatturato imponibile <span id="wiz-year-lbl2"></span> (€) <span style="font-size:10px;color:var(--t3);font-weight:400">— compilato dal PDF</span></label>
+        <label>Fatturato imponibile <span id="wiz-year-lbl2"></span> (€)
+          <span style="font-size:10px;color:var(--t3);font-weight:400" id="wiz-fatt-src">— carica un PDF per compilare</span>
+        </label>
         <div class="iw">
           <span class="ipre">€</span>
-          <input type="number" id="wiz-fatt" placeholder="In attesa del PDF…" min="0" step="0.01"
-                 inputmode="decimal" readonly
-                 style="background:var(--s2);cursor:not-allowed;color:var(--t2)">
+          <input type="number" id="wiz-fatt" placeholder="0.00" min="0" step="0.01"
+                 inputmode="decimal" oninput="wizPreview()">
         </div>
       </div>
 
-      <!-- INPS VERSATA nell'anno solare — readonly, compilato da F24 -->
+      <!-- INPS VERSATA nell'anno solare — editabile, pre-compilata da F24 -->
       <div class="fg" style="margin-top:10px">
-        <label>INPS versata nell'anno solare (da F24) <span style="font-size:10px;color:var(--t3);font-weight:400">— compilata dal PDF</span></label>
+        <label>INPS versata nell'anno solare (F24 pagati, €)
+          <span style="font-size:10px;color:var(--t3);font-weight:400" id="wiz-inps-src">— opzionale</span>
+        </label>
         <div class="iw"><span class="ipre">€</span>
-          <input type="number" id="wiz-inps-versata" placeholder="In attesa del PDF…" min="0" step="0.01" inputmode="decimal" readonly
-                 style="background:var(--s2);cursor:not-allowed;color:var(--t2)">
+          <input type="number" id="wiz-inps-versata" placeholder="0.00" min="0" step="0.01" inputmode="decimal" oninput="wizPreview()">
           <span class="isuf">F24</span>
         </div>
       </div>
@@ -1043,12 +1045,12 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <label>Note (opzionale)</label>
         <input type="text" id="wiz-note" placeholder="Es: dati da 730, dichiarazione...">
       </div>
-      <!-- Banner info PDF — visibile dopo parsing nel wizard -->
+      <!-- Banner PDF — visibile dopo parsing nel wizard -->
       <div id="wiz-ai-banner" style="display:none; margin-top:10px; padding:10px 14px;
-           background:#e6f4ea; border:1.5px solid #3fb950; border-radius:8px;
-           font-size:0.88rem; color:#1a5c28; line-height:1.5">
-        <strong>✅ Dati aggiornati dal documento</strong>
-        <div id="wiz-ai-banner-body" style="margin-top:6px"></div>
+           border-radius:8px; font-size:0.88rem; line-height:1.5">
+        <div id="wiz-ai-banner-head" style="font-weight:700;margin-bottom:5px"></div>
+        <div id="wiz-ai-banner-body"></div>
+        <div id="wiz-ai-banner-note" style="margin-top:6px;font-size:0.78rem;opacity:.8"></div>
       </div>
       <!-- Anteprima calcolo in tempo reale -->
       <div class="wiz-preview" id="wiz-preview" style="display:none">
@@ -2984,7 +2986,7 @@ async function loadDocumenti() {
   try {
     const { data, error } = await sb
       .from('documenti_fiscali')
-      .select('id, anno, nome_file, storage_path, tipo_doc, dimensione, uploaded_at')
+      .select('id, anno, nome_file, storage_path, tipo_doc, dimensione, uploaded_at, dati_snapshot')
       .eq('user_id', _user.id)
       .order('uploaded_at', { ascending: false });
 
@@ -3093,12 +3095,10 @@ async function confDelDoc() {
   if (!_delDoc) return;
   const { id: docId, storagePath, anno } = _delDoc;
 
-  // FIX C (CRUD Integrity): se l'ID è null, l'elemento non è stato
-  // ancora sincronizzato con il DB → forza refresh cache e riprova
+  // ── VALIDAZIONE ID ────────────────────────────────────────────────────
   if (!docId || docId === 'null') {
     toast('⏳ ID documento non ancora sincronizzato, aggiornamento cache...', 'info', 3000);
     await loadDocumenti();
-    // Cerca il documento per storage_path (identificatore sempre presente)
     const docRicaricato = Object.values(_documenti).flat().find(d => d.storage_path === storagePath);
     if (!docRicaricato) {
       toast('❌ Documento non trovato nel database. Potrebbe essere già stato eliminato.', 'err', 5000);
@@ -3107,49 +3107,101 @@ async function confDelDoc() {
       return;
     }
     _delDoc = { ..._delDoc, id: docRicaricato.id };
-    return confDelDoc(); // richiama con ID reale
+    return confDelDoc();
   }
 
-  setSync('busy', 'Eliminazione...');
+  setSync('busy', 'Eliminazione e ripristino dati...');
   try {
-    // 1. Elimina da Storage (ignora errori se file già rimosso)
+    // ── STEP 1: Leggi snapshot PRIMA di eliminare il documento ───────────
+    const { data: docData } = await sb
+      .from('documenti_fiscali')
+      .select('tipo_doc, dati_snapshot')
+      .eq('id', docId)
+      .eq('user_id', _user.id)
+      .single();
+
+    const tipoDoc  = docData?.tipo_doc    || _delDoc.tipo_doc || 'sconosciuto';
+    const snapshot = docData?.dati_snapshot || null;
+
+    // ── STEP 2: Elimina da Storage ────────────────────────────────────────
     await sb.storage.from('documenti-fiscali').remove([storagePath]);
 
-    // 2. Elimina dalla tabella documenti_fiscali
+    // ── STEP 3: Elimina dalla tabella documenti_fiscali ───────────────────
     const { error } = await sb.from('documenti_fiscali')
       .delete()
       .eq('id', docId)
       .eq('user_id', _user.id);
     if (error) throw error;
 
-    // 3. Aggiorna cache locale
+    // ── STEP 4: Aggiorna cache locale documenti ───────────────────────────
     if (_documenti[anno]) {
       _documenti[anno] = _documenti[anno].filter(d => d.id !== docId);
     }
 
-    // 4. FIX INDICATORI: se era un F24 e non ci sono altri F24 rimasti,
-    //    azzera inps_versata_anno_solare nel DB e in locale
-    const eraF24 = _delDoc.tipo_doc === 'f24';
-    const altriF24 = (_documenti[anno] || []).filter(d => d.tipo_doc === 'f24');
-    if (eraF24 && altriF24.length === 0 && _anni[anno]?.inps_versata_anno_solare > 0) {
-      const { error: updErr } = await sb.from('anni_fiscali')
-        .update({ inps_versata_anno_solare: null, updated_at: new Date().toISOString() })
+    // ── STEP 5: REVERT DATI da snapshot ──────────────────────────────────
+    // Logica: se non ci sono altri documenti dello stesso tipo per quell'anno
+    // E abbiamo uno snapshot → ripristiniamo i valori precedenti all'upload.
+    // Se ci sono altri documenti dello stesso tipo → non tocchiamo i dati
+    //   (l'ultimo documento che ha scritto "vince").
+    const altriDelTipo = (_documenti[anno] || []).filter(d => d.tipo_doc === tipoDoc);
+    const revertPossibile = snapshot && altriDelTipo.length === 0 && _anni[anno];
+
+    if (revertPossibile) {
+      const revert = { updated_at: new Date().toISOString() };
+
+      if (tipoDoc === 'f24') {
+        // F24 → ripristina solo INPS versata nell'anno solare
+        revert.inps_versata_anno_solare = snapshot.inps_versata_anno_solare ?? null;
+      } else {
+        // Dichiarazione → ripristina tutti i campi fiscali
+        const campi = [
+          'fatturato','reddito_forf','contributi_inps','reddito_imp',
+          'imposta_sost','totale_oneri','acconto_1','acconto_2','acconto_tot',
+          'acconto_note','inps_versata_anno_solare'
+        ];
+        campi.forEach(k => { if (snapshot[k] !== undefined) revert[k] = snapshot[k]; });
+      }
+
+      const { error: revErr } = await sb.from('anni_fiscali')
+        .update(revert)
         .eq('user_id', _user.id)
         .eq('anno', anno);
-      if (!updErr && _anni[anno]) {
-        _anni[anno].inps_versata_anno_solare = null;
+
+      if (revErr) {
+        console.warn('[confDelDoc] Revert parziale:', revErr.message);
+        toast('⚠️ Documento eliminato, ma il ripristino dati ha avuto un errore parziale.', 'err', 6000);
+      } else {
+        Object.assign(_anni[anno], revert);
+        await syncFutureYears(anno);  // cascade acconti anno successivo
+      }
+    } else if (!snapshot && _anni[anno]) {
+      // Legacy (doc senza snapshot, caricato prima della v16):
+      // per F24 senza altri F24 → azzera solo INPS
+      if (tipoDoc === 'f24' && altriDelTipo.length === 0 && _anni[anno]?.inps_versata_anno_solare > 0) {
+        const { error: updErr } = await sb.from('anni_fiscali')
+          .update({ inps_versata_anno_solare: null, updated_at: new Date().toISOString() })
+          .eq('user_id', _user.id)
+          .eq('anno', anno);
+        if (!updErr && _anni[anno]) _anni[anno].inps_versata_anno_solare = null;
       }
     }
 
-    // 5. Ricarica documenti dal DB e aggiorna UI
+    // ── STEP 6: Ricarica UI ───────────────────────────────────────────────
     await loadDocumenti();
     renderArchivio();
+    renderSidebar();
     if (g('view-documenti')?.classList.contains('active')) renderDocumentiView();
 
     _delDoc = null;
     closeModal('modal-del-doc');
     setSync('ok', 'Sincronizzato');
-    toast('🗑️ Documento eliminato. Tutti gli indicatori sono stati aggiornati.', 'ok', 4000);
+
+    const msgRevert = revertPossibile
+      ? ` Dati anno ${anno} ripristinati ai valori precedenti.`
+      : altriDelTipo.length > 0
+        ? ` Altri documenti presenti — dati non modificati.`
+        : '';
+    toast(`🗑️ Documento eliminato.${msgRevert}`, 'ok', 6000);
   } catch(e) {
     setSync('err', 'Errore');
     toast('❌ Errore eliminazione: ' + e.message, 'err');
@@ -3245,6 +3297,25 @@ async function applicaDatiPDFSilent(anno, r) {
     _aiFile = null; _aiAnno = null; _aiResult = null;
     return;
   }
+
+  // ── SNAPSHOT DATI PRECEDENTI (per revert al delete del documento) ────
+  // Salva TUTTI i campi che applicaDatiPDFSilent potrebbe sovrascrivere.
+  // Verrà conservato nella colonna dati_snapshot di documenti_fiscali.
+  const _snapshot = {
+    fatturato:                d.fatturato                || null,
+    reddito_forf:             d.reddito_forf             || null,
+    contributi_inps:          d.contributi_inps          || null,
+    reddito_imp:              d.reddito_imp              || null,
+    imposta_sost:             d.imposta_sost             || null,
+    totale_oneri:             d.totale_oneri             || null,
+    acconto_1:                d.acconto_1                || null,
+    acconto_2:                d.acconto_2                || null,
+    acconto_tot:              d.acconto_tot              || null,
+    acconto_note:             d.acconto_note             || null,
+    inps_versata_anno_solare: d.inps_versata_anno_solare || null,
+    _snapshottedAt:           new Date().toISOString(),
+    _docTipo:                 r.tipo || 'sconosciuto',
+  };
 
   // ── PULIZIA VALORI (rimozione spazi, normalizzazione decimali) ───────
   const cleanNum = v => {
@@ -3358,12 +3429,13 @@ async function applicaDatiPDFSilent(anno, r) {
 
       if (!upErr) {
         const { error: dbErr } = await sb.from('documenti_fiscali').insert({
-          user_id:      _user.id,
-          anno:         annoTarget,
-          nome_file:    _aiFile.name,
-          storage_path: path,
-          tipo_doc:     r.tipo || 'sconosciuto',
-          dimensione:   _aiFile.size
+          user_id:       _user.id,
+          anno:          annoTarget,
+          nome_file:     _aiFile.name,
+          storage_path:  path,
+          tipo_doc:      r.tipo || 'sconosciuto',
+          dimensione:    _aiFile.size,
+          dati_snapshot: _snapshot        // ← snapshot per revert
         });
         if (!dbErr) {
           await loadDocumenti();
@@ -5108,7 +5180,14 @@ function wizRenderStep() {
   if (g('wiz-pdf'))        g('wiz-pdf').value           = '';
   if (g('wiz-pdf-lbl'))    g('wiz-pdf-lbl').textContent = 'Nessun file scelto';
   g('wiz-preview').style.display = 'none';
-  g('wiz-btn-next').textContent  = idx < tot - 1 ? 'Salva e continua →' : 'Salva e chiudi ✓';
+  // Reset banner e label sorgente
+  const banner = g('wiz-ai-banner');
+  if (banner) banner.style.display = 'none';
+  const src1 = g('wiz-fatt-src');  if (src1) src1.textContent = '— carica un PDF per compilare';
+  const src2 = g('wiz-inps-src');  if (src2) src2.textContent = '— opzionale';
+  // Reset pulsante
+  const btnNext = g('wiz-btn-next');
+  if (btnNext) { btnNext.disabled = false; btnNext.textContent = idx < tot - 1 ? 'Salva e continua →' : 'Salva e chiudi ✓'; }
   g('wiz-fatt').focus();
 }
 
@@ -5121,67 +5200,106 @@ async function wizParsePDF(input) {
   lbl.textContent = file.name;
   spinner.style.display = 'inline-block';
 
-  // Disabilita salvataggio durante analisi
-  const btnSalva = g('wiz-salva-btn');
-  if (btnSalva) btnSalva.disabled = true;
+  // Disabilita "Salva" durante analisi
+  const btnNext = g('wiz-btn-next');
+  if (btnNext) { btnNext.disabled = true; btnNext.textContent = '🔍 Analisi in corso…'; }
 
   try {
     const result = await parseTaxPDF(file);
     spinner.style.display = 'none';
 
-    // Controlla se Gemini ha restituito errore esplicito (Quadro LM non trovato)
+    const anno = _wiz.steps[_wiz.stepIdx];
+    const banner = g('wiz-ai-banner');
+    const head   = g('wiz-ai-banner-head');
+    const body   = g('wiz-ai-banner-body');
+    const note   = g('wiz-ai-banner-note');
+
+    // ── Errore esplicito da Gemini (Quadro LM non trovato) ──────────────
     if (result.convalida?.stato === 'rosso' && result.convalida?.messaggio?.includes('Quadro LM non rilevato')) {
-      toast('❌ ' + result.convalida.messaggio, 'err', 8000);
+      if (banner) {
+        banner.style.background = '#2d1a1a';
+        banner.style.border     = '1.5px solid #f85149';
+        banner.style.color      = '#f85149';
+        head.textContent  = '❌ Quadro LM non rilevato nel documento';
+        body.innerHTML    = 'Carica una Dichiarazione Redditi completa (Modello Redditi PF) oppure inserisci i valori manualmente nei campi sopra.';
+        note.textContent  = '';
+        banner.style.display = 'block';
+      }
+      if (btnNext) { btnNext.disabled = false; btnNext.textContent = 'Salva e continua →'; }
       return;
     }
 
-    // Compila i campi readonly via .value (funziona anche su readonly)
-    if (result.fatturato_lm2 > 0) {
+    // ── Popola i campi (editabili) con i dati letti dal PDF ─────────────
+    let hasDati = false;
+
+    if ((result.fatturato_lm2 || 0) > 0) {
       g('wiz-fatt').value = result.fatturato_lm2;
+      const src = g('wiz-fatt-src');
+      if (src) src.textContent = '— da PDF ✓';
+      hasDati = true;
       wizPreview();
     }
-    if (result.inps_versata_f24 > 0) {
-      g('wiz-inps-versata').value = result.inps_versata_f24;
-    } else if (result.inps_dedotta_lm7 > 0) {
-      g('wiz-inps-versata').value = result.inps_dedotta_lm7;
+
+    const inpsVal = (result.inps_versata_f24 || 0) > 0
+      ? result.inps_versata_f24
+      : (result.inps_dedotta_lm7 || 0) > 0 ? result.inps_dedotta_lm7 : 0;
+
+    if (inpsVal > 0) {
+      g('wiz-inps-versata').value = inpsVal;
+      const src = g('wiz-inps-src');
+      if (src) src.textContent = result.inps_versata_f24 > 0 ? '— da F24 ✓' : '— da LM35 ✓';
+      hasDati = true;
     }
 
-    const anno = _wiz.steps[_wiz.stepIdx];
+    // Nota automatica con fonte
     const noteAI = `AI: ${result.tipo||'doc'} anno ${result.anno||anno}` +
                    (result.sezione_rilevata ? ` · ${result.sezione_rilevata}` : '') +
-                   (result.affidabilita ? ` [${result.affidabilita}]` : '') +
-                   (result.note ? ` — ${result.note}` : '');
+                   (result.affidabilita ? ` [${result.affidabilita}]` : '');
     g('wiz-note').value = noteAI;
 
-    // Banner giallo con valori estratti per verifica utente
-    const banner = g('wiz-ai-banner');
+    // ── Banner riepilogo con istruzione "Verifica e salva" ───────────────
     if (banner) {
-      const body = g('wiz-ai-banner-body');
-      const righe = [];
-      if (result.fatturato_lm2 > 0)       righe.push(`📊 Fatturato (LM22): <strong>€ ${result.fatturato_lm2.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
-      if (result.inps_versata_f24 > 0)     righe.push(`🏛️ INPS versata (F24): <strong>€ ${result.inps_versata_f24.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
-      else if (result.inps_dedotta_lm7>0)  righe.push(`🏛️ INPS dedotta (LM35): <strong>€ ${result.inps_dedotta_lm7.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
-      if (result.imposta_dovuta_lm11>0)    righe.push(`💰 Imposta (LM39): <strong>€ ${result.imposta_dovuta_lm11.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
-      if (result.sezione_rilevata)         righe.push(`📌 Sezione: <strong>${result.sezione_rilevata}</strong>`);
-      const affIcon = result.affidabilita==='high'?'🟢':result.affidabilita==='medium'?'🟡':'🔴';
-      if (result.affidabilita)             righe.push(`${affIcon} Affidabilità AI: <strong>${result.affidabilita}</strong>`);
-
-      if (!righe.length) {
-        body.innerHTML = '⚠️ Nessun valore estratto — ricarica un documento valido con il Quadro LM.';
-        banner.style.background = '#fff0f0';
-        banner.style.borderColor = '#ef4444';
+      if (!hasDati) {
+        // Zero valori → avviso arancione
+        banner.style.background = '#2a1f0a';
+        banner.style.border     = '1.5px solid #f59e0b';
+        banner.style.color      = '#f59e0b';
+        head.textContent = '⚠️ Nessun valore estratto dal documento';
+        body.innerHTML   = 'Il PDF non contiene valori riconoscibili. Inserisci manualmente Fatturato e INPS nei campi sopra.';
+        note.textContent = '';
       } else {
-        body.innerHTML = righe.join('<br>');
-        banner.style.background = '#fff8e1';
-        banner.style.borderColor = '#f59e0b';
-        // Abilita salvataggio solo se ha fatturato
-        if (btnSalva && result.fatturato_lm2 > 0) btnSalva.disabled = false;
+        // Dati trovati → verde con riepilogo e invito a verificare
+        banner.style.background = '#0d2011';
+        banner.style.border     = '1.5px solid #3fb950';
+        banner.style.color      = '#3fb950';
+
+        const affIcon  = result.affidabilita === 'high' ? '🟢' : result.affidabilita === 'medium' ? '🟡' : '🔴';
+        const tipoDoc  = result.tipo === 'f24' ? 'F24' : result.tipo === 'dichiarazione' ? 'Dichiarazione' : 'Documento';
+        head.textContent = `✅ ${tipoDoc} letto — Anno ${result.anno || anno} ${affIcon}`;
+
+        const righe = [];
+        if ((result.fatturato_lm2||0) > 0)
+          righe.push(`📊 Fatturato LM22: <strong>€ ${result.fatturato_lm2.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+        if ((result.inps_versata_f24||0) > 0)
+          righe.push(`🏛️ INPS versata (F24): <strong>€ ${result.inps_versata_f24.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+        else if ((result.inps_dedotta_lm7||0) > 0)
+          righe.push(`🏛️ INPS dedotta (LM35): <strong>€ ${result.inps_dedotta_lm7.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+        if ((result.imposta_dovuta_lm11||0) > 0)
+          righe.push(`💰 Imposta LM39: <strong>€ ${result.imposta_dovuta_lm11.toLocaleString('it-IT',{minimumFractionDigits:2})}</strong>`);
+        if (result.sezione_rilevata)
+          righe.push(`📌 ${result.sezione_rilevata}`);
+
+        body.innerHTML  = righe.join('<br>');
+        note.textContent = '👆 I campi sopra sono stati pre-compilati. Verifica i valori e premi "Salva e continua →" per confermare.';
       }
       banner.style.display = 'block';
     }
-    toast(`✅ AI ha compilato i campi per l'anno ${result.anno || anno}`, 'ok');
+
+    if (btnNext) { btnNext.disabled = false; btnNext.textContent = 'Salva e continua →'; }
+
   } catch(err) {
     spinner.style.display = 'none';
+    if (btnNext) { btnNext.disabled = false; btnNext.textContent = 'Salva e continua →'; }
     toast('❌ ' + err.message, 'err', 5000);
   }
 }
