@@ -1886,46 +1886,50 @@ function tryParseRPF(text) {
    Gestisce tutti i formati: F24 ordinario, semplificato, elide,
    PDF da intermediari, layout PDF.js con testo spezzato.
    ============================================================ */
-function tryParseF24(text) {
-  /* ═══════════════════════════════════════════════════════════════
-     PARSER F24 MULTI-PAGINA — basato sulla struttura reale del PDF ADE
-     
-     Ogni pagina del PDF contiene un F24 separato con la struttura:
-       "Scadenza del DD-MM-YYYY"
-       [dati contribuente e righe INPS]
-       "X.XXX 04" (saldo finale con spazio come separatore decimale)
-       "ITDELEGA..." (inizio template fisso — fine dati reali)
-     
-     Algoritmo per pagina:
-     1. Taglia il testo PRIMA di "ITDELEGA" (fine zona dati)
-     2. L'ULTIMO valore "X.XXX YY" in quella zona = SALDO FINALE della pagina
-     3. Somma tutti i saldi per ottenere il totale INPS versata nell'anno
-  ═══════════════════════════════════════════════════════════════ */
+/* ============================================================
+   PARSER F24 (locale — senza AI)
+   Validatore.md §1:
+   ─ Filtro temporale: conta solo F24 con scadenza nell'anno solare target
+   ─ Classificazione: PXX/DPPI → contributi_inps_versati
+                      1790/1791/1792 → imposta_sostitutiva_pagata
+   ─ Non inventare valori se PDF non leggibile
+   ============================================================ */
+function tryParseF24(text, annoTarget) {
+  /* annoTarget: anno solare di riferimento (es. 2024).
+     Se non passato, usa _aiAnno globale o null (accetta tutto). */
+  const targetAnno = annoTarget || _aiAnno || null;
 
   const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*FINALE|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|1791|1792|CF29|CF30|CF31|CF32/i.test(text);
   if (!isF24) return null;
 
-  /* ── SPLIT PER PAGINA (\f = form feed, separatore pagine PDF.js) ── */
-  const pagineSplit = text.split(/\f|--- PAGINA \d+ ---/);
-  const pagine = pagineSplit.filter(p => p.trim().length > 50);
+  /* ── SPLIT PER PAGINA ── */
+  const pagine = text.split(/\f|--- PAGINA \d+ ---/).filter(p => p.trim().length > 50);
+  console.log('[F24] Pagine rilevate:', pagine.length, '| target anno solare:', targetAnno);
 
-  console.log('[F24] Pagine rilevate:', pagine.length);
-
-  /* ── PARSER IMPORTO F24 ──
-     Formato reale nel PDF estratto:
-     A) "2.771 04" → spazio tra interi e centesimi (saldo con DPPI)
-     B) "3.904 00" → stessa cosa (saldo senza crediti)
-     C) "2.760,00" → virgola decimale (importo PXX prima dei crediti — NON il saldo finale)
-  */
+  /* ── PARSER IMPORTO ──
+     Formati reali nei PDF estratti:
+     A) "2.771 04"  → spazio come separatore decimale
+     B) "3.904 00"  → stessa cosa
+     C) "2.760,00"  → virgola decimale (PXX prima dei crediti) */
   function parseSaldo(s) {
     if (!s) return 0;
     s = s.trim();
-    // Formato "X.XXX YY" (spazio come separatore decimale)
     const mSp = s.match(/^([\d.]+)\s+(\d{2})$/);
     if (mSp) return parseFloat(mSp[1].replace(/\./g, '') + '.' + mSp[2]) || 0;
-    // Formato "X.XXX,YY" (virgola)
     if (/,/.test(s)) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
     return 0;
+  }
+
+  /* ── CLASSIFICAZIONE CAUSALE (Validatore.md §1) ──
+     PXX/DPPI → INPS contributi (deducibili, principio di cassa)
+     1790/1791/1792 → imposta sostitutiva pagata */
+  function classificaCausali(causali) {
+    const upper = causali.map(c => c.toUpperCase());
+    const isInps   = upper.some(c => /^PXX$|^DPPI$|^CF\d{2}$/.test(c));
+    const isImposta = upper.some(c => /^179[012]$/.test(c));
+    if (isImposta) return 'imposta';
+    if (isInps)    return 'inps';
+    return 'inps';  // default se causale non riconosciuta
   }
 
   /* ── ELABORA OGNI PAGINA ── */
@@ -1934,81 +1938,89 @@ function tryParseF24(text) {
   for (let i = 0; i < pagine.length; i++) {
     const pageRaw = pagine[i];
 
-    // Verifica che la pagina contenga dati F24 reali (non solo template)
     const hasDati = /PXX|DPPI|1791|1792|CF29|CF3[012]|Scadenza\s+del/i.test(pageRaw);
     if (!hasDati) continue;
 
-    // Taglia al template fisso "ITDELEGA" (fine dati reali, inizio boilerplate)
-    const cutIdx = pageRaw.indexOf('ITDELEGA');
+    const cutIdx  = pageRaw.indexOf('ITDELEGA');
     const dataPart = cutIdx > 0 ? pageRaw.slice(0, cutIdx) : pageRaw.slice(0, 1200);
 
-    // Estrai scadenza (es: "30-07-2025") — solo per visualizzazione
-    const mSc = dataPart.match(/Scadenza\s+del\s+(\d{2}-\d{2}-(\d{4}))/i);
-    const scadenza = mSc ? mSc[1] : null;
+    // ── Estrai data di scadenza/esecuzione ───────────────────────────
+    // Formato: "30-07-2025" oppure "30/07/2025" oppure "30.07.2025"
+    const mSc = dataPart.match(/Scadenza\s+del\s+(\d{2}[-/.](\d{2})[-/.](\d{4}))/i)
+             || dataPart.match(/(\d{2}[-/.](\d{2})[-/.](\d{4}))/);
+    const scadenza    = mSc ? mSc[1] : null;
+    const annoScadenza = mSc ? parseInt(mSc[3] || mSc[2]) : null;
 
-    // Anno FISCALE di riferimento = anno MINORE trovato nel testo
-    // La scadenza (2025) non è l'anno fiscale; l'anno del periodo "12 2024" = 2024 lo è.
-    // Prendi tutti gli anni e scegli il minore (= anno della dichiarazione).
-    const tuttiAnni = (dataPart.match(/\b(20\d{2})\b/g) || []).map(Number);
-    const anno = tuttiAnni.length > 0 ? Math.min(...tuttiAnni) : (mSc ? parseInt(mSc[2]) : null);
+    // ── FILTRO TEMPORALE (Validatore.md §1) ──────────────────────────
+    // Principio di cassa: conta il pagamento nell'anno solare in cui
+    // cade la data di scadenza (non l'anno fiscale di competenza).
+    // Es: F24 INPS scadenza 16-12-2024 → conta per anno solare 2024
+    //     F24 INPS scadenza 31-05-2025 → conta per anno solare 2025
+    if (targetAnno && annoScadenza && annoScadenza !== targetAnno) {
+      console.log(`[F24] Pag.${i+1} — scadenza ${scadenza} (anno ${annoScadenza}) ESCLUSA dal filtro temporale (target: ${targetAnno})`);
+      continue;
+    }
 
-    // Causale principale (PXX = imposta sostitutiva, DPPI = INPS)
+    // ── Causali ─────────────────────────────────────────────────────
     const causali = (dataPart.match(/\b(PXX|DPPI|1791|1792|CF\d{2})\b/gi) || [])
-      .filter((v, i, a) => a.indexOf(v) === i);
+      .filter((v, idx, a) => a.indexOf(v) === idx);
+    const tipoPagamento = classificaCausali(causali);
 
-    // Trova il SALDO FINALE della pagina:
-    // Pattern: X.XXX YY (punto migliaia, spazio come separatore decimale)
-    // SOGLIA > 100: esclude DPPI minimale (€11,04) e altri importi piccoli
-    // SALDO = ULTIMO valore > 100 nella zona dati (appare alla fine del calcolo)
+    // ── Anno fiscale (per logging/display) ──────────────────────────
+    const tuttiAnni = (dataPart.match(/\b(20\d{2})\b/g) || []).map(Number);
+    const annoFisc  = tuttiAnni.length > 0 ? Math.min(...tuttiAnni) : annoScadenza;
+
+    // ── Saldo finale della pagina ────────────────────────────────────
     const tuttiSaldi = [...dataPart.matchAll(/\b(\d{1,3}\.\d{3})\s+(\d{2})\b/g)]
       .map(m => ({ raw: m[0], val: parseSaldo(m[1] + ' ' + m[2]) }))
-      .filter(x => x.val >= 100 && x.val < 100000);   // ← soglia 100 (era 10)
+      .filter(x => x.val >= 100 && x.val < 100000);
 
-    // Deduplica: rimuove valori identici consecutivi (il saldo appare 2× nel PDF)
     const saldoFinale = tuttiSaldi.length > 0
       ? tuttiSaldi[tuttiSaldi.length - 1].val
       : 0;
 
-    console.log(`[F24] Pag.${i+1} — scadenza:${scadenza} anno:${anno} causali:${causali} saldo:${saldoFinale} (tutti: ${tuttiSaldi.map(x=>x.val).join(',')})`);
+    console.log(`[F24] Pag.${i+1} — scadenza:${scadenza} annoFisc:${annoFisc} causali:${causali} tipo:${tipoPagamento} saldo:${saldoFinale}`);
 
     if (saldoFinale > 0) {
-      f24Pages.push({ pagina: i + 1, scadenza, anno, causali, saldo: saldoFinale });
-    }
-
-    if (saldoFinale > 0) {
-      f24Pages.push({ pagina: i + 1, scadenza, anno, causali, saldo: saldoFinale });
+      f24Pages.push({ pagina: i + 1, scadenza, anno: annoFisc, causali, tipoPagamento, saldo: saldoFinale });
     }
   }
 
   if (f24Pages.length === 0) {
-    console.warn('[F24] Nessun saldo trovato — testo grezzo (400):', text.slice(0, 400));
+    console.warn('[F24] Nessun saldo trovato (o tutti esclusi dal filtro temporale). Testo (400):', text.slice(0, 400));
     return null;
   }
 
-  /* ── AGGREGAZIONE ── */
-  // Anno fiscale di riferimento = il MINORE tra tutti gli anni delle pagine.
-  // Esempio: pagina 1 ha anno 2024 (anno dichiarazione), pagina 2 ha anno 2025 (acconto).
-  // L'anno corretto da associare al cloud è il più vecchio = 2024.
-  const tuttiAnniPagine = f24Pages.map(p => p.anno).filter(Boolean);
-  const anno = tuttiAnniPagine.length > 0 ? Math.min(...tuttiAnniPagine) : null;
+  // ── AGGREGAZIONE PER TIPO (Validatore.md §1 classificazione) ────────
+  const pagesInps    = f24Pages.filter(p => p.tipoPagamento === 'inps');
+  const pagesImposta = f24Pages.filter(p => p.tipoPagamento === 'imposta');
 
-  // Totale = somma di tutti i saldi delle pagine
-  const totale = f24Pages.reduce((s, p) => s + p.saldo, 0);
+  const totaleInps    = pagesInps.reduce((s, p) => s + p.saldo, 0);
+  const totaleImposta = pagesImposta.reduce((s, p) => s + p.saldo, 0);
+  const totaleAll     = f24Pages.reduce((s, p) => s + p.saldo, 0);
+
+  // Anno fiscale di riferimento = minore tra tutti gli anni delle pagine incluse
+  const tuttiAnniPagine = f24Pages.map(p => p.anno).filter(Boolean);
+  const anno = tuttiAnniPagine.length > 0 ? Math.min(...tuttiAnniPagine) : targetAnno;
 
   // Nota dettagliata
   const dettaglio = f24Pages
-    .map(p => `${p.scadenza||'?'}: €${p.saldo.toLocaleString('it-IT',{minimumFractionDigits:2})}`)
+    .map(p => `${p.scadenza||'?'} [${p.causali.join(',')||'?'}] €${p.saldo.toLocaleString('it-IT',{minimumFractionDigits:2})}`)
     .join(' | ');
-
-  const nota = `⚡ F24 estratto (${f24Pages.length} pag.) · Totale: €${totale.toLocaleString('it-IT',{minimumFractionDigits:2})} · ${dettaglio}`;
+  const nota = `⚡ F24 (${f24Pages.length} pag. anno solare ${targetAnno||anno}) · INPS: €${totaleInps.toLocaleString('it-IT',{minimumFractionDigits:2})} · Imposta: €${totaleImposta.toLocaleString('it-IT',{minimumFractionDigits:2})} · ${dettaglio}`;
   console.log('[F24] ✅', nota);
 
   return {
-    tipo: 'f24', anno,
-    ateco: null, fatturato_lm2: 0, inps_dedotta_lm7: 0, imposta_dovuta_lm11: 0,
-    inps_versata_f24: totale,
+    tipo: 'f24',
+    anno,
+    ateco: null,
+    fatturato_lm2:          0,
+    inps_dedotta_lm7:        0,
+    imposta_dovuta_lm11:     0,
+    inps_versata_f24:        totaleInps,        // PXX/DPPI — contributi INPS (deducibili)
+    imposta_sostitutiva_f24: totaleImposta,     // 1790/1791/1792 — imposta pagata
     note: nota,
-    f24_pagine: f24Pages   // dati per-pagina per eventuale display dettagliato
+    f24_pagine: f24Pages
   };
 }
 
@@ -2161,11 +2173,15 @@ function convalidaLocale(r) {
 
   // ── F24: non ha dichiarazione del reddito ──────────────────
   if (r.tipo === 'f24') {
-    const versata = r.inps_versata_f24 || inps;
-    if (versata > 0) {
+    const versata  = r.inps_versata_f24        || inps;
+    const impSost  = r.imposta_sostitutiva_f24 || 0;
+    const parti = [];
+    if (versata > 0)  parti.push(`INPS versata (PXX/DPPI): €${versata.toLocaleString('it-IT',{minimumFractionDigits:2})}`);
+    if (impSost > 0)  parti.push(`Imposta sost. (1790/91/92): €${impSost.toLocaleString('it-IT',{minimumFractionDigits:2})}`);
+    if (versata > 0 || impSost > 0) {
       return {
         stato: 'verde',
-        messaggio: `F24 rilevato. Importo versato: €${versata.toLocaleString('it-IT',{minimumFractionDigits:2})}. Nessuna verifica aritmetica applicabile (F24 non contiene dichiarazione di reddito).`
+        messaggio: `F24 rilevato — ${parti.join(' · ')}. Classificato per codice tributo/causale (Validatore §1).`
       };
     }
     return {
@@ -2202,8 +2218,9 @@ function convalidaLocale(r) {
     }
   }
 
-  // ── Senza coefficiente: riepiloga senza validazione aritm. ─
   const fmt2 = v => v.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // ── Senza coefficiente: riepiloga senza validazione aritm. ─
   if (coeff === null) {
     const parti = [`Fatturato: €${fmt2(fatt)}`];
     if (inps > 0)    parti.push(`Contributi: €${fmt2(inps)}`);
@@ -2213,6 +2230,27 @@ function convalidaLocale(r) {
       messaggio: `${parti.join(' · ')}. Coefficiente ATECO non determinato${ateco?` per codice ${ateco}`:''}. Validazione aritmetica non disponibile — verifica il gruppo di attività.`
     };
   }
+
+  // ── §3 Validatore.md — Congruenza LM22 vs reddito storico ─
+  // Se in archivio esiste già un reddito_forf per quell'anno,
+  // ricaviamo il fatturato implicito (reddForfStorico / coeff) e
+  // confrontiamo con LM22 estratto. Scarto > 2% → segnala incongruità.
+  let avvisoLM22 = '';
+  try {
+    const annoR = parseInt(r.anno);
+    if (annoR && _anni && _anni[annoR]) {
+      const reddStorico = _anni[annoR].reddito_forf || 0;
+      if (reddStorico > 0 && coeff > 0) {
+        const fattImplicito = reddStorico / coeff;
+        const scartoLM22   = Math.abs(fatt - fattImplicito) / fattImplicito * 100;
+        if (scartoLM22 > 2) {
+          avvisoLM22 = ` ⚠️ LM22 estratto (€${fmt2(fatt)}) differisce dal fatturato storico in archivio` +
+                       ` (€${fmt2(fattImplicito)} = reddito_forf/coeff): scarto ${scartoLM22.toFixed(1)}%.` +
+                       ` Verifica che il PDF caricato corrisponda all'anno ${annoR}.`;
+        }
+      }
+    }
+  } catch(_) { /* _anni non disponibile durante il parsing — ignora */ }
 
   // ── Calcolo teorico ────────────────────────────────────────
   const reddForf = fatt * coeff;
@@ -2228,11 +2266,11 @@ function convalidaLocale(r) {
   if (imposta <= 0) {
     return {
       stato: 'giallo',
-      messaggio: `LM38/LM39 non estratto. ${riepilogo}. Imposta teorica: €${fmt2(imp15)} (15%) o €${fmt2(imp5)} (5% start-up).`
+      messaggio: `LM38/LM39 non estratto. ${riepilogo}. Imposta teorica: €${fmt2(imp15)} (15%) o €${fmt2(imp5)} (5% start-up).${avvisoLM22}`
     };
   }
 
-  // ── Confronto con aliquota al 5% e 15% ────────────────────
+  // ── §2 Validatore.md — Confronto imposta dichiarata vs teorica ──
   const scarto5  = Math.abs(imposta - imp5)  / imposta * 100;
   const scarto15 = Math.abs(imposta - imp15) / imposta * 100;
   const scartoMin = Math.min(scarto5, scarto15);
@@ -2240,28 +2278,32 @@ function convalidaLocale(r) {
   const impTeor   = aliqUsata === 5 ? imp5 : imp15;
   const scartoStr = scartoMin.toFixed(1);
   const isStartup = aliqUsata === 5;
+  const suffisso  = isStartup ? ' — Regime Start-up (5%).' : ' — Regime ordinario (15%).';
 
-  const suffisso = isStartup
-    ? ' — Regime Start-up (aliquota 5% ridotta).'
-    : ' — Regime ordinario (aliquota 15%).';
-
-  if (scartoMin < 5) {
+  if (scartoMin < 5 && !avvisoLM22) {
     return {
       stato: 'verde',
-      messaggio: `✅ Convalida OK (scarto ${scartoStr}%)${suffisso} ${riepilogo}. LM38/LM39 dichiarata: €${fmt2(imposta)} · Teorica: €${fmt2(impTeor)}.`
+      messaggio: `✅ Convalida OK (scarto ${scartoStr}%)${suffisso} ${riepilogo}. LM38/LM39: €${fmt2(imposta)} · Teorica: €${fmt2(impTeor)}.`
+    };
+  }
+  if (scartoMin < 5 && avvisoLM22) {
+    return {
+      stato: 'giallo',
+      messaggio: `Imposta OK (scarto ${scartoStr}%).${avvisoLM22}`
     };
   }
   if (scartoMin <= 20) {
     return {
       stato: 'giallo',
-      messaggio: `⚠️ Scarto ${scartoStr}%${suffisso} ${riepilogo}. LM38/LM39: €${fmt2(imposta)} · Teorica (${aliqUsata}%): €${fmt2(impTeor)}. Possibili: deduzioni aggiuntive, arrotondamenti, o rigo errato.`
+      messaggio: `⚠️ Scarto imposta ${scartoStr}%${suffisso} ${riepilogo}. LM38/LM39: €${fmt2(imposta)} · Teorica (${aliqUsata}%): €${fmt2(impTeor)}. Possibili: deduzioni aggiuntive, arrotondamenti, rigo errato.${avvisoLM22}`
     };
   }
   return {
     stato: 'rosso',
-    messaggio: `🔴 Discrepanza ${scartoStr}%.${suffisso} ${riepilogo}. LM38/LM39: €${fmt2(imposta)} · Teorica 15%: €${fmt2(imp15)} · 5%: €${fmt2(imp5)}. Verifica il documento o il codice ATECO.`
+    messaggio: `🔴 Discrepanza ${scartoStr}%.${suffisso} ${riepilogo}. LM38/LM39: €${fmt2(imposta)} · Teorica 15%: €${fmt2(imp15)} · 5%: €${fmt2(imp5)}. Verifica il documento o il codice ATECO.${avvisoLM22}`
   };
 }
+
 
 /* ============================================================
    GEMINI AI — parsing PDF tramite Supabase Edge Function (sicuro)
@@ -2393,7 +2435,7 @@ async function parseTaxPDF(file) {
     toast('🤖 RPF rilevato — AI in corso per estrarre i valori...', 'info', 3000);
   } else {
     // F24: usa testo completo per il parser multi-pagina
-    const f24Local = tryParseF24(_fullPdfText || pdf_text);
+    const f24Local = tryParseF24(_fullPdfText || pdf_text, _aiAnno || null);
     if (f24Local && f24Local.inps_versata_f24 > 0) {
       console.log('[parseTaxPDF] F24 estratto localmente ✅');
       toast('⚡ F24 estratto senza AI', 'ok', 4000);
@@ -3083,9 +3125,15 @@ async function downloadDoc(storagePath, nomeFile) {
 
 // Apre il modal di conferma eliminazione documento
 function richiediDelDoc(docId, storagePath, anno, nomeFile) {
-  // Trova il tipo_doc del documento dalla cache locale
+  // Salva l'intero oggetto documento dalla cache (include dati_snapshot caricato da loadDocumenti)
   const docInCache = (_documenti[anno] || []).find(d => d.id === docId);
-  _delDoc = { id: docId, storagePath, anno, tipo_doc: docInCache?.tipo_doc || 'sconosciuto' };
+  _delDoc = {
+    id:           docId,
+    storagePath,
+    anno,
+    tipo_doc:     docInCache?.tipo_doc     || 'sconosciuto',
+    dati_snapshot: docInCache?.dati_snapshot || null   // ← usato per revert in confDelDoc
+  };
   g('del-doc-name').textContent = nomeFile;
   openModal('modal-del-doc');
 }
@@ -3095,73 +3143,97 @@ async function confDelDoc() {
   if (!_delDoc) return;
   const { id: docId, storagePath, anno } = _delDoc;
 
-  // ── VALIDAZIONE ID ────────────────────────────────────────────────────
+  // ── VALIDAZIONE ID ───────────────────────────────────────────────────
   if (!docId || docId === 'null') {
-    toast('⏳ ID documento non ancora sincronizzato, aggiornamento cache...', 'info', 3000);
+    toast('⏳ ID documento non sincronizzato, aggiornamento cache...', 'info', 3000);
     await loadDocumenti();
     const docRicaricato = Object.values(_documenti).flat().find(d => d.storage_path === storagePath);
     if (!docRicaricato) {
-      toast('❌ Documento non trovato nel database. Potrebbe essere già stato eliminato.', 'err', 5000);
-      closeModal('modal-del-doc');
-      _delDoc = null;
-      return;
+      toast('❌ Documento non trovato nel database.', 'err', 5000);
+      closeModal('modal-del-doc'); _delDoc = null; return;
     }
-    _delDoc = { ..._delDoc, id: docRicaricato.id };
+    _delDoc = { ..._delDoc, id: docRicaricato.id, dati_snapshot: docRicaricato.dati_snapshot || null };
     return confDelDoc();
   }
 
+  // ── Leggi snapshot dalla cache locale (_delDoc già lo porta da richiediDelDoc) ─
+  const tipoDoc  = _delDoc.tipo_doc     || 'sconosciuto';
+  const snapshot = _delDoc.dati_snapshot || null;
+
   setSync('busy', 'Eliminazione e ripristino dati...');
   try {
-    // ── STEP 1: Leggi snapshot PRIMA di eliminare il documento ───────────
-    const { data: docData } = await sb
-      .from('documenti_fiscali')
-      .select('tipo_doc, dati_snapshot')
-      .eq('id', docId)
-      .eq('user_id', _user.id)
-      .single();
-
-    const tipoDoc  = docData?.tipo_doc    || _delDoc.tipo_doc || 'sconosciuto';
-    const snapshot = docData?.dati_snapshot || null;
-
-    // ── STEP 2: Elimina da Storage ────────────────────────────────────────
+    // STEP 1: Elimina da Storage
     await sb.storage.from('documenti-fiscali').remove([storagePath]);
 
-    // ── STEP 3: Elimina dalla tabella documenti_fiscali ───────────────────
+    // STEP 2: Elimina dalla tabella documenti_fiscali
     const { error } = await sb.from('documenti_fiscali')
-      .delete()
-      .eq('id', docId)
-      .eq('user_id', _user.id);
+      .delete().eq('id', docId).eq('user_id', _user.id);
     if (error) throw error;
 
-    // ── STEP 4: Aggiorna cache locale documenti ───────────────────────────
+    // STEP 3: Aggiorna cache locale documenti PRIMA di controllare gli altri
     if (_documenti[anno]) {
       _documenti[anno] = _documenti[anno].filter(d => d.id !== docId);
     }
 
-    // ── STEP 5: REVERT DATI da snapshot ──────────────────────────────────
-    // Logica: se non ci sono altri documenti dello stesso tipo per quell'anno
-    // E abbiamo uno snapshot → ripristiniamo i valori precedenti all'upload.
-    // Se ci sono altri documenti dello stesso tipo → non tocchiamo i dati
-    //   (l'ultimo documento che ha scritto "vince").
+    // ── Documenti rimasti dello stesso tipo DOPO l'eliminazione ─────────
     const altriDelTipo = (_documenti[anno] || []).filter(d => d.tipo_doc === tipoDoc);
-    const revertPossibile = snapshot && altriDelTipo.length === 0 && _anni[anno];
+    const ultPdf = altriDelTipo.length === 0;   // true = era l'ultimo di quel tipo
 
-    if (revertPossibile) {
-      const revert = { updated_at: new Date().toISOString() };
+    // ── STEP 4: REVERT DEI DATI ─────────────────────────────────────────
+    // Strategia: se ho snapshot → revert preciso al valore pre-PDF
+    //            se no snapshot (doc pre-v16) → reset forzato dei campi influenzati
+    let revert = null;
 
+    if (snapshot) {
+      // ── Caso A: snapshot presente → revert esatto ─────────────────────
       if (tipoDoc === 'f24') {
-        // F24 → ripristina solo INPS versata nell'anno solare
-        revert.inps_versata_anno_solare = snapshot.inps_versata_anno_solare ?? null;
+        // F24: ricalcola INPS come somma degli snapshot degli F24 rimasti
+        const inpsSomma = altriDelTipo
+          .filter(d => d.dati_snapshot)
+          .reduce((sum, d) => sum + (d.dati_snapshot.inps_versata_anno_solare || 0), 0);
+        revert = {
+          inps_versata_anno_solare: inpsSomma > 0 ? inpsSomma : (snapshot.inps_versata_anno_solare ?? null),
+          updated_at: new Date().toISOString()
+        };
+        // Se era l'unico F24 → azzera
+        if (ultPdf) revert.inps_versata_anno_solare = snapshot.inps_versata_anno_solare ?? null;
       } else {
-        // Dichiarazione → ripristina tutti i campi fiscali
+        // Dichiarazione: ripristina tutti i campi dal snapshot
         const campi = [
           'fatturato','reddito_forf','contributi_inps','reddito_imp',
           'imposta_sost','totale_oneri','acconto_1','acconto_2','acconto_tot',
           'acconto_note','inps_versata_anno_solare'
         ];
+        revert = { updated_at: new Date().toISOString() };
         campi.forEach(k => { if (snapshot[k] !== undefined) revert[k] = snapshot[k]; });
       }
+    } else if (_anni[anno]) {
+      // ── Caso B: nessuno snapshot (doc pre-v16) ─────────────────────────
+      // Azzera i campi che sappiamo essere stati scritti dal tipo di documento
+      revert = { updated_at: new Date().toISOString() };
+      if (tipoDoc === 'f24') {
+        // Reset INPS versata: calcola somma degli F24 rimasti (potrebbero avere snapshot)
+        const inpsRimasta = altriDelTipo
+          .filter(d => d.dati_snapshot)
+          .reduce((sum, d) => sum + (d.dati_snapshot.inps_versata_anno_solare || 0), 0);
+        revert.inps_versata_anno_solare = ultPdf ? null : (inpsRimasta > 0 ? inpsRimasta : null);
+      } else if (tipoDoc === 'dichiarazione' && ultPdf) {
+        // Ultima dichiarazione rimossa senza snapshot:
+        // Non possiamo sapere i valori precedenti, ma azzeriamo l'imposta_sost
+        // (il campo più critico per i cascade) e i campi da PDF.
+        // L'utente dovrà ricalcolare manualmente, ma almeno il cascade è corretto.
+        revert.imposta_sost             = null;
+        revert.acconto_1                = 0;
+        revert.acconto_2                = 0;
+        revert.acconto_tot              = 0;
+        revert.acconto_note             = 'PDF eliminato — ricalcolo necessario';
+        revert.inps_versata_anno_solare = null;
+      }
+    }
 
+    // ── STEP 5: Scrivi il revert su Supabase ────────────────────────────
+    let revertOk = false;
+    if (revert && _anni[anno]) {
       const { error: revErr } = await sb.from('anni_fiscali')
         .update(revert)
         .eq('user_id', _user.id)
@@ -3169,24 +3241,16 @@ async function confDelDoc() {
 
       if (revErr) {
         console.warn('[confDelDoc] Revert parziale:', revErr.message);
-        toast('⚠️ Documento eliminato, ma il ripristino dati ha avuto un errore parziale.', 'err', 6000);
       } else {
+        // CRITICO: aggiorna cache locale PRIMA di renderArchivio
         Object.assign(_anni[anno], revert);
-        await syncFutureYears(anno);  // cascade acconti anno successivo
-      }
-    } else if (!snapshot && _anni[anno]) {
-      // Legacy (doc senza snapshot, caricato prima della v16):
-      // per F24 senza altri F24 → azzera solo INPS
-      if (tipoDoc === 'f24' && altriDelTipo.length === 0 && _anni[anno]?.inps_versata_anno_solare > 0) {
-        const { error: updErr } = await sb.from('anni_fiscali')
-          .update({ inps_versata_anno_solare: null, updated_at: new Date().toISOString() })
-          .eq('user_id', _user.id)
-          .eq('anno', anno);
-        if (!updErr && _anni[anno]) _anni[anno].inps_versata_anno_solare = null;
+        revertOk = true;
+        // Cascade: ricalcola acconti anno successivo con i valori ripristinati
+        await syncFutureYears(anno);
       }
     }
 
-    // ── STEP 6: Ricarica UI ───────────────────────────────────────────────
+    // ── STEP 6: Ricarica UI ─────────────────────────────────────────────
     await loadDocumenti();
     renderArchivio();
     renderSidebar();
@@ -3196,12 +3260,12 @@ async function confDelDoc() {
     closeModal('modal-del-doc');
     setSync('ok', 'Sincronizzato');
 
-    const msgRevert = revertPossibile
-      ? ` Dati anno ${anno} ripristinati ai valori precedenti.`
+    const msgExtra = revertOk
+      ? (snapshot ? ` Dati anno ${anno} ripristinati ai valori precedenti.` : ` Indicatori anno ${anno} azzerati (doc pre-v16).`)
       : altriDelTipo.length > 0
         ? ` Altri documenti presenti — dati non modificati.`
         : '';
-    toast(`🗑️ Documento eliminato.${msgRevert}`, 'ok', 6000);
+    toast(`🗑️ Documento eliminato.${msgExtra}`, 'ok', 6000);
   } catch(e) {
     setSync('err', 'Errore');
     toast('❌ Errore eliminazione: ' + e.message, 'err');
@@ -3254,12 +3318,13 @@ async function onArchPdfSelected(input) {
     _aiAnno   = anno;
 
     // ── BRANCH: successo → Dati Master da PDF (sovrascrittura silenziosa)
-    const hasFatt = (result.fatturato_lm2    || 0) > 0;
-    const hasInps = (result.inps_versata_f24 || 0) > 0 || (result.inps_dedotta_lm7 || 0) > 0;
-    const hasImp  = (result.imposta_dovuta_lm11 || 0) > 0;
+    const hasFatt     = (result.fatturato_lm2          || 0) > 0;
+    const hasInps     = (result.inps_versata_f24        || 0) > 0 || (result.inps_dedotta_lm7 || 0) > 0;
+    const hasImpF24   = (result.imposta_sostitutiva_f24 || 0) > 0;   // 1790/1791/1792
+    const hasImp      = (result.imposta_dovuta_lm11     || 0) > 0;
 
     const isDichiarazioneValida = result.tipo === 'dichiarazione' && hasFatt;
-    const isF24Valido           = result.tipo === 'f24' && hasInps;
+    const isF24Valido           = result.tipo === 'f24' && (hasInps || hasImpF24);
 
     if (isDichiarazioneValida || isF24Valido) {
       // Applica silenziosamente senza modal
@@ -3332,8 +3397,12 @@ async function applicaDatiPDFSilent(anno, r) {
   const updates = { updated_at: new Date().toISOString() };
 
   if (r.tipo === 'f24') {
-    // F24: aggiorna solo INPS versata nell'anno solare
+    // F24 — §1 Validatore.md classificazione:
+    // PXX/DPPI → inps_versata_anno_solare (contributi deducibili)
+    // 1790/1791/1792 → imposta_sost (imposta sostitutiva pagata)
     if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
+    const impSostF24 = cleanNum(r.imposta_sostitutiva_f24);
+    if (impSostF24 > 0) updates.imposta_sost = impSostF24;
   } else {
     // Dichiarazione: sovrascrittura completa con ricalcolo derivati
     if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
@@ -3651,66 +3720,128 @@ async function confermaAiResult() {
 }
 
 /* ============================================================
-   FIX 3 — CASCADE UPDATE: syncFutureYears(anno)
-   Ricalcola automaticamente gli acconti dell'anno successivo
-   ogni volta che i dati di un anno vengono salvati (PDF, manuale).
-   Esempio: aggiornato 2024 → ricalcola acconti 2025 su Supabase.
+   CASCADE UPDATE — syncFutureYears(anno)
+   
+   Quando i dati di "anno" cambiano (PDF caricato/eliminato, calcolo manuale),
+   propaga a cascata su TUTTI gli anni successivi in archivio.
+   
+   Logica differenziata per anno:
+   ─ Ha dichiarazione reale (PDF dichiarazione caricato)?
+     → Usa i suoi valori reali. Aggiorna SOLO gli acconti.
+   ─ È stimato (no PDF dichiarazione)?
+     → Ricalcola TUTTI i valori teorici da zero usando i parametri
+       dell'anno (coefficiente, aliquota, INPS tipo) applicati alla
+       base imponibile dell'anno precedente come stima del fatturato.
+   
+   Questo garantisce che gli anni futuri "vuoti" abbiano sempre
+   acconti e stime aggiornati anche senza una dichiarazione reale.
    ============================================================ */
 async function syncFutureYears(anno) {
   const annoSucc = anno + 1;
-  const dPrec    = _anni[anno];     // anno appena aggiornato (sorgente)
-  const dSucc    = _anni[annoSucc]; // anno successivo (destinazione acconti)
+  const dPrec    = _anni[anno];
+  const dSucc    = _anni[annoSucc];
 
-  // Se non esiste il record dell'anno successivo, non c'è nulla da propagare
   if (!dPrec || !dSucc) {
-    console.log(`[syncFutureYears] Anno ${annoSucc} non in archivio — nessuna propagazione.`);
+    console.log(`[syncFutureYears] Anno ${annoSucc} non in archivio — fine propagazione.`);
     return;
   }
 
   const baseImposta = dPrec.imposta_sost || 0;
 
-  // Ricalcola acconti per l'anno successivo (metodo storico — art.17 TUIR)
-  let acc1 = 0, acc2 = 0, acc_tot = 0;
-  if (baseImposta > S_ACC) {
-    acc_tot = baseImposta;
-    if (acc_tot > S_DUE) { acc1 = acc_tot * 0.4; acc2 = acc_tot * 0.6; }
-    else { acc2 = acc_tot; }
+  // ── Controlla se anno successivo ha una dichiarazione PDF reale ───────
+  const docsSucc    = _documenti[annoSucc] || [];
+  const haDichSucc  = docsSucc.some(d => d.tipo_doc === 'dichiarazione');
+
+  let updates;
+
+  if (haDichSucc) {
+    // Anno con dichiarazione reale → aggiorna solo acconti (non toccare fatturato/imposta)
+    let acc1 = 0, acc2 = 0, acc_tot = 0;
+    if (baseImposta > S_ACC) {
+      acc_tot = baseImposta;
+      if (acc_tot > S_DUE) { acc1 = acc_tot * 0.4; acc2 = acc_tot * 0.6; }
+      else { acc2 = acc_tot; }
+    }
+    updates = {
+      acconto_1:    acc1,
+      acconto_2:    acc2,
+      acconto_tot:  acc_tot,
+      acconto_note: `Base storica LM11 anno ${anno}: €${baseImposta.toFixed(2)} · Aggiornato automaticamente il ${new Date().toLocaleDateString('it-IT')}`,
+      updated_at:   new Date().toISOString()
+    };
+    console.log(`[syncFutureYears] ${anno}→${annoSucc} (ha dichiarazione — solo acconti):`, acc_tot);
+  } else {
+    // Anno stimato (no dichiarazione reale) → ricalcola TUTTO teoricamente
+    // Usa il fatturato dell'anno precedente come stima del fatturato corrente
+    // (principio della continuità storica: in assenza di dati reali, si usa l'anno precedente)
+    const fattStima = dPrec.fatturato || 0;
+    const gr        = GRUPPI[dSucc.gruppo_idx];
+    const r_forf    = fattStima * (gr?.coeff ?? dSucc.coefficiente ?? 0.78);
+
+    let c_inps = 0;
+    const tipo = dSucc.inps_tipo;
+    if (tipo === 'gs' || tipo === 'gs-pen') {
+      c_inps = r_forf * INPS_INFO[tipo].a;
+    } else if (tipo === 'art' || tipo === 'com') {
+      const info = INPS_INFO[tipo];
+      c_inps = r_forf <= info.min ? info.fisso : info.fisso + (r_forf - info.min) * info.ae;
+    } else if (tipo === 'cassa') {
+      c_inps = r_forf * ((dSucc.cassa_pct || 14.5) / 100);
+    }
+
+    // Reddito imponibile: INPS versata reale se presente, altrimenti teorica
+    const inpsVers   = dSucc.inps_versata_anno_solare || 0;
+    const inpsPerDed = (dSucc.deduci_inps && inpsVers > 0) ? inpsVers : c_inps;
+    const r_imp      = dSucc.deduci_inps ? Math.max(0, r_forf - inpsPerDed) : r_forf;
+    const imp_sost   = r_imp * dSucc.aliquota;
+    const tot_oneri  = imp_sost + c_inps;
+
+    let acc1 = 0, acc2 = 0, acc_tot = 0;
+    if (baseImposta > S_ACC) {   // gli acconti si basano sull'anno PRECEDENTE (storico)
+      acc_tot = baseImposta;
+      if (acc_tot > S_DUE) { acc1 = acc_tot * 0.4; acc2 = acc_tot * 0.6; }
+      else { acc2 = acc_tot; }
+    }
+
+    updates = {
+      fatturato:       fattStima,
+      reddito_forf:    r_forf,
+      contributi_inps: c_inps,
+      reddito_imp:     r_imp,
+      imposta_sost:    imp_sost,
+      totale_oneri:    tot_oneri,
+      acconto_1:       acc1,
+      acconto_2:       acc2,
+      acconto_tot:     acc_tot,
+      acconto_note:    `Stima automatica su base ${anno} (fatturato ${dPrec.fatturato > 0 ? '€'+dPrec.fatturato.toFixed(0) : 'n/d'}) · Aggiornato il ${new Date().toLocaleDateString('it-IT')}`,
+      updated_at:      new Date().toISOString()
+    };
+    console.log(`[syncFutureYears] ${anno}→${annoSucc} (stimato — ricalcolo completo): imp=${imp_sost.toFixed(2)}, acc_tot=${acc_tot.toFixed(2)}`);
   }
 
-  const updates = {
-    acconto_1:    acc1,
-    acconto_2:    acc2,
-    acconto_tot:  acc_tot,
-    acconto_note: `Base storica LM11 anno ${anno}: ${fmt(baseImposta)} · Aggiornato automaticamente il ${new Date().toLocaleDateString('it-IT')}`,
-    updated_at:   new Date().toISOString()
-  };
-
-  console.log(`[syncFutureYears] Propagazione ${anno} → ${annoSucc}:`, updates);
-
-  // Salva su Supabase
+  // ── Salva su Supabase ────────────────────────────────────────────────
   const { error } = await sb.from('anni_fiscali')
     .update(updates)
     .eq('id', dSucc.id)
     .eq('user_id', _user.id);
 
   if (error) {
-    console.warn(`[syncFutureYears] Errore aggiornamento anno ${annoSucc}:`, error.message);
-    toast(`⚠️ Acconti ${annoSucc} non aggiornati automaticamente: ${error.message}`, 'err', 5000);
+    console.warn(`[syncFutureYears] Errore anno ${annoSucc}:`, error.message);
+    toast(`⚠️ Propagazione ${annoSucc} fallita: ${error.message}`, 'err', 5000);
     return;
   }
 
-  // Aggiorna cache locale
+  // ── Aggiorna cache locale ────────────────────────────────────────────
   Object.assign(_anni[annoSucc], updates);
 
-  // FIX 3: Aggiornamento UI immediato senza ricaricare la pagina
   renderArchivio();
   renderSidebar();
   renderCalendario();
 
-  toast(`🔄 Acconti ${annoSucc} ricalcolati automaticamente su base ${anno} (${fmt(baseImposta)})`, 'ok', 5000);
+  const descTipo = haDichSucc ? 'acconti' : 'stima completa';
+  toast(`🔄 Anno ${annoSucc} aggiornato automaticamente (${descTipo} su base ${anno}: €${fmt(baseImposta)})`, 'ok', 4000);
 
-  // Propaga ricorsivamente agli anni ancora successivi (es. 2025 → 2026)
-  // Solo se anche il successivo è in archivio, per non propagare oltre il necessario
+  // ── Ricorsione: propaga agli anni ancora successivi ──────────────────
   if (_anni[annoSucc + 1]) {
     await syncFutureYears(annoSucc);
   }
