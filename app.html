@@ -34,8 +34,20 @@ body{background:var(--bg);color:var(--t1);
   background-image:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(31,111,235,.12),transparent),
     radial-gradient(ellipse 60% 40% at 80% 80%,rgba(63,185,80,.06),transparent);}
 
-/* LOADING GUARD — mostrato durante il check sessione all'avvio */
-#loading-screen{
+/* ── DASHBOARD RICONCILIAZIONE (Validatore.md §4B) ── */
+.riconcil-wrap{margin-top:12px;padding:14px;background:var(--s2);border:1px solid var(--bd2);border-radius:10px}
+.riconcil-title{font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.riconcil-table{width:100%;border-collapse:collapse;font-size:12px}
+.riconcil-table th{text-align:left;color:var(--t3);font-weight:600;padding:5px 8px;border-bottom:1px solid var(--bd)}
+.riconcil-table td{padding:5px 8px;border-bottom:1px solid rgba(42,49,64,.5);color:var(--t2)}
+.riconcil-table td:first-child{color:var(--t1);font-weight:500}
+.riconcil-table td.ok{color:var(--gr);font-weight:700}
+.riconcil-table td.warn{color:var(--ye);font-weight:700}
+.riconcil-table td.err{color:var(--re);font-weight:700}
+.riconcil-alert{margin-top:10px;padding:8px 10px;border-radius:6px;font-size:11.5px;line-height:1.5}
+.riconcil-alert.verde{background:var(--gr-d);border:1px solid var(--gr-b);color:var(--gr)}
+.riconcil-alert.giallo{background:var(--ye-d);border:1px solid var(--ye-b);color:var(--ye)}
+.riconcil-alert.rosso{background:var(--re-d);border:1px solid var(--re-b);color:var(--re)}
   position:fixed;inset:0;z-index:9999;
   background:var(--bg);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
@@ -130,17 +142,29 @@ body{background:var(--bg);color:var(--t1);
 
 /* BOTTOM NAV */
 .bot-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:300;
-  background:rgba(22,27,34,.96);border-top:1px solid var(--bd);
-  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  background:rgba(13,17,23,.97);border-top:1px solid var(--bd);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   padding-bottom:var(--safe-b)}
-.bot-nav-inner{display:flex}
-.bn-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:8px 4px;gap:3px;border:none;background:none;cursor:pointer;
-  color:var(--t3);transition:color .15s;min-height:52px}
-.bn-btn:active{background:var(--s2)}
+.bot-nav-inner{display:flex;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;-ms-overflow-style:none;
+  scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+  padding:0 4px}
+.bot-nav-inner::-webkit-scrollbar{display:none}
+.bot-nav::after{content:'';position:absolute;right:0;top:0;
+  bottom:var(--safe-b,0);width:28px;
+  background:linear-gradient(to right,transparent,rgba(13,17,23,.9));
+  pointer-events:none}
+.bn-btn{flex:0 0 auto;width:64px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:8px 2px;gap:3px;border:none;background:none;cursor:pointer;
+  color:var(--t3);transition:color .15s;min-height:52px;scroll-snap-align:start}
+.bn-btn:active{background:rgba(255,255,255,.06);border-radius:8px}
 .bn-btn.active{color:var(--ac)}
-.bn-ico{font-size:20px;line-height:1}
-.bn-lbl{font-size:10px;font-weight:700;letter-spacing:.02em}
+.bn-btn.active .bn-ico{transform:scale(1.1)}
+.bn-ico{font-size:20px;line-height:1;transition:transform .15s}
+.bn-lbl{font-size:9.5px;font-weight:700;letter-spacing:.01em;
+  white-space:nowrap;max-width:62px;text-align:center}
+#bn-admin{display:none}
 
 /* RESPONSIVE */
 @media(max-width:768px){
@@ -149,6 +173,17 @@ body{background:var(--bg);color:var(--t1);
   .bot-nav{display:block}
   .content{margin-left:0;padding:14px 14px calc(72px + var(--safe-b))}
   body{font-size:14px}
+}
+/* Indicatore "scorri" — puntino attivo nella nav bar */
+.bn-btn.active::after{content:'';display:block;width:4px;height:4px;
+  border-radius:50%;background:var(--ac);margin:-1px auto 0}
+/* Hint visivo scroll: freccia right sfumata */
+@media(max-width:768px){
+  .bot-nav{position:relative}
+  .bot-nav::after{content:'›';position:absolute;right:6px;
+    top:50%;transform:translateY(-50%);
+    font-size:18px;font-weight:700;color:var(--t3);
+    pointer-events:none;opacity:.5;margin-top:calc(var(--safe-b,0px) * -0.5)}
 }
 
 /* VIEWS */
@@ -964,13 +999,36 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   </div>
 
   <!-- BOTTOM NAV -->
-  <nav class="bot-nav"><div class="bot-nav-inner">
-    <button class="bn-btn active" id="bn-calcolo" onclick="showView('calcolo')"><span class="bn-ico">✏️</span><span class="bn-lbl">Calcolo</span></button>
-    <button class="bn-btn" id="bn-archivio" onclick="showView('archivio')"><span class="bn-ico">🗂️</span><span class="bn-lbl">Archivio</span></button>
-    <button class="bn-btn" id="bn-grafici" onclick="showView('grafici')"><span class="bn-ico">📈</span><span class="bn-lbl">Grafici</span></button>
-    <button class="bn-btn" id="bn-documenti" onclick="showView('documenti')"><span class="bn-ico">📎</span><span class="bn-lbl">Documenti</span></button>
-    <button class="bn-btn" id="bn-profilo" onclick="openModal('modal-user')"><span class="bn-ico">👤</span><span class="bn-lbl">Profilo</span></button>
-  </div></nav>
+  <nav class="bot-nav" id="bot-nav">
+    <div class="bot-nav-inner" id="bot-nav-inner">
+      <!-- Voci principali -->
+      <button class="bn-btn active" id="bn-calcolo" onclick="showView('calcolo')">
+        <span class="bn-ico">✏️</span><span class="bn-lbl">Calcolo</span>
+      </button>
+      <button class="bn-btn" id="bn-archivio" onclick="showView('archivio')">
+        <span class="bn-ico">🗂️</span><span class="bn-lbl">Archivio</span>
+      </button>
+      <button class="bn-btn" id="bn-grafici" onclick="showView('grafici')">
+        <span class="bn-ico">📈</span><span class="bn-lbl">Statistiche</span>
+      </button>
+      <button class="bn-btn" id="bn-calendario" onclick="showView('calendario')">
+        <span class="bn-ico">📅</span><span class="bn-lbl">Scadenze</span>
+      </button>
+      <button class="bn-btn" id="bn-confronto" onclick="showView('confronto')">
+        <span class="bn-ico">📊</span><span class="bn-lbl">Confronto</span>
+      </button>
+      <button class="bn-btn" id="bn-f24" onclick="showView('f24')">
+        <span class="bn-ico">📑</span><span class="bn-lbl">F24</span>
+      </button>
+      <button class="bn-btn" id="bn-documenti" onclick="showView('documenti')">
+        <span class="bn-ico">📎</span><span class="bn-lbl">Documenti</span>
+      </button>
+      <!-- Admin: visibile solo se is_admin (gestito da JS) -->
+      <button class="bn-btn" id="bn-admin" onclick="showView('admin')" style="display:none">
+        <span class="bn-ico">🛡️</span><span class="bn-lbl">Admin</span>
+      </button>
+    </div>
+  </nav>
 </div>
 
 <!-- MODAL UTENTE -->
@@ -1500,7 +1558,10 @@ async function initAppData() {
   g('um-email').textContent = _profile.email || _user.email;
   ['sb-role','um-role'].forEach(id => { g(id).textContent = roleText; g(id).className = roleClass; });
 
-  if (isAdmin) g('nav-admin').style.display = 'flex';
+  if (isAdmin) {
+    g('nav-admin').style.display = 'flex';
+    if (g('bn-admin')) g('bn-admin').style.display = 'flex';
+  }
 
   // Pre-popola ATECO dal profilo
   if (_profile.ateco && !g('f-ateco').value) {
@@ -1710,7 +1771,10 @@ const QUADRO_LM_MAP = {
   // [\s\S]{0,800} permette distanza per layout multi-colonna PDF.js
   fatturato: /LM22[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i,
   inps:      /LM35[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i,
-  imposta:   /LM39[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i
+  imposta:   /LM39[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i,
+  // LM43 = Eccedenza d'imposta riportata dalla dichiarazione precedente (Validatore.md §4A)
+  // Sottratta automaticamente dal debito dell'anno corrente per evitare doppio pagamento
+  lm43:      /LM43[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i
 };
 
 function extractLMField(normalizedText, pattern) {
@@ -1864,17 +1928,26 @@ function tryParseRPF(text) {
     if (mA && parseInt(mA[1]) > 100000) ateco = mA[1];
   }
 
-  console.log('[RPF] FINALE — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta, '| ateco:', ateco, '| anno:', anno);
+  // ── LM43 — Eccedenza d'imposta anno precedente (Validatore.md §4A) ──
+  // Se presente e > 0 viene sottratta dall'imposta dovuta per evitare
+  // che l'utente paghi più del dovuto rispetto al commercialista.
+  let lm43 = 0;
+  const mLM43 = t.match(/LM43[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i);
+  if (mLM43 && mLM43[1]) lm43 = parseFloat(mLM43[1].replace(/\.(?=\d{3}[,])/g,'').replace(',','.')) || 0;
+
+  console.log('[RPF] FINALE — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta, '| lm43:', lm43, '| ateco:', ateco, '| anno:', anno);
 
   return {
     tipo: 'dichiarazione', anno, ateco,
     fatturato_lm2:       fatturato,
     inps_dedotta_lm7:    inps,
     imposta_dovuta_lm11: imposta,
+    lm43_eccedenza:      lm43,
     inps_versata_f24:    0,
     note: '\u26A1 Estratto da Modello RPF (0 token AI)' +
           (ateco  ? ` · ATECO ${ateco}` : '') +
           (anno   ? ` · Anno ${anno}`   : '') +
+          (lm43   ? ` · \u2757 LM43 eccedenza: \u20AC${lm43.toLocaleString('it-IT',{minimumFractionDigits:2})}` : '') +
           (!inps || !imposta ? ' · \u26A0\uFE0F Verifica INPS/imposta manualmente.' : '')
   };
 }
@@ -2070,6 +2143,7 @@ Se non trovi il rigo LM39 (Imposta sostitutiva), cerca LM38 (Reddito al netto de
   "fatturato": float,
   "inps_versata": float,
   "imposta_dovuta": float,
+  "lm43_eccedenza": float_or_null,
   "tipo": "dichiarazione",
   "sezione_rilevata": "es: Quadro LM - Sezione II - Regime forfettario",
   "affidabilita": "high" | "medium" | "low",
@@ -2079,6 +2153,12 @@ Se non trovi il rigo LM39 (Imposta sostitutiva), cerca LM38 (Reddito al netto de
     "messaggio": "descrizione tecnica breve"
   }
 }
+
+## 7. REGOLA LM43 — ECCEDENZA ANNO PRECEDENTE (CRITICA)
+Il rigo LM43 contiene l'eccedenza d'imposta riportata dalla dichiarazione precedente.
+- Se LM43 > 0: includilo nel JSON come "lm43_eccedenza". Il motore lo sottrarrà automaticamente dall'imposta dovuta (Validatore.md §4A).
+- Se LM43 assente o = 0: imposta "lm43_eccedenza": 0.
+- MAI confondere LM43 con altri righi. LM43 è specificamente "Eccedenza riportata dalla precedente dichiarazione".
 
 ## REGOLA ASSOLUTA
 Non inventare mai cifre assenti. Dati parziali → congruente=false, status=giallo, descrivi cosa manca.
@@ -2111,6 +2191,8 @@ function normalizzaRisultato(raw, annoFallback) {
     fatturato_lm2:      fatt,
     inps_dedotta_lm7:   inps,
     imposta_dovuta_lm11: imp,
+    // LM43 — Eccedenza riportata dalla dichiarazione precedente (Validatore.md §4A)
+    lm43_eccedenza:     parseFloat(raw.lm43_eccedenza) || 0,
     // FIX F24: il nuovo formato Gemini usa "inps_versata" anche per F24.
     // Se inps_versata_f24 non è presente MA tipo è f24, usa inps_versata.
     inps_versata_f24: parseFloat(raw.inps_versata_f24) ||
@@ -2848,8 +2930,21 @@ function showView(name) {
   const nd = g('nav-' + name), nb = g('bn-' + name);
   if (nd) nd.classList.add('active');
   if (nb) nb.classList.add('active');
-  const titles = { calcolo:'Calcolo', archivio:'Archivio', confronto:'Confronto', admin:'Admin', grafici:'Statistiche', calendario:'Scadenze', f24:'F24 Prec.', documenti:'Documenti' };
+  const titles = { calcolo:'Calcolo', archivio:'Archivio', confronto:'Confronto', admin:'Admin', grafici:'Statistiche', calendario:'Scadenze', f24:'F24', documenti:'Documenti' };
   g('mob-title').textContent = titles[name] || 'ForfettarioApp';
+
+  // Scroll automatico della bottom nav per mostrare il pulsante attivo
+  const activeBtn = g('bn-' + name);
+  if (activeBtn) {
+    const nav = g('bot-nav-inner');
+    if (nav) {
+      const btnLeft   = activeBtn.offsetLeft;
+      const btnWidth  = activeBtn.offsetWidth;
+      const navWidth  = nav.offsetWidth;
+      const targetScroll = btnLeft - (navWidth / 2) + (btnWidth / 2);
+      nav.scrollTo({ left: Math.max(0, targetScroll), behavior: 'smooth' });
+    }
+  }
   if (name === 'archivio')   renderArchivio();
   if (name === 'grafici')    renderGrafici();
   if (name === 'calendario') renderCalendario();
@@ -3341,6 +3436,126 @@ async function onArchPdfSelected(input) {
 }
 
 /* ============================================================
+   DASHBOARD DI RICONCILIAZIONE (Validatore.md §4B)
+   Confronta Dato Dichiarato (da PDF) vs Dato Teorico (motore interno).
+   Se scarto > 1% genera alert con spiegazione della regola fiscale
+   (Cassa, Acconti, Eccedenze) che giustifica la differenza.
+   ============================================================ */
+function renderRiconciliazione(anno, r, updates) {
+  const d = _anni[anno];
+  if (!d) return;
+
+  const fatt     = updates.fatturato       || d.fatturato       || 0;
+  const coeff    = d.coefficiente || GRUPPI[d.gruppo_idx]?.coeff || 0;
+  const aliq     = d.aliquota || 0;
+  const inps     = updates.contributi_inps || d.contributi_inps || 0;
+
+  const dichFatt  = fatt;
+  const dichImp   = updates.imposta_sost   || d.imposta_sost    || 0;
+  const dichInps  = updates.inps_versata_anno_solare || d.inps_versata_anno_solare || 0;
+  const lm43      = parseFloat(r.lm43_eccedenza || 0);
+
+  // Calcolo teorico (motore deterministico)
+  const teorRForf  = dichFatt * coeff;
+  const teorRImp   = d.deduci_inps ? Math.max(0, teorRForf - inps) : teorRForf;
+  const teorImp    = Math.max(0, teorRImp * aliq - lm43);
+
+  // Scarto percentuale
+  const scarto = dichImp > 0 && teorImp > 0
+    ? Math.abs((dichImp - teorImp) / teorImp * 100)
+    : null;
+
+  const fmtE = v => v > 0 ? '€' + v.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+
+  let scartoClass = 'ok', scartoTxt = '—';
+  let alertClass = 'verde', alertMsg = '✅ Dati congruenti — il valore dichiarato corrisponde al calcolo teorico.';
+
+  if (scarto !== null) {
+    scartoTxt = scarto.toFixed(2) + '%';
+    if (scarto > 10) {
+      scartoClass = 'err'; alertClass = 'rosso';
+      alertMsg = `🔴 Discrepanza ${scarto.toFixed(1)}% — Verifica possibili cause: deduzioni aggiuntive non contemplate, arrotondamenti del modello, rigo LM errato, o coefficiente ATECO differente. Confronta con il commercialista.`;
+    } else if (scarto > 1) {
+      scartoClass = 'warn'; alertClass = 'giallo';
+      const cause = [];
+      if (lm43 > 0)  cause.push(`Eccedenza LM43 (${fmtE(lm43)}) già dedotta`);
+      if (dichInps > 0 && dichInps !== inps) cause.push(`INPS versata reale (${fmtE(dichInps)}) vs stimata (${fmtE(inps)})`);
+      alertMsg = `⚠️ Scarto ${scarto.toFixed(1)}%${cause.length ? ' — Possibili cause: ' + cause.join('; ') : ''}. Verifica deduzioni extra o arrotondamenti del modello AdE.`;
+    } else {
+      scartoClass = 'ok'; alertClass = 'verde';
+      alertMsg = `✅ Congruente (scarto ${scarto.toFixed(2)}%) — Il valore dichiarato corrisponde al calcolo teorico entro l'1%.`;
+    }
+  }
+
+  const html = `
+    <div class="riconcil-wrap">
+      <div class="riconcil-title">🔎 Dashboard Riconciliazione — Anno ${anno} <span style="font-size:10px;color:var(--t3);font-weight:400">(Validatore §4B)</span></div>
+      <div style="overflow-x:auto">
+      <table class="riconcil-table">
+        <thead><tr>
+          <th>Voce</th>
+          <th>📄 Dichiarato (PDF)</th>
+          <th>🧮 Teorico (motore)</th>
+          <th>Δ Scarto</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>Fatturato (LM22)</td>
+            <td>${fmtE(dichFatt)}</td>
+            <td>${fmtE(dichFatt)}</td>
+            <td class="ok">—</td>
+          </tr>
+          <tr>
+            <td>Reddito Forfettario (×${(coeff*100).toFixed(0)}%)</td>
+            <td>—</td>
+            <td>${fmtE(teorRForf)}</td>
+            <td class="ok">—</td>
+          </tr>
+          <tr>
+            <td>Contributi INPS (LM35)</td>
+            <td>${dichInps > 0 ? fmtE(dichInps) : '—'}</td>
+            <td>${fmtE(inps)}</td>
+            <td class="${Math.abs(dichInps - inps) > 1 ? 'warn' : 'ok'}">${dichInps > 0 ? (Math.abs(dichInps - inps)/Math.max(inps,1)*100).toFixed(1)+'%' : '—'}</td>
+          </tr>
+          ${lm43 > 0 ? `<tr>
+            <td>♻️ Eccedenza LM43 (dedotta)</td>
+            <td>${fmtE(lm43)}</td>
+            <td>${fmtE(lm43)}</td>
+            <td class="ok">Applicata</td>
+          </tr>` : ''}
+          <tr>
+            <td><strong>Imposta Sostitutiva (LM39)</strong></td>
+            <td><strong>${fmtE(dichImp)}</strong></td>
+            <td><strong>${fmtE(teorImp)}</strong></td>
+            <td class="${scartoClass}"><strong>${scartoTxt}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="riconcil-alert ${alertClass}">${alertMsg}</div>
+    </div>`;
+
+  // Inserisce il pannello nell'archivio, nel body dell'anno corrente
+  const bodyEl = g('ayc-b-' + anno);
+  if (bodyEl) {
+    // Rimuove eventuale riconciliazione precedente
+    const old = bodyEl.querySelector('.riconcil-wrap');
+    if (old) old.remove();
+
+    // Inserisce dopo il blocco bdt (breakdown dettaglio)
+    const bdt = bodyEl.querySelector('.bdt');
+    if (bdt) bdt.insertAdjacentHTML('afterend', html);
+    else bodyEl.insertAdjacentHTML('beforeend', html);
+
+    // Auto-scroll al pannello
+    setTimeout(() => {
+      const rw = bodyEl.querySelector('.riconcil-wrap');
+      if (rw) rw.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 200);
+  }
+}
+
+/* ============================================================
    DATI MASTER DA PDF — sovrascrittura silenziosa (v15)
    Sostituisce il vecchio flusso modal+conferma per i casi di
    estrazione riuscita. Nessun confronto visivo, nessun modal.
@@ -3429,7 +3644,18 @@ async function applicaDatiPDFSilent(anno, r) {
       const r_imp      = d.deduci_inps ? Math.max(0, r_forf - inpsPerDed) : r_forf;
 
       // Imposta sostitutiva: usa quella estratta dal PDF se presente, altrimenti ricalcola
-      const imp_sost   = imposta > 0 ? imposta : r_imp * d.aliquota;
+      const imp_sost_raw = imposta > 0 ? imposta : r_imp * d.aliquota;
+
+      // ── LM43 — Eccedenza anno precedente (Validatore.md §4A) ────────
+      // Se il PDF riporta un'eccedenza dal periodo d'imposta precedente,
+      // va sottratta dall'imposta dovuta per evitare che l'utente paghi
+      // più del dovuto rispetto al commercialista.
+      const lm43 = cleanNum(r.lm43_eccedenza || 0);
+      const imp_sost = Math.max(0, imp_sost_raw - lm43);
+      if (lm43 > 0) {
+        console.log(`[applicaDatiPDFSilent] LM43 eccedenza: €${lm43} → imposta netta: €${imp_sost} (era €${imp_sost_raw})`);
+      }
+
       const tot_oneri  = imp_sost + c_inps;
 
       // Acconti (art. 17 TUIR — metodo storico)
@@ -3450,7 +3676,7 @@ async function applicaDatiPDFSilent(anno, r) {
         acconto_1:       acc1,
         acconto_2:       acc2,
         acconto_tot:     acc_tot,
-        acconto_note:    `Dati Master da PDF · ${new Date().toLocaleDateString('it-IT')} · ${r.sezione_rilevata || 'Quadro LM'}`
+        acconto_note:    `Dati Master da PDF · ${new Date().toLocaleDateString('it-IT')} · ${r.sezione_rilevata || 'Quadro LM'}${lm43 > 0 ? ` · LM43 eccedenza −${fmt(lm43)}` : ''}`
       });
     }
   }
@@ -3477,10 +3703,20 @@ async function applicaDatiPDFSilent(anno, r) {
   renderArchivio();
   renderSidebar();
 
+  // ── DASHBOARD RICONCILIAZIONE (Validatore.md §4B) ────────────────
+  // Mostra il confronto Dichiarato vs Teorico solo per le dichiarazioni
+  if (r.tipo === 'dichiarazione' && Object.keys(updates).length > 1) {
+    // Piccolo delay per dare tempo a renderArchivio di costruire il DOM
+    setTimeout(() => renderRiconciliazione(annoTarget, r, updates), 150);
+  }
+
   // Toast successo semplice (nessun confronto visivo)
   const tipoDoc = r.tipo === 'f24' ? 'F24' : 'Dichiarazione';
   const affIco  = r.affidabilita === 'high' ? '🟢' : r.affidabilita === 'medium' ? '🟡' : '';
-  toast(`✅ Dati aggiornati correttamente dal documento ${affIco} (${tipoDoc} · Anno ${annoTarget})`, 'ok', 6000);
+  const lm43App = (r.lm43_eccedenza || 0) > 0
+    ? ` · ♻️ LM43 eccedenza −${fmt(r.lm43_eccedenza)} applicata`
+    : '';
+  toast(`✅ Dati aggiornati correttamente dal documento ${affIco} (${tipoDoc} · Anno ${annoTarget})${lm43App}`, 'ok', 7000);
 
   // ── CASCADE ACCONTI ANNO SUCCESSIVO ──────────────────────────────────
   await syncFutureYears(annoTarget);
@@ -4797,6 +5033,9 @@ async function loadAdmin() {
   }
   g('adm-tbl').innerHTML = '<div class="loading"><div class="spinner"></div><span>Caricamento...</span></div>';
 
+  // ── Controllo aggiornamenti AdE (Sentinel Badge) ──────────────
+  checkSentinelUpdates();
+
   // ⚠️  Admin vede SOLO dati anagrafici — nessun dato fiscale
   const { data: profiles, error: pe } = await sb
     .from('profiles')
@@ -4934,12 +5173,59 @@ function showSentinelBadge(message) {
   }
 }
 
-function confirmSentinelUpdate() {
+// ── CHECK AUTOMATICO AGGIORNAMENTI ADE ──────────────────────────
+// Interroga la tabella aggiornamenti_ade per notifiche non confermate.
+// Se la tabella non esiste, fallback automatico (silenzioso).
+let _sentinelId = null;
+
+async function checkSentinelUpdates() {
+  if (_profile?.ruolo !== 'admin') return;
+  try {
+    const { data, error } = await sb
+      .from('aggiornamenti_ade')
+      .select('id, messaggio, anno_riferimento, created_at')
+      .eq('confermato', false)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (!error && data && data.length > 0) {
+      const n = data[0];
+      _sentinelId = n.id;
+      const msg = n.messaggio ||
+        (n.anno_riferimento ? `Rilevata modifica aliquote ${n.anno_riferimento} — Aggiornare?`
+                             : 'Rilevata modifica aliquote AdE — Aggiornare tabelle?');
+      showSentinelBadge(msg);
+      console.log('[sentinel] Notifica AdE non confermata:', msg);
+    } else {
+      // Nessuna notifica: nascondi badge se visibile
+      const badge = g('sentinel-badge');
+      if (badge) badge.style.display = 'none';
+    }
+  } catch(e) {
+    // Tabella aggiornamenti_ade non presente nel progetto Supabase → silenzioso
+    console.warn('[sentinel] Tabella aggiornamenti_ade non disponibile (da creare):', e.message);
+  }
+}
+
+async function confirmSentinelUpdate() {
   if (!confirm('Confermi di voler aggiornare le tabelle dei parametri fiscali?\nQuesta operazione non può essere annullata automaticamente.')) return;
+
+  // Marca la notifica come confermata nel DB (se esiste l'id)
+  if (_sentinelId) {
+    try {
+      await sb.from('aggiornamenti_ade')
+        .update({ confermato: true, confermato_da: _profile?.email, confermato_il: new Date().toISOString() })
+        .eq('id', _sentinelId);
+      _sentinelId = null;
+    } catch(e) {
+      console.warn('[sentinel] Impossibile marcare notifica:', e.message);
+    }
+  }
+
   const badge = g('sentinel-badge');
   if (badge) badge.style.display = 'none';
   switchAdmTab('fiscal');
-  toast('✅ Sezione Parametri Fiscali aperta per la revisione manuale.', 'ok', 5000);
+  toast('✅ Sezione Parametri Fiscali aperta — aggiorna i coefficienti e premi Salva.', 'ok', 5000);
 }
 
 let _admAnniAll = []; // mantenuto per compatibilità interna
