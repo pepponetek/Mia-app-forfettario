@@ -607,12 +607,12 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   border:1px solid var(--bd);border-radius:6px;color:var(--t1);font-family:monospace;
   font-size:14px;outline:none}
 .ai-result-field .arf-edit:focus{border-color:var(--ac)}
-/* non-congruente rimosso — sistema "Dati Master da PDF" v15 */
+
 .ai-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;
   background:rgba(188,140,255,.1);border:1px solid var(--pu-b);color:var(--pu);
   font-size:11px;font-weight:700;margin-bottom:14px}
 
-/* ── Semaforo: solo giallo/rosso per casi diagnostici (verde rimosso — Dati Master da PDF) */
+/* ── Semaforo diagnostico: giallo=parziale, rosso=fallito */
 .ai-conv-box{display:none;border-radius:8px;overflow:hidden;margin-bottom:10px;
   border:1px solid var(--bd)}
 .ai-conv-box.show{display:block}
@@ -1242,30 +1242,6 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     </div>
   </div>
 </div>
-    <div id="ai-debug-wrap" style="display:none; margin-top:10px">
-      <details>
-        <summary style="font-size:0.8rem;color:var(--t2);cursor:pointer;user-select:none">
-          🔍 Testo grezzo estratto dal PDF (debug)
-        </summary>
-        <textarea id="ai-debug-txt" readonly
-          style="width:100%;height:120px;margin-top:6px;font-size:0.72rem;
-                 font-family:monospace;background:var(--bg2);color:var(--t2);
-                 border:1px solid var(--bd);border-radius:6px;padding:6px;
-                 resize:vertical;line-height:1.3"></textarea>
-        <button onclick="navigator.clipboard?.writeText(document.getElementById('ai-debug-txt').value).then(()=>toast('📋 Testo copiato','ok',2000))"
-          style="font-size:0.75rem;margin-top:4px;padding:3px 10px;border-radius:4px;
-                 border:1px solid var(--bd);background:transparent;color:var(--t2);cursor:pointer">
-          📋 Copia testo
-        </button>
-      </details>
-    </div>
-
-    <div class="btn-row" style="margin-top:14px">
-      <button class="btn btn-gr btn-sm" id="ai-btn-apply" onclick="confermaAiResult()">✅ Applica al cloud</button>
-      <button class="btn btn-ol btn-sm" onclick="closeModal('modal-ai-result')">Annulla</button>
-    </div>
-  </div>
-</div>
 
 <!-- MODAL CONFERMA DATI PDF — mostrato dopo estrazione riuscita, prima di scrivere nel DB -->
 <div class="modal-bg" id="modal-pdf-confirm">
@@ -1309,6 +1285,31 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
       <button class="btn btn-ol" onclick="annullaApplicaDatiPDF()">
         ✖ Annulla
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RESET PASSWORD -->
+<div class="modal-bg" id="modal-reset-pw">
+  <div class="modal-box" style="max-width:400px">
+    <h3>&#128273; Nuova password</h3>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:16px">Inserisci la tua nuova password.</p>
+    <div class="form-group">
+      <label class="form-label">Nuova password *</label>
+      <div style="position:relative">
+        <input type="password" id="rp-pw1" class="form-input" placeholder="Minimo 6 caratteri">
+        <button type="button" class="pw-toggle" onclick="togglePw('rp-pw1',this)">&#128065;</button>
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label class="form-label">Conferma password *</label>
+      <div style="position:relative">
+        <input type="password" id="rp-pw2" class="form-input" placeholder="Ripeti la password">
+        <button type="button" class="pw-toggle" onclick="togglePw('rp-pw2',this)">&#128065;</button>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:18px">
+      <button class="btn btn-gr" id="btn-reset-pw" onclick="doResetPassword()">&#128273; Aggiorna password</button>
     </div>
   </div>
 </div>
@@ -1407,7 +1408,13 @@ let _delId   = null; // UUID riga anno da eliminare
 let _delDoc  = null; // { id, storagePath, anno } — documento da eliminare
 let _admData = [];   // per export CSV
 let _ready   = false;// anti-doppio init
-let _bozzaRow = null; // riga bozza da aggiornare
+let _bozzaRow    = null; // riga bozza da aggiornare
+let _documenti   = {};   // { anno: [{ id, nome_file, storage_path, tipo_doc }] }
+let _aiAnno      = null; // anno target analisi PDF corrente
+let _aiFile      = null; // file PDF originale (upload Storage dopo conferma)
+let _aiResult    = null; // risultato normalizzato dalla Edge Function / parser locale
+let _lastPdfText = '';   // testo grezzo estratto dall'ultimo PDF (diagnostica)
+let _fullPdfText = '';   // testo completo PDF (detection tipo documento)
 
 /* ============================================================
    UTILITY
@@ -1542,6 +1549,21 @@ async function doLogout() {
   // Il reset e redirect viene gestito da onAuthStateChange -> resetApp()
 }
 
+/* Aggiorna la password dalla sessione temporanea di recovery */
+async function doResetPassword() {
+  const pw1 = (g('rp-pw1')?.value || '').trim();
+  const pw2 = (g('rp-pw2')?.value || '').trim();
+  if (pw1.length < 6) { toast('La password deve avere almeno 6 caratteri', 'err'); return; }
+  if (pw1 !== pw2)    { toast('Le due password non coincidono', 'err'); return; }
+  const btn = g('btn-reset-pw');
+  btn.textContent = 'Aggiornamento...'; btn.disabled = true;
+  const { error } = await sb.auth.updateUser({ password: pw1 });
+  btn.textContent = 'Aggiorna password'; btn.disabled = false;
+  if (error) { toast('Errore: ' + error.message, 'err'); return; }
+  closeModal('modal-reset-pw');
+  toast('Password aggiornata! Accedi con la nuova password.', 'ok', 6000);
+}
+
 /* ============================================================
    INIT APP
    ============================================================ */
@@ -1609,12 +1631,13 @@ async function initAppData() {
   g('f-anno').value = now.getFullYear();
 
   await loadAnni();
-  await loadDocumenti(); // FIX A: attende documenti (non più fire-and-forget)
+  await loadDocumenti(); // attende profile+anni+documenti prima di mostrare la UI
   onAnnoChange();
   setSync('ok', 'Sincronizzato');
 
   // Event delegation per pulsanti documenti nell'archivio
   // Evita problemi con onclick inline e caratteri speciali nei nomi file
+  // Registrato UNA SOLA VOLTA (guard: _ready garantisce no-doppio-init)
   document.addEventListener('click', function(e) {
     const dlBtn  = e.target.closest('.doc-dl-btn');
     const delBtn = e.target.closest('.doc-del-btn');
@@ -1629,8 +1652,12 @@ async function initAppData() {
 }
 
 function resetApp() {
+  // Reset completo dello stato applicazione (logout o token scaduto)
   _ready = false; _user = null; _profile = null;
-  _anni = {}; _last = null; _admData = []; _documenti = {}; _aiFile = null;
+  _anni = {}; _last = null; _admData = []; _documenti = {};
+  _aiFile = null; _aiAnno = null; _aiResult = null;
+  _lastPdfText = ''; _fullPdfText = '';
+  _delId = null; _delDoc = null; _bozzaRow = null;
   // Pulisce token Supabase da localStorage per evitare loop al prossimo avvio
   try {
     Object.keys(localStorage).forEach(k => {
@@ -1770,13 +1797,13 @@ function onAnnoChange() {
 }
 
 /* ============================================================
-   FIX 1 — ESTRAZIONE LOCALE MODELLO RPF (Redditi Persone Fisiche)
+   ESTRAZIONE LOCALE MODELLO RPF (Redditi Persone Fisiche)
    Il layer testuale del Modello RPF separa etichette dai valori.
    Questa funzione intercetta il testo ed estrae i dati direttamente
    senza consumare quota Gemini (~98% risparmio token).
    ============================================================ */
 /* ============================================================
-   FIX B — cleanTaxValue: normalizza valori numerici Agenzia delle Entrate
+   cleanTaxValue: normalizza valori numerici Agenzia delle Entrate
    I PDF ufficiali hanno cifre separate da spazi: "1 5 . 0 0 0 , 0 0"
    Questa funzione li pulisce in un float valido prima del parsing.
    ============================================================ */
@@ -1879,9 +1906,17 @@ function tryParseRPF(text) {
   const t = normalizePdfText(text);
 
   /* ── ANNO ── */
-  const annoM = t.match(/PERIODO\s*D.\s*IMPOSTA\s*(20\d{2})/i) ||
-                t.match(/\b(20\d{2})\b/);
-  const anno = annoM ? parseInt(annoM[1]) : null;
+  // FIX-1b: Anno fiscale di competenza
+  let anno = null;
+  const _mPer = t.match(/PERIODO\s*D[IE'\s]*IMPOSTA[\s:]*(20\d{2})/i);
+  if (_mPer) {
+    anno = parseInt(_mPer[1]);
+  } else {
+    const _mMod = t.match(/MODELLO\s*REDDITI(?:\s*PF)?[\s:]*(20\d{2})/i);
+    if (_mMod) { anno = parseInt(_mMod[1]) - 1; } // Modello XXXX = redditi XXXX-1
+    else { const _mF = t.match(/\b(20[1-2]\d)\b/); if (_mF) anno = parseInt(_mF[1]); }
+  }
+  console.log('[RPF] Anno fiscale:', anno);
 
   /* ── HELPER parse numero italiano ── */
   const parseIT = s => s ? parseFloat(String(s).replace(/\./g,'').replace(',','.')) || 0 : 0;
@@ -1973,7 +2008,6 @@ function tryParseRPF(text) {
           (!inps || !imposta ? ' · \u26A0\uFE0F Verifica INPS/imposta manualmente.' : '')
   };
 }
-
 
 
 /* ============================================================
@@ -2120,7 +2154,6 @@ function tryParseF24(text, annoTarget) {
 }
 
 
-
 /* ============================================================
    PROMPT ESPERTO COMMERCIALISTA — inviato alla Edge Function
    Gemini lo usa come system instruction. Aggiornato per
@@ -2174,6 +2207,13 @@ Se non trovi il rigo LM39 (Imposta sostitutiva), cerca LM38 (Reddito al netto de
     "messaggio": "descrizione tecnica breve"
   }
 }
+
+## REGOLA CRITICA — ANNO FISCALE DI COMPETENZA
+Il campo "anno" è l'ANNO FISCALE (non l'anno di presentazione):
+- "MODELLO REDDITI PF 2023" → redditi 2022 → restituire anno: 2022
+- "MODELLO REDDITI PF 2024" → redditi 2023 → restituire anno: 2023
+- Fonte prioritaria: "PERIODO D'IMPOSTA XXXX" → usa XXXX
+- Se solo "MODELLO REDDITI XXXX" senza PERIODO: anno = XXXX - 1
 
 ## REGOLA ASSOLUTA
 Non inventare mai cifre assenti. Dati parziali → congruente=false, status=giallo, descrivi cosa manca.
@@ -3100,9 +3140,15 @@ function renderArchivio() {
         </div>
         ${d.note ? `<div class="al al-i" style="margin-top:8px"><span class="ai">📋</span><span style="font-style:italic">${sanitizeHTML(d.note)}</span></div>` : ''}
         ${(d.inps_versata_anno_solare > 0) ? `
-          <div class="al al-o" style="margin-top:8px;font-size:12px">
-            <span class="ai">🏛️</span>
-            <span><strong>INPS versata (anno solare):</strong> ${fmt(d.inps_versata_anno_solare)} — registrata da F24/pagamenti</span>
+          <div class="al al-o" style="margin-top:8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="display:flex;align-items:center;gap:6px">
+              <span class="ai">🏛️</span>
+              <span><strong>INPS versata (anno solare):</strong> ${fmt(d.inps_versata_anno_solare)} — da F24/pagamenti</span>
+            </span>
+            <button onclick="resetInpsVersata('${d.id}',${d.anno})"
+              style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid var(--ye-b);
+                     background:transparent;color:var(--ye);cursor:pointer;flex-shrink:0"
+              title="Rimuovi valore INPS versata">✕ Rimuovi</button>
           </div>` : ''}
         <div style="font-size:11px;color:var(--t3);margin-top:8px">☁️ Salvato il ${sal} · Stato: <strong>${s}</strong> · ${d.acconto_note}</div>
         ${renderDocumentiAnno(d.anno)}
@@ -3125,6 +3171,22 @@ function renderArchivio() {
 function togAyc(anno) {
   const el = g('ayc-b-' + anno);
   if (el) el.classList.toggle('open');
+}
+
+/* Reset manuale INPS versata anno solare (FIX-BANNER)
+   Chiamato dal pulsante "x Rimuovi" sul banner INPS.
+   Azzera il campo nel DB e aggiorna la UI. */
+async function resetInpsVersata(rowId, anno) {
+  if (!confirm('Rimuovere il valore INPS versata per l'anno ' + anno + '?')) return;
+  setSync('busy', 'Rimozione...');
+  const { error } = await sb.from('anni_fiscali')
+    .update({ inps_versata_anno_solare: null, updated_at: new Date().toISOString() })
+    .eq('id', rowId).eq('user_id', _user.id);
+  if (error) { setSync('err','Errore'); toast('[!] ' + error.message, 'err'); return; }
+  if (_anni[anno]) _anni[anno].inps_versata_anno_solare = null;
+  setSync('ok','Sincronizzato');
+  renderArchivio();
+  toast('INPS versata anno ' + anno + ' rimossa.', 'ok', 3000);
 }
 
 /* ============================================================
@@ -3191,8 +3253,7 @@ function renderDocumentiAnno(anno) {
   </div>`;
 }
 
-// FIX C: Scarica PDF tramite blob con createObjectURL → download diretto senza popup bloccati
-// revokeObjectURL chiamato dopo 60s per liberare memoria
+// Download diretto come blob (evita popup bloccati su mobile) — revokeObjectURL dopo 60s
 async function downloadDoc(storagePath, nomeFile) {
   try {
     toast('⏳ Download in corso...', 'info', 2000);
@@ -3374,12 +3435,6 @@ async function deleteDoc(docId, storagePath, anno) {
 /* ============================================================
    ANALISI PDF DICHIARAZIONE / F24 — dall'archivio
    ============================================================ */
-let _aiAnno    = null; // anno target dell'analisi corrente
-let _aiResult  = null; // risultato raw dalla Edge Function
-let _aiFile    = null; // file PDF originale (per upload su Storage dopo conferma)
-let _lastPdfText = '';  // testo grezzo estratto (diagnostica)
-let _fullPdfText = '';  // testo completo PDF (tutte le pagine) — per detection tipo documento
-let _documenti = {};   // { anno: [{ id, nome_file, storage_path, tipo_doc, uploaded_at }] }
 
 // 1. L'utente clicca "Analizza Dich." → apri file picker e ricorda l'anno
 function archAnalizzaPDF(anno) {
@@ -3525,12 +3580,66 @@ function annullaApplicaDatiPDF() {
 }
 
 /* ============================================================
-   DATI MASTER DA PDF — sovrascrittura silenziosa (v15)
-   Sostituisce il vecchio flusso modal+conferma per i casi di
-   estrazione riuscita. Nessun confronto visivo, nessun modal.
-   Flusso: PDF estratto → valori puliti → upsert DB → ricalcolo F24
-           → syncFutureYears → upload Storage → toast successo
+   UPLOAD DOCUMENTO FISCALE
+   Salva SEMPRE i metadati in documenti_fiscali.
+   Storage fallito: storage_path = null, ma il record esiste.
    ============================================================ */
+async function uploadDocumentoFiscale(file, annoTarget, tipoDoc, snapshot) {
+  if (!file) return;
+  let storagePath = null;
+
+  // STEP 1: Tenta upload su Storage (non blocca se fallisce)
+  try {
+    const ts       = Date.now();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path     = _user.id + '/' + annoTarget + '/' + ts + '_' + safeName;
+
+    const { error: upErr } = await sb.storage
+      .from('documenti-fiscali')
+      .upload(path, file, { contentType: 'application/pdf', upsert: false });
+
+    if (!upErr) {
+      storagePath = path;
+    } else {
+      console.warn('[uploadDoc] Storage error:', upErr.message);
+      toast('[!] Storage non disponibile: ' + upErr.message + ' - Il documento e tracciato comunque.', 'err', 7000);
+    }
+  } catch(ex) {
+    console.warn('[uploadDoc] Storage exception:', ex.message);
+  }
+
+  // STEP 2: Salva SEMPRE in documenti_fiscali (anche senza file fisico)
+  try {
+    const record = {
+      user_id:      _user.id,
+      anno:         annoTarget,
+      nome_file:    file.name,
+      storage_path: storagePath,
+      tipo_doc:     tipoDoc || 'sconosciuto',
+      dimensione:   file.size
+    };
+    if (snapshot) record.dati_snapshot = snapshot;
+
+    const { error: dbErr } = await sb.from('documenti_fiscali').insert(record);
+
+    if (!dbErr) {
+      await loadDocumenti();
+      renderArchivio();
+      if (storagePath) {
+        toast('PDF "' + file.name + '" archiviato (Anno ' + annoTarget + ')', 'ok', 4000);
+      } else {
+        toast('Documento tracciato senza file fisico - Anno ' + annoTarget, 'info', 5000);
+      }
+    } else {
+      console.error('[uploadDoc] DB error:', dbErr.message);
+      toast('[!] Errore registrazione documento: ' + dbErr.message, 'err', 7000);
+    }
+  } catch(ex) {
+    console.error('[uploadDoc] DB exception:', ex.message);
+    toast('[!] Errore imprevisto: ' + ex.message, 'err', 7000);
+  }
+}
+
 async function applicaDatiPDFSilent(anno, r) {
   // FIX-1: L'anno della card cliccata dall'utente e' sempre autoritativo.
   // Non viene mai sovrascritto con l'anno letto da PDF/Gemini.
@@ -3586,7 +3695,9 @@ async function applicaDatiPDFSilent(anno, r) {
     if (impSostF24 > 0) updates.imposta_sost = impSostF24;
   } else {
     // Dichiarazione: sovrascrittura completa con ricalcolo derivati
-    if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
+    // FIX-BANNER: inps_dedotta_lm7 e' l'INPS teorico dedotto, NON l'importo
+    // effettivamente versato via F24. Solo un F24 deve scrivere
+    // inps_versata_anno_solare. Non tocchiamo questo campo da una Dichiarazione.
     if (imposta  > 0) updates.imposta_sost = imposta;
 
     if (fatt > 0) {
@@ -3666,41 +3777,8 @@ async function applicaDatiPDFSilent(anno, r) {
   // ── CASCADE ACCONTI ANNO SUCCESSIVO ──────────────────────────────────
   await syncFutureYears(annoTarget);
 
-  // ── UPLOAD PDF SU STORAGE (asincrono, non blocca la UX) ──────────────
-  if (_aiFile) {
-    try {
-      const ts       = Date.now();
-      const safeName = _aiFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const path     = `${_user.id}/${annoTarget}/${ts}_${safeName}`;
-
-      const { error: upErr } = await sb.storage
-        .from('documenti-fiscali')
-        .upload(path, _aiFile, { contentType: 'application/pdf', upsert: false });
-
-      if (!upErr) {
-        const { error: dbErr } = await sb.from('documenti_fiscali').insert({
-          user_id:       _user.id,
-          anno:          annoTarget,
-          nome_file:     _aiFile.name,
-          storage_path:  path,
-          tipo_doc:      r.tipo || 'sconosciuto',
-          dimensione:    _aiFile.size,
-          dati_snapshot: _snapshot        // ← snapshot per revert
-        });
-        if (!dbErr) {
-          await loadDocumenti();
-          renderArchivio();
-        } else {
-          console.warn('[upload] Metadati:', dbErr.message);
-        }
-      } else {
-        console.warn('[upload] Storage:', upErr.message);
-        toast(`⚠️ Dati salvati, ma il PDF non è stato archiviato: ${upErr.message}`, 'err', 5000);
-      }
-    } catch(upEx) {
-      console.warn('[upload] Eccezione:', upEx.message);
-    }
-  }
+  // ── UPLOAD E REGISTRAZIONE DOCUMENTO (FIX-2) ─────────────────────────
+  await uploadDocumentoFiscale(_aiFile, annoTarget, r.tipo, _snapshot);
 
   _aiFile = null; _aiAnno = null; _aiResult = null;
 }
@@ -3750,22 +3828,13 @@ function apriModalFallback(anno, r) {
   openModal('modal-ai-result');
 }
 
-// apriModalAiResult rimossa — sostituita da apriModalFallback (Dati Master da PDF v15)
 
 // 4. Utente conferma → aggiorna Supabase con i valori (eventualmente corretti)
 async function confermaAiResult() {
   if (_aiResult === null || _aiAnno === null) return;
 
-  // FIX 2: MAPPING ANNO F24
-  // Se l'AI ha estratto un anno diverso da quello selezionato (es. F24 del 2023
-  // caricato dalla card del 2024), salva nel record dell'anno CORRETTO del PDF.
-  let anno = _aiAnno;
-  const annoEstrattoF24 = (_aiResult.tipo === 'f24' && _aiResult.anno) ? parseInt(_aiResult.anno) : null;
-  if (annoEstrattoF24 && annoEstrattoF24 !== anno && _anni[annoEstrattoF24]) {
-    console.log(`[confermaAiResult] FIX F24 ANNO: PDF anno ${annoEstrattoF24} ≠ card anno ${anno} → salvo nel record ${annoEstrattoF24}`);
-    toast(`ℹ️ F24 rilevato per l'anno ${annoEstrattoF24} (diverso dal ${anno} selezionato) — salvo nell'anno corretto.`, 'info', 5000);
-    anno = annoEstrattoF24;
-  }
+  // Anno: sempre quello della card (_aiAnno), coerente con tutti gli altri path
+  const anno = _aiAnno;
 
   const d = _anni[anno];
   if (!d) {
@@ -3781,7 +3850,9 @@ async function confermaAiResult() {
   const updates = { updated_at: new Date().toISOString() };
 
   // Aggiorna solo i campi presenti
-  if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
+  // FIX-BANNER: inps_versata_anno_solare solo da F24, non da Dichiarazione
+  const _tipoDoc = _aiResult ? _aiResult.tipo : null;
+  if (inpsVers > 0 && _tipoDoc === 'f24') updates.inps_versata_anno_solare = inpsVers;
   if (imposta  > 0) updates.imposta_sost = imposta;
 
   // Se arriva il fatturato, ricalcola tutti i valori derivati
@@ -3854,48 +3925,22 @@ async function confermaAiResult() {
   const dettaglio = campiSalvati.length > 0 ? ` · ${campiSalvati.join(' · ')}` : '';
   toast(`✅ Dati aggiornati correttamente dal documento (Anno ${anno}${dettaglio})`, 'ok', 7000);
 
-  // FIX 3: CASCADE UPDATE — ricalcola acconti degli anni successivi
+  // Propaga le modifiche a cascata sugli anni successivi (acconti)
   await syncFutureYears(anno);
 
-  // ── Upload PDF su Supabase Storage ─────────────────────────────────
-  // Lo facciamo DOPO il salvataggio dati per non bloccare la UX principale
-  if (_aiFile) {
-    try {
-      const ts       = Date.now();
-      const safeName = _aiFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const path     = `${_user.id}/${anno}/${ts}_${safeName}`;
-
-      const { error: upErr } = await sb.storage
-        .from('documenti-fiscali')
-        .upload(path, _aiFile, { contentType: 'application/pdf', upsert: false });
-
-      if (!upErr) {
-        // Salva metadati nella tabella documenti_fiscali
-        const { error: dbErr } = await sb.from('documenti_fiscali').insert({
-          user_id:      _user.id,
-          anno:         anno,
-          nome_file:    _aiFile.name,
-          storage_path: path,
-          tipo_doc:     _aiResult?.tipo || 'sconosciuto',
-          dimensione:   _aiFile.size
-        });
-        if (!dbErr) {
-          // Aggiorna cache locale con ID reale via ricarica DB
-          await loadDocumenti();
-          // Ricarica l'archivio per mostrare il file appena caricato
-          renderArchivio();
-          toast(`📎 PDF "${_aiFile.name}" salvato nei documenti dell'anno ${anno}`, 'ok', 4000);
-        } else {
-          console.warn('[upload] Errore salvataggio metadati:', dbErr.message);
-        }
-      } else {
-        console.warn('[upload] Errore storage:', upErr.message);
-        toast(`⚠️ Dati salvati, ma il PDF non è stato archiviato: ${upErr.message}`, 'err', 5000);
-      }
-    } catch(upEx) {
-      console.warn('[upload] Eccezione:', upEx.message);
-    }
-  }
+  // ── UPLOAD E REGISTRAZIONE DOCUMENTO ──────────────────────────────────
+  // Costruisce snapshot dei valori PRIMA della modifica (per revert al delete)
+  const _snapConf = d ? {
+    fatturato: d.fatturato || null, reddito_forf: d.reddito_forf || null,
+    contributi_inps: d.contributi_inps || null, reddito_imp: d.reddito_imp || null,
+    imposta_sost: d.imposta_sost || null, totale_oneri: d.totale_oneri || null,
+    acconto_1: d.acconto_1 || null, acconto_2: d.acconto_2 || null,
+    acconto_tot: d.acconto_tot || null, acconto_note: d.acconto_note || null,
+    inps_versata_anno_solare: d.inps_versata_anno_solare || null,
+    _snapshottedAt: new Date().toISOString(),
+    _docTipo: _aiResult ? _aiResult.tipo : 'sconosciuto'
+  } : null;
+  await uploadDocumentoFiscale(_aiFile, anno, _aiResult ? _aiResult.tipo : null, _snapConf);
 
   _aiFile = null; _aiAnno = null; _aiResult = null;
 }
@@ -5338,7 +5383,6 @@ async function confAggiornaBozza() {
   renderSidebar(); renderArchivio();
   toast(`✅ Anno ${anno} aggiornato con fatturato ${fmt(newFatt)}`, 'ok');
 
-  // FIX 3: CASCADE UPDATE — aggiorna automaticamente gli acconti dell'anno successivo
   await syncFutureYears(anno);
 }
 
@@ -5801,8 +5845,14 @@ async function wizComplete() {
   const ls = document.getElementById('loading-screen');
   let appStarted = false;
 
+  // Rileva token OAuth/PKCE nel URL
+  // type=recovery: link reset password (deve passare da getSession per ottenere la sessione temp)
+  // access_token: OAuth redirect Google/Magic Link (sessione nel hash)
+  // code=: PKCE flow (Supabase v2 default)
   const isOAuthCallback = window.location.hash.includes('access_token') ||
                           window.location.search.includes('code=');
+  // recovery gestita da onAuthStateChange evento PASSWORD_RECOVERY — non salta getSession
+  const isRecovery = window.location.hash.includes('type=recovery');
 
   function hideLs() {
     if (!ls) return;
@@ -5822,8 +5872,8 @@ async function wizComplete() {
     appStarted = true;
     _user = user;
     g('auth-screen').style.display = 'none';
-    // FIX A (Boot Integrity): dati caricati PRIMA che la UI diventi visibile
-    // L'utente vede lo splash finché profile + anni + documenti non sono pronti
+    // Dati caricati PRIMA che la UI diventi visibile
+    // Lo splash persiste finché profile + anni + documenti non sono pronti
     try {
       await initAppData();
     } catch(e) {
@@ -5842,8 +5892,23 @@ async function wizComplete() {
     if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
       startApp(session.user);
     } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-      // Token rinnovato silenziosamente — aggiorna _user senza restart
+      // Token rinnovato silenziosamente - aggiorna _user senza restart
       if (appStarted) _user = session.user;
+    } else if (event === 'USER_UPDATED' && session?.user) {
+      // Cambio email/password confermato - sincronizza _user e UI
+      if (appStarted) {
+        _user = session.user;
+        if (_profile) {
+          _profile.email = session.user.email || _profile.email;
+          [g('sb-email'), g('um-email')].forEach(el => { if (el) el.textContent = _profile.email; });
+        }
+        toast('Profilo aggiornato correttamente', 'ok', 3000);
+      }
+    } else if (event === 'PASSWORD_RECOVERY') {
+      // Link email reset password: mostra modal nuova password
+      clearTimeout(safetyTimer);
+      showAuthScreen();
+      setTimeout(() => openModal('modal-reset-pw'), 300);
     } else if (event === 'SIGNED_OUT') {
       if (appStarted) {
         // Logout volontario o token scaduto DOPO login → reset completo
