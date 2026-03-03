@@ -2249,72 +2249,136 @@ function tryParseF24(text, annoTarget) {
     }
   }
 
-  /* ─── STEP 6: Scansione riga-per-riga — individua ogni causale e il suo importo
-     
-     Il PDF ADE ha questa struttura per ogni riga di tributo:
-       ERARIO:   <causale>  [spazi/tab]  <rateaz>  <anno_rif>  <debito>  <credito>
-       INPS:     <causale>  <sede>  <matricola>  <da>  <a>  <debito>  <credito>
-     
-     Strategia: per ogni riga che contiene una causale nota,
-     estrai l'importo nel contesto delle 3 righe successive.
-  ────────────────────────────────────────────────────────────────────── */
+  /* ─── STEP 6: Parser SEZIONE-BASED — analisi separata ERARIO e INPS ───
+   *
+   * Struttura reale F24 ADE (PDF.js estrae ogni cella come token separato):
+   *
+   *   SEZIONE ERARIO:
+   *     [vuoto] [vuoto] [T] [1792] [0101] [2024] [1.380,00] [0,00]
+   *     → Dopo normalizzazione le celle sulla stessa y finiscono sulla stessa riga
+   *     → Ma in alcuni PDF vengono su righe separate (una cella per riga)
+   *
+   *   SEZIONE INPS:
+   *     [sede] [PXX] [matricola] [01/2024] [12/2024] [2.760,00] [0,00]
+   *
+   * Strategia robusta:
+   *   1. Isola i blocchi SEZIONE ERARIO e SEZIONE INPS nel testo
+   *   2. Per ogni causale trovata, cerca l'importo nel MINIMO contesto possibile
+   *      (stessa riga prima, poi righe successive fino a 6)
+   *   3. Usa il PRIMO importo trovato dopo la causale (non il massimo dell'intera finestra)
+   *      — il primo importo dopo la causale è quasi sempre il debito
+   * ────────────────────────────────────────────────────────────────────── */
+
+  // Estrai il primo importo valido in una stringa (non il massimo)
+  function primoImporto(s) {
+    const res = estraiImporti(s);
+    return res.length ? res[0] : 0;
+  }
+
+  // Separa SEZIONE ERARIO e SEZIONE INPS (o usa tutto se non trovate)
+  const nt_upper = nt.toUpperCase();
+  const idxErario = nt_upper.indexOf('SEZIONE ERARIO');
+  const idxInps   = Math.max(nt_upper.indexOf('SEZIONE INPS'), nt_upper.indexOf('SEZIONE I.N.P.S'));
+  const idxTerzi  = nt_upper.indexOf('SEZIONE ALTRI ENTI');
+
+  // Blocco ERARIO: tra "SEZIONE ERARIO" e "SEZIONE INPS" (o fine)
+  const blocoErario = idxErario >= 0
+    ? nt.slice(idxErario, idxInps > idxErario ? idxInps : nt.length)
+    : nt; // fallback: usa tutto
+
+  // Blocco INPS: tra "SEZIONE INPS" e "SEZIONE ALTRI ENTI" (o fine)
+  const blocoInps = idxInps >= 0
+    ? nt.slice(idxInps, idxTerzi > idxInps ? idxTerzi : nt.length)
+    : nt; // fallback: usa tutto
+
+  console.log('[F24] Sezioni: ERARIO idx=' + idxErario + ' INPS idx=' + idxInps);
+
   const righeRilevate = [];
-  const linee = nt.split('\n');
   const CAUSALI_RE = /\b(179[012]|PXX|DPPI|CF\d{2})\b/gi;
 
-  for (let i = 0; i < linee.length; i++) {
-    const riga = linee[i];
-    const causaliRiga = [...riga.matchAll(CAUSALI_RE)].map(m => m[1].toUpperCase());
-    if (!causaliRiga.length) continue;
+  // Scan generico su un blocco di testo con contesto riga per riga
+  function scanBloco(testo, nomeSez) {
+    const linee = testo.split('\n');
+    for (let i = 0; i < linee.length; i++) {
+      const riga = linee[i];
+      const causaliRiga = [...riga.matchAll(CAUSALI_RE)].map(m => m[1].toUpperCase());
+      if (!causaliRiga.length) continue;
 
-    // Contesto: riga corrente + 3 successive (copre layout multi-riga PDF)
-    const contesto = linee.slice(i, Math.min(i + 4, linee.length)).join('\n');
+      // Cerca importo: prima sulla stessa riga, poi sulle righe successive (max 6)
+      // Usa il PRIMO importo trovato dopo la posizione della causale nella riga
+      let importo = 0;
+      let annoFiscCtx = null;
+      let dataScad = null;
+      let annoScad = null;
 
-    // Anno di riferimento fiscale: anno più piccolo menzionato nel contesto
-    const anniCtx = (contesto.match(/\b(20\d{2})\b/g) || []).map(Number).filter(a => a >= 2010 && a <= 2040);
-    const annoFiscCtx = anniCtx.length ? Math.min(...anniCtx) : null;
-
-    // Data di scadenza/esecuzione
-    const mData = contesto.match(/(?:[Ss]cadenza|[Ee]seguito)\s+(?:del\s+)?(\d{2}[-/.]\d{2}[-/.]\d{4})/i)
-               || contesto.match(/(\d{2}[-/.]\d{2}[-/.]\d{4})/);
-    const dataScad  = mData ? mData[1] : null;
-    const annoScad  = annoFromData(dataScad);
-
-    // Importi nel contesto (prima importo debito, poi credito — prendo il massimo)
-    const importiCtx = estraiImporti(contesto);
-    if (!importiCtx.length) continue;
-
-    // Il debito è tipicamente il valore più grande nella riga
-    const importo = Math.max(...importiCtx);
-
-    for (const causale of causaliRiga) {
-      const tipo = classificaCausale(causale);
-      if (tipo === 'altro') {
-        console.log(`[F24] Causale '${causale}' ignorata (non forfettario)`);
-        continue;
+      // 1. Cerca sulla riga stessa dopo la posizione della causale
+      for (const causale of causaliRiga) {
+        const posC = riga.indexOf(causale);
+        const dopoC = riga.slice(posC + causale.length);
+        const imp1 = primoImporto(dopoC);
+        if (imp1 > 0) { importo = imp1; break; }
       }
-      righeRilevate.push({ causale, tipo, importo, annoFisc: annoFiscCtx, annoScad, dataScad });
-      console.log(`[F24] Riga trovata: ${causale}(${tipo}) €${importo} annoFisc=${annoFiscCtx} scad=${dataScad}`);
+
+      // 2. Se non trovato sulla riga, allarga il contesto verso il basso (max 6 righe)
+      //    IMPORTANTE: allarga di 1 riga alla volta e si ferma appena trova un importo
+      //    Questo evita di "catturare" importi di tributi successivi
+      if (importo === 0) {
+        for (let j = 1; j <= 6 && i + j < linee.length; j++) {
+          const rigaJ = linee[i + j];
+          // Stop se la riga j contiene un'altra causale (sarebbe un altro tributo)
+          if (/\b(179[012]|PXX|DPPI|CF\d{2})\b/i.test(rigaJ) && j > 1) break;
+          const imp1 = primoImporto(rigaJ);
+          if (imp1 > 0) { importo = imp1; break; }
+        }
+      }
+
+      if (importo === 0) continue; // nessun importo trovato per questa causale
+
+      // Anno fiscale e data di scadenza: cerca nel contesto ampio (±3 righe)
+      const contestoAmpio = linee.slice(Math.max(0, i - 2), Math.min(linee.length, i + 8)).join(' ');
+      const anniCtx = (contestoAmpio.match(/\b(20\d{2})\b/g) || []).map(Number).filter(a => a >= 2010 && a <= 2040);
+      annoFiscCtx = anniCtx.length ? Math.min(...anniCtx) : null;
+
+      const mData = contestoAmpio.match(/(?:[Ss]cadenza|[Ee]seguito)\s+(?:del\s+)?(\d{2}[-/.]\d{2}[-/.]\d{4})/i)
+                 || contestoAmpio.match(/(\d{2}[-/.]\d{2}[-/.]\d{4})/);
+      dataScad = mData ? mData[1] : null;
+      annoScad = annoFromData(dataScad);
+
+      for (const causale of causaliRiga) {
+        const tipo = classificaCausale(causale);
+        if (tipo === 'altro') continue;
+        righeRilevate.push({ causale, tipo, importo, annoFisc: annoFiscCtx, annoScad, dataScad, sezione: nomeSez });
+        console.log(`[F24] ${nomeSez}: ${causale}(${tipo}) €${importo} annoFisc=${annoFiscCtx} scad=${dataScad}`);
+      }
     }
   }
 
-  /* ─── STEP 7: Fallback — scansione globale per PDF non strutturati ──────
-     (F24 semplificato, PDF da intermediari CAF, layout anomalo)
+  // Se abbiamo sezioni separate, scansionale individualmente (più preciso)
+  if (idxErario >= 0 || idxInps >= 0) {
+    if (idxErario >= 0) scanBloco(blocoErario, 'ERARIO');
+    if (idxInps >= 0)   scanBloco(blocoInps,   'INPS');
+  } else {
+    // Fallback: scansiona tutto il documento
+    scanBloco(nt, 'TUTTO');
+  }
+
+  /* ─── STEP 7: Fallback globale char-by-char per PDF non strutturati ────
+     (F24 semplificato, CAF, layout anomalo senza intestazioni di sezione)
   ────────────────────────────────────────────────────────────────────── */
   if (!righeRilevate.length) {
-    console.log('[F24] Fallback scansione globale...');
+    console.log('[F24] Fallback char-by-char...');
     const allMatches = [...nt.matchAll(/\b(179[012]|PXX|DPPI|CF\d{2})\b/gi)];
     for (const m of allMatches) {
       const causale = m[1].toUpperCase();
       const tipo    = classificaCausale(causale);
       if (tipo === 'altro') continue;
-      // Finestra 200 char dopo la causale
-      const fin = nt.slice(m.index, m.index + 250);
-      const imp = estraiImporti(fin);
-      if (!imp.length) continue;
+      // Cerca il primo importo nei 300 char successivi alla causale
+      const fin = nt.slice(m.index + causale.length, m.index + causale.length + 300);
+      const imp = primoImporto(fin);
+      if (!imp) continue;
       righeRilevate.push({
-        causale, tipo, importo: Math.max(...imp),
-        annoFisc: null, annoScad: null, dataScad: null
+        causale, tipo, importo: imp,
+        annoFisc: null, annoScad: null, dataScad: null, sezione: 'FALLBACK'
       });
     }
   }
@@ -2494,14 +2558,19 @@ function normalizzaRisultato(raw, annoFallback) {
     imposta_dovuta_lm11: imp,
     // FIX F24: il nuovo formato Gemini usa "inps_versata" anche per F24.
     // Se inps_versata_f24 non è presente MA tipo è f24, usa inps_versata.
-    inps_versata_f24: parseFloat(raw.inps_versata_f24) ||
-                      ((raw.tipo === 'f24') ? (parseFloat(raw.inps_versata) || inps) : 0),
-    note:               raw.note || null,
-    convalida:          null,
-    f24_righe:          raw.f24_righe || raw.f24_pagine || null, // v3: righe; legacy: pagine
-    saldo_finale_f24:   parseFloat(raw.saldo_finale_f24) || 0,
-    sezione_rilevata:   raw.sezione_rilevata || null,
-    affidabilita:       raw.affidabilita || raw.affidabilità || null
+    inps_versata_f24:        parseFloat(raw.inps_versata_f24) ||
+                             ((raw.tipo === 'f24') ? (parseFloat(raw.inps_versata) || inps) : 0),
+    imposta_sostitutiva_f24: parseFloat(raw.imposta_sostitutiva_f24) || 0,  // 1790/1791/1792
+    note:                    raw.note || null,
+    convalida:               null,
+    f24_righe:               raw.f24_righe || raw.f24_pagine || null,
+    saldo_finale_f24:        parseFloat(raw.saldo_finale_f24) || 0,
+    sezione_rilevata:        raw.sezione_rilevata || null,
+    // affidabilita: per parse locale F24 → 'medium' se INPS o imposta trovati, 'low' altrimenti
+    affidabilita:            raw.affidabilita || raw.affidabilità ||
+                             (raw.tipo === 'f24'
+                               ? ((parseFloat(raw.inps_versata_f24) > 0 || parseFloat(raw.imposta_sostitutiva_f24) > 0) ? 'medium' : 'low')
+                               : null)
   };
 
   // Se Gemini ha restituito un errore esplicito (Quadro LM non trovato)
@@ -2824,8 +2893,8 @@ async function parseTaxPDF(file) {
   } else {
     // F24: usa testo completo per il parser multi-pagina
     const f24Local = tryParseF24(_fullPdfText || pdf_text, _aiAnno || null);
-    if (f24Local && f24Local.inps_versata_f24 > 0) {
-      console.log('[parseTaxPDF] F24 estratto localmente ✅');
+    if (f24Local && (f24Local.inps_versata_f24 > 0 || f24Local.imposta_sostitutiva_f24 > 0)) {
+      console.log('[parseTaxPDF] F24 estratto localmente ✅ INPS:', f24Local.inps_versata_f24, '| Imposta:', f24Local.imposta_sostitutiva_f24);
       toast('⚡ F24 estratto senza AI', 'ok', 4000);
       return normalizzaRisultato(f24Local, null);
     }
