@@ -34,20 +34,8 @@ body{background:var(--bg);color:var(--t1);
   background-image:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(31,111,235,.12),transparent),
     radial-gradient(ellipse 60% 40% at 80% 80%,rgba(63,185,80,.06),transparent);}
 
-/* ── DASHBOARD RICONCILIAZIONE (Validatore.md §4B) ── */
-.riconcil-wrap{margin-top:12px;padding:14px;background:var(--s2);border:1px solid var(--bd2);border-radius:10px}
-.riconcil-title{font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px}
-.riconcil-table{width:100%;border-collapse:collapse;font-size:12px}
-.riconcil-table th{text-align:left;color:var(--t3);font-weight:600;padding:5px 8px;border-bottom:1px solid var(--bd)}
-.riconcil-table td{padding:5px 8px;border-bottom:1px solid rgba(42,49,64,.5);color:var(--t2)}
-.riconcil-table td:first-child{color:var(--t1);font-weight:500}
-.riconcil-table td.ok{color:var(--gr);font-weight:700}
-.riconcil-table td.warn{color:var(--ye);font-weight:700}
-.riconcil-table td.err{color:var(--re);font-weight:700}
-.riconcil-alert{margin-top:10px;padding:8px 10px;border-radius:6px;font-size:11.5px;line-height:1.5}
-.riconcil-alert.verde{background:var(--gr-d);border:1px solid var(--gr-b);color:var(--gr)}
-.riconcil-alert.giallo{background:var(--ye-d);border:1px solid var(--ye-b);color:var(--ye)}
-.riconcil-alert.rosso{background:var(--re-d);border:1px solid var(--re-b);color:var(--re)}
+/* LOADING GUARD — mostrato durante il check sessione all'avvio */
+#loading-screen{
   position:fixed;inset:0;z-index:9999;
   background:var(--bg);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
@@ -1279,6 +1267,52 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
   </div>
 </div>
 
+<!-- MODAL CONFERMA DATI PDF — mostrato dopo estrazione riuscita, prima di scrivere nel DB -->
+<div class="modal-bg" id="modal-pdf-confirm">
+  <div class="modal-box" style="max-width:480px;max-height:92vh;overflow-y:auto">
+    <h3>🤖 Dati estratti dal documento</h3>
+    <div id="pdfconf-badge" style="display:inline-block;font-size:11px;font-weight:700;
+         padding:3px 10px;border-radius:20px;margin-bottom:10px;
+         background:var(--pu-d);color:var(--pu);border:1px solid var(--pu-b)">—</div>
+
+    <!-- Avviso anno PDF diverso da anno card -->
+    <div id="pdfconf-anno-warn" style="display:none;margin-bottom:10px;padding:8px 12px;
+         border-radius:8px;background:var(--ye-d);border:1px solid var(--ye-b);
+         font-size:12px;color:var(--ye)">
+      <strong>⚠️ Anno rilevato dal PDF:</strong> <span id="pdfconf-anno-pdf">—</span>
+      &nbsp;·&nbsp; <strong>Anno card:</strong> <span id="pdfconf-anno-card">—</span>
+      <br>I dati verranno associati all'<strong>anno della card</strong> (quello che hai selezionato).
+    </div>
+
+    <!-- Tabella valori estratti -->
+    <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+                overflow:hidden;margin-bottom:12px">
+      <div style="padding:8px 12px;border-bottom:1px solid var(--bd);
+                  font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;
+                  letter-spacing:.05em">Valori estratti</div>
+      <div id="pdfconf-rows" style="padding:4px 0"></div>
+    </div>
+
+    <!-- Box affidabilità -->
+    <div id="pdfconf-affid" style="margin-bottom:12px;padding:8px 12px;border-radius:8px;
+         font-size:12px;line-height:1.5"></div>
+
+    <p style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.6">
+      Verifica i valori sopra. Confermando, i dati saranno salvati nel cloud e il PDF archiviato.
+      <strong>Puoi sempre eliminare il documento per ripristinare i valori originali.</strong>
+    </p>
+
+    <div class="btn-row">
+      <button class="btn btn-gr" id="pdfconf-btn-ok" onclick="confermaApplicaDatiPDF()">
+        ✅ Conferma e salva
+      </button>
+      <button class="btn btn-ol" onclick="annullaApplicaDatiPDF()">
+        ✖ Annulla
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Input file globale per analisi PDF dall'archivio -->
 <input type="file" id="arch-pdf-input" accept=".pdf" style="display:none" onchange="onArchPdfSelected(this)">
 
@@ -1771,10 +1805,7 @@ const QUADRO_LM_MAP = {
   // [\s\S]{0,800} permette distanza per layout multi-colonna PDF.js
   fatturato: /LM22[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i,
   inps:      /LM35[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i,
-  imposta:   /LM39[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i,
-  // LM43 = Eccedenza d'imposta riportata dalla dichiarazione precedente (Validatore.md §4A)
-  // Sottratta automaticamente dal debito dell'anno corrente per evitare doppio pagamento
-  lm43:      /LM43[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i
+  imposta:   /LM39[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i
 };
 
 function extractLMField(normalizedText, pattern) {
@@ -1928,26 +1959,17 @@ function tryParseRPF(text) {
     if (mA && parseInt(mA[1]) > 100000) ateco = mA[1];
   }
 
-  // ── LM43 — Eccedenza d'imposta anno precedente (Validatore.md §4A) ──
-  // Se presente e > 0 viene sottratta dall'imposta dovuta per evitare
-  // che l'utente paghi più del dovuto rispetto al commercialista.
-  let lm43 = 0;
-  const mLM43 = t.match(/LM43[\s\S]{0,800}?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})/i);
-  if (mLM43 && mLM43[1]) lm43 = parseFloat(mLM43[1].replace(/\.(?=\d{3}[,])/g,'').replace(',','.')) || 0;
-
-  console.log('[RPF] FINALE — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta, '| lm43:', lm43, '| ateco:', ateco, '| anno:', anno);
+  console.log('[RPF] FINALE — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta, '| ateco:', ateco, '| anno:', anno);
 
   return {
     tipo: 'dichiarazione', anno, ateco,
     fatturato_lm2:       fatturato,
     inps_dedotta_lm7:    inps,
     imposta_dovuta_lm11: imposta,
-    lm43_eccedenza:      lm43,
     inps_versata_f24:    0,
     note: '\u26A1 Estratto da Modello RPF (0 token AI)' +
           (ateco  ? ` · ATECO ${ateco}` : '') +
           (anno   ? ` · Anno ${anno}`   : '') +
-          (lm43   ? ` · \u2757 LM43 eccedenza: \u20AC${lm43.toLocaleString('it-IT',{minimumFractionDigits:2})}` : '') +
           (!inps || !imposta ? ' · \u26A0\uFE0F Verifica INPS/imposta manualmente.' : '')
   };
 }
@@ -2143,7 +2165,6 @@ Se non trovi il rigo LM39 (Imposta sostitutiva), cerca LM38 (Reddito al netto de
   "fatturato": float,
   "inps_versata": float,
   "imposta_dovuta": float,
-  "lm43_eccedenza": float_or_null,
   "tipo": "dichiarazione",
   "sezione_rilevata": "es: Quadro LM - Sezione II - Regime forfettario",
   "affidabilita": "high" | "medium" | "low",
@@ -2153,12 +2174,6 @@ Se non trovi il rigo LM39 (Imposta sostitutiva), cerca LM38 (Reddito al netto de
     "messaggio": "descrizione tecnica breve"
   }
 }
-
-## 7. REGOLA LM43 — ECCEDENZA ANNO PRECEDENTE (CRITICA)
-Il rigo LM43 contiene l'eccedenza d'imposta riportata dalla dichiarazione precedente.
-- Se LM43 > 0: includilo nel JSON come "lm43_eccedenza". Il motore lo sottrarrà automaticamente dall'imposta dovuta (Validatore.md §4A).
-- Se LM43 assente o = 0: imposta "lm43_eccedenza": 0.
-- MAI confondere LM43 con altri righi. LM43 è specificamente "Eccedenza riportata dalla precedente dichiarazione".
 
 ## REGOLA ASSOLUTA
 Non inventare mai cifre assenti. Dati parziali → congruente=false, status=giallo, descrivi cosa manca.
@@ -2191,8 +2206,6 @@ function normalizzaRisultato(raw, annoFallback) {
     fatturato_lm2:      fatt,
     inps_dedotta_lm7:   inps,
     imposta_dovuta_lm11: imp,
-    // LM43 — Eccedenza riportata dalla dichiarazione precedente (Validatore.md §4A)
-    lm43_eccedenza:     parseFloat(raw.lm43_eccedenza) || 0,
     // FIX F24: il nuovo formato Gemini usa "inps_versata" anche per F24.
     // Se inps_versata_f24 non è presente MA tipo è f24, usa inps_versata.
     inps_versata_f24: parseFloat(raw.inps_versata_f24) ||
@@ -3274,58 +3287,44 @@ async function confDelDoc() {
     const altriDelTipo = (_documenti[anno] || []).filter(d => d.tipo_doc === tipoDoc);
     const ultPdf = altriDelTipo.length === 0;   // true = era l'ultimo di quel tipo
 
-    // ── STEP 4: REVERT DEI DATI ─────────────────────────────────────────
-    // Strategia: se ho snapshot → revert preciso al valore pre-PDF
-    //            se no snapshot (doc pre-v16) → reset forzato dei campi influenzati
+    // ── STEP 4 (FIX-3): REVERT DEI DATI ────────────────────────────────
+    // Regola unica: il revert ripristina SEMPRE i valori pre-PDF.
+    // Fonte: snapshot salvato al momento dell'upload (campo dati_snapshot).
+    // Fallback (doc senza snapshot): null/zero su tutti i campi scritti.
+    // Questo garantisce che il banner INPS sparisca sempre dopo il delete.
     let revert = null;
 
     if (snapshot) {
-      // ── Caso A: snapshot presente → revert esatto ─────────────────────
-      if (tipoDoc === 'f24') {
-        // F24: ricalcola INPS come somma degli snapshot degli F24 rimasti
-        const inpsSomma = altriDelTipo
-          .filter(d => d.dati_snapshot)
-          .reduce((sum, d) => sum + (d.dati_snapshot.inps_versata_anno_solare || 0), 0);
-        revert = {
-          inps_versata_anno_solare: inpsSomma > 0 ? inpsSomma : (snapshot.inps_versata_anno_solare ?? null),
-          updated_at: new Date().toISOString()
-        };
-        // Se era l'unico F24 → azzera
-        if (ultPdf) revert.inps_versata_anno_solare = snapshot.inps_versata_anno_solare ?? null;
-      } else {
-        // Dichiarazione: ripristina tutti i campi dal snapshot
-        const campi = [
-          'fatturato','reddito_forf','contributi_inps','reddito_imp',
-          'imposta_sost','totale_oneri','acconto_1','acconto_2','acconto_tot',
-          'acconto_note','inps_versata_anno_solare'
-        ];
-        revert = { updated_at: new Date().toISOString() };
-        campi.forEach(k => { if (snapshot[k] !== undefined) revert[k] = snapshot[k]; });
-      }
-    } else if (_anni[anno]) {
-      // ── Caso B: nessuno snapshot (doc pre-v16) ─────────────────────────
-      // Azzera i campi che sappiamo essere stati scritti dal tipo di documento
+      // ── Caso A: snapshot presente → revert esatto al valore pre-upload ─
+      const campi = [
+        'fatturato','reddito_forf','contributi_inps','reddito_imp',
+        'imposta_sost','totale_oneri','acconto_1','acconto_2','acconto_tot',
+        'acconto_note','inps_versata_anno_solare'
+      ];
       revert = { updated_at: new Date().toISOString() };
-      if (tipoDoc === 'f24') {
-        // Reset INPS versata: calcola somma degli F24 rimasti (potrebbero avere snapshot)
-        const inpsRimasta = altriDelTipo
-          .filter(d => d.dati_snapshot)
-          .reduce((sum, d) => sum + (d.dati_snapshot.inps_versata_anno_solare || 0), 0);
-        revert.inps_versata_anno_solare = ultPdf ? null : (inpsRimasta > 0 ? inpsRimasta : null);
-      } else if (tipoDoc === 'dichiarazione' && ultPdf) {
-        // Ultima dichiarazione rimossa senza snapshot:
-        // Non possiamo sapere i valori precedenti, ma azzeriamo l'imposta_sost
-        // (il campo più critico per i cascade) e i campi da PDF.
-        // L'utente dovrà ricalcolare manualmente, ma almeno il cascade è corretto.
-        revert.imposta_sost             = null;
-        revert.acconto_1                = 0;
-        revert.acconto_2                = 0;
-        revert.acconto_tot              = 0;
-        revert.acconto_note             = 'PDF eliminato — ricalcolo necessario';
-        revert.inps_versata_anno_solare = null;
+      campi.forEach(k => {
+        // Usa undefined-safe: il campo nel snapshot è null se era assente/zero
+        revert[k] = (snapshot[k] !== undefined) ? snapshot[k] : null;
+      });
+    } else if (_anni[anno]) {
+      // ── Caso B: nessuno snapshot (doc caricato prima del fix) ──────────
+      // Azzeriamo tutti i campi che il PDF potrebbe aver scritto.
+      // L'utente dovrà ricalcolare, ma almeno non ci sono dati fantasma.
+      revert = {
+        updated_at:               new Date().toISOString(),
+        inps_versata_anno_solare: null,   // rimuove sempre il banner INPS
+      };
+      if (tipoDoc === 'dichiarazione') {
+        // Dichirazione senza snapshot: azzera anche i campi derivati
+        Object.assign(revert, {
+          imposta_sost:  null,
+          acconto_1:     0,
+          acconto_2:     0,
+          acconto_tot:   0,
+          acconto_note:  'PDF eliminato — ricalcola per aggiornare',
+        });
       }
     }
-
     // ── STEP 5: Scrivi il revert su Supabase ────────────────────────────
     let revertOk = false;
     if (revert && _anni[anno]) {
@@ -3412,20 +3411,21 @@ async function onArchPdfSelected(input) {
     _aiResult = result;
     _aiAnno   = anno;
 
-    // ── BRANCH: successo → Dati Master da PDF (sovrascrittura silenziosa)
-    const hasFatt     = (result.fatturato_lm2          || 0) > 0;
-    const hasInps     = (result.inps_versata_f24        || 0) > 0 || (result.inps_dedotta_lm7 || 0) > 0;
-    const hasImpF24   = (result.imposta_sostitutiva_f24 || 0) > 0;   // 1790/1791/1792
-    const hasImp      = (result.imposta_dovuta_lm11     || 0) > 0;
+    // ── FIX-2: Mostra sempre modal di conferma prima di scrivere nel DB ──
+    // Estrazione riuscita → chiedi conferma all'utente
+    // Estrazione parziale → apri modal fallback per input manuale
+    const hasFatt   = (result.fatturato_lm2          || 0) > 0;
+    const hasInps   = (result.inps_versata_f24        || 0) > 0 || (result.inps_dedotta_lm7 || 0) > 0;
+    const hasImpF24 = (result.imposta_sostitutiva_f24 || 0) > 0;
 
     const isDichiarazioneValida = result.tipo === 'dichiarazione' && hasFatt;
     const isF24Valido           = result.tipo === 'f24' && (hasInps || hasImpF24);
 
     if (isDichiarazioneValida || isF24Valido) {
-      // Applica silenziosamente senza modal
-      await applicaDatiPDFSilent(anno, result);
+      // Apri modal di riepilogo/conferma — i dati NON vengono ancora scritti
+      apriModalConfermaAiResult(anno, result);
     } else {
-      // Fallback diagnostico — apri modal solo se extraction fallita
+      // Fallback diagnostico — apri modal solo se extraction fallita/incompleta
       apriModalFallback(anno, result);
     }
   } catch(err) {
@@ -3436,123 +3436,92 @@ async function onArchPdfSelected(input) {
 }
 
 /* ============================================================
-   DASHBOARD DI RICONCILIAZIONE (Validatore.md §4B)
-   Confronta Dato Dichiarato (da PDF) vs Dato Teorico (motore interno).
-   Se scarto > 1% genera alert con spiegazione della regola fiscale
-   (Cassa, Acconti, Eccedenze) che giustifica la differenza.
+   MODAL CONFERMA DATI PDF (FIX-2)
+   Mostrato dopo ogni estrazione riuscita, PRIMA di scrivere nel DB.
+   L'utente vede i valori estratti e sceglie se confermare o annullare.
    ============================================================ */
-function renderRiconciliazione(anno, r, updates) {
-  const d = _anni[anno];
-  if (!d) return;
+function apriModalConfermaAiResult(anno, r) {
+  // Salva in stato globale per uso da confermaApplicaDatiPDF
+  _aiAnno   = anno;
+  _aiResult = r;
 
-  const fatt     = updates.fatturato       || d.fatturato       || 0;
-  const coeff    = d.coefficiente || GRUPPI[d.gruppo_idx]?.coeff || 0;
-  const aliq     = d.aliquota || 0;
-  const inps     = updates.contributi_inps || d.contributi_inps || 0;
+  const fmt2 = v => v > 0
+    ? '€ ' + Number(v).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '—';
 
-  const dichFatt  = fatt;
-  const dichImp   = updates.imposta_sost   || d.imposta_sost    || 0;
-  const dichInps  = updates.inps_versata_anno_solare || d.inps_versata_anno_solare || 0;
-  const lm43      = parseFloat(r.lm43_eccedenza || 0);
+  // Badge tipo documento
+  const tipoLabel = r.tipo === 'f24' ? '📋 F24' : r.tipo === 'dichiarazione' ? '📑 Dichiarazione' : '📄 Documento';
+  const annoLabel = r.anno ? ` · Anno rilevato: ${r.anno}` : '';
+  g('pdfconf-badge').textContent = `${tipoLabel}${annoLabel}`;
 
-  // Calcolo teorico (motore deterministico)
-  const teorRForf  = dichFatt * coeff;
-  const teorRImp   = d.deduci_inps ? Math.max(0, teorRForf - inps) : teorRForf;
-  const teorImp    = Math.max(0, teorRImp * aliq - lm43);
-
-  // Scarto percentuale
-  const scarto = dichImp > 0 && teorImp > 0
-    ? Math.abs((dichImp - teorImp) / teorImp * 100)
-    : null;
-
-  const fmtE = v => v > 0 ? '€' + v.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-
-  let scartoClass = 'ok', scartoTxt = '—';
-  let alertClass = 'verde', alertMsg = '✅ Dati congruenti — il valore dichiarato corrisponde al calcolo teorico.';
-
-  if (scarto !== null) {
-    scartoTxt = scarto.toFixed(2) + '%';
-    if (scarto > 10) {
-      scartoClass = 'err'; alertClass = 'rosso';
-      alertMsg = `🔴 Discrepanza ${scarto.toFixed(1)}% — Verifica possibili cause: deduzioni aggiuntive non contemplate, arrotondamenti del modello, rigo LM errato, o coefficiente ATECO differente. Confronta con il commercialista.`;
-    } else if (scarto > 1) {
-      scartoClass = 'warn'; alertClass = 'giallo';
-      const cause = [];
-      if (lm43 > 0)  cause.push(`Eccedenza LM43 (${fmtE(lm43)}) già dedotta`);
-      if (dichInps > 0 && dichInps !== inps) cause.push(`INPS versata reale (${fmtE(dichInps)}) vs stimata (${fmtE(inps)})`);
-      alertMsg = `⚠️ Scarto ${scarto.toFixed(1)}%${cause.length ? ' — Possibili cause: ' + cause.join('; ') : ''}. Verifica deduzioni extra o arrotondamenti del modello AdE.`;
-    } else {
-      scartoClass = 'ok'; alertClass = 'verde';
-      alertMsg = `✅ Congruente (scarto ${scarto.toFixed(2)}%) — Il valore dichiarato corrisponde al calcolo teorico entro l'1%.`;
-    }
+  // Avviso anno diverso
+  const annoPDF = r.anno ? parseInt(r.anno) : null;
+  const warnEl  = g('pdfconf-anno-warn');
+  if (annoPDF && annoPDF !== anno) {
+    g('pdfconf-anno-pdf').textContent  = annoPDF;
+    g('pdfconf-anno-card').textContent = anno;
+    warnEl.style.display = 'block';
+  } else {
+    warnEl.style.display = 'none';
   }
 
-  const html = `
-    <div class="riconcil-wrap">
-      <div class="riconcil-title">🔎 Dashboard Riconciliazione — Anno ${anno} <span style="font-size:10px;color:var(--t3);font-weight:400">(Validatore §4B)</span></div>
-      <div style="overflow-x:auto">
-      <table class="riconcil-table">
-        <thead><tr>
-          <th>Voce</th>
-          <th>📄 Dichiarato (PDF)</th>
-          <th>🧮 Teorico (motore)</th>
-          <th>Δ Scarto</th>
-        </tr></thead>
-        <tbody>
-          <tr>
-            <td>Fatturato (LM22)</td>
-            <td>${fmtE(dichFatt)}</td>
-            <td>${fmtE(dichFatt)}</td>
-            <td class="ok">—</td>
-          </tr>
-          <tr>
-            <td>Reddito Forfettario (×${(coeff*100).toFixed(0)}%)</td>
-            <td>—</td>
-            <td>${fmtE(teorRForf)}</td>
-            <td class="ok">—</td>
-          </tr>
-          <tr>
-            <td>Contributi INPS (LM35)</td>
-            <td>${dichInps > 0 ? fmtE(dichInps) : '—'}</td>
-            <td>${fmtE(inps)}</td>
-            <td class="${Math.abs(dichInps - inps) > 1 ? 'warn' : 'ok'}">${dichInps > 0 ? (Math.abs(dichInps - inps)/Math.max(inps,1)*100).toFixed(1)+'%' : '—'}</td>
-          </tr>
-          ${lm43 > 0 ? `<tr>
-            <td>♻️ Eccedenza LM43 (dedotta)</td>
-            <td>${fmtE(lm43)}</td>
-            <td>${fmtE(lm43)}</td>
-            <td class="ok">Applicata</td>
-          </tr>` : ''}
-          <tr>
-            <td><strong>Imposta Sostitutiva (LM39)</strong></td>
-            <td><strong>${fmtE(dichImp)}</strong></td>
-            <td><strong>${fmtE(teorImp)}</strong></td>
-            <td class="${scartoClass}"><strong>${scartoTxt}</strong></td>
-          </tr>
-        </tbody>
-      </table>
-      </div>
-      <div class="riconcil-alert ${alertClass}">${alertMsg}</div>
-    </div>`;
-
-  // Inserisce il pannello nell'archivio, nel body dell'anno corrente
-  const bodyEl = g('ayc-b-' + anno);
-  if (bodyEl) {
-    // Rimuove eventuale riconciliazione precedente
-    const old = bodyEl.querySelector('.riconcil-wrap');
-    if (old) old.remove();
-
-    // Inserisce dopo il blocco bdt (breakdown dettaglio)
-    const bdt = bodyEl.querySelector('.bdt');
-    if (bdt) bdt.insertAdjacentHTML('afterend', html);
-    else bodyEl.insertAdjacentHTML('beforeend', html);
-
-    // Auto-scroll al pannello
-    setTimeout(() => {
-      const rw = bodyEl.querySelector('.riconcil-wrap');
-      if (rw) rw.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 200);
+  // Righe valori estratti
+  const righe = [];
+  if (r.tipo === 'dichiarazione') {
+    righe.push(['📊 Fatturato imponibile (LM22)',   r.fatturato_lm2]);
+    righe.push(['🏛️ INPS dedotta (LM35)',            r.inps_dedotta_lm7 || 0]);
+    righe.push(['💰 Imposta sostitutiva (LM39)',     r.imposta_dovuta_lm11 || 0]);
+    if ((r.lm43_eccedenza || 0) > 0)
+      righe.push(['♻️ Eccedenza LM43 (deduzione)',   r.lm43_eccedenza]);
+  } else {
+    // F24
+    if ((r.inps_versata_f24 || 0) > 0)
+      righe.push(['🏛️ INPS versata (causali PXX/DPPI)',  r.inps_versata_f24]);
+    if ((r.imposta_sostitutiva_f24 || 0) > 0)
+      righe.push(['💰 Imposta sostitutiva (1790-1792)',   r.imposta_sostitutiva_f24]);
+    if ((r.inps_dedotta_lm7 || 0) > 0)
+      righe.push(['🏛️ INPS deducibile (LM35)',            r.inps_dedotta_lm7]);
   }
+
+  g('pdfconf-rows').innerHTML = righe.map(([lbl, val]) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;
+                 padding:8px 12px;border-bottom:1px solid rgba(42,49,64,.4)">
+       <span style="font-size:12px;color:var(--t2)">${lbl}</span>
+       <span style="font-size:13px;font-weight:700;font-family:monospace;
+                    color:${val > 0 ? 'var(--t1)' : 'var(--t3)'}">${fmt2(val || 0)}</span>
+     </div>`
+  ).join('');
+
+  // Box affidabilità
+  const affEl = g('pdfconf-affid');
+  const aff   = r.affidabilita || 'low';
+  const affMap = {
+    high:   { ico: '🟢', lbl: 'Alta affidabilità',  cls: 'var(--gr-d)', bc: 'var(--gr-b)', col: 'var(--gr)' },
+    medium: { ico: '🟡', lbl: 'Affidabilità media', cls: 'var(--ye-d)', bc: 'var(--ye-b)', col: 'var(--ye)' },
+    low:    { ico: '🔴', lbl: 'Bassa affidabilità — verifica i valori prima di confermare',
+              cls: 'var(--re-d)', bc: 'var(--re-b)', col: 'var(--re)' }
+  };
+  const am = affMap[aff] || affMap.low;
+  affEl.style.cssText = `background:${am.cls};border:1px solid ${am.bc};color:${am.col};
+                          margin-bottom:12px;padding:8px 12px;border-radius:8px;font-size:12px`;
+  affEl.textContent = `${am.ico} ${am.lbl}${r.sezione_rilevata ? ' · ' + r.sezione_rilevata : ''}`;
+
+  openModal('modal-pdf-confirm');
+}
+
+async function confermaApplicaDatiPDF() {
+  const btn = g('pdfconf-btn-ok');
+  btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
+  closeModal('modal-pdf-confirm');
+  await applicaDatiPDFSilent(_aiAnno, _aiResult);
+  btn.textContent = '✅ Conferma e salva'; btn.disabled = false;
+}
+
+function annullaApplicaDatiPDF() {
+  // Scarta tutto senza scrivere nulla nel DB
+  _aiFile = null; _aiAnno = null; _aiResult = null;
+  closeModal('modal-pdf-confirm');
+  toast('Analisi annullata — nessun dato modificato.', 'info', 3000);
 }
 
 /* ============================================================
@@ -3563,13 +3532,10 @@ function renderRiconciliazione(anno, r, updates) {
            → syncFutureYears → upload Storage → toast successo
    ============================================================ */
 async function applicaDatiPDFSilent(anno, r) {
-  // ── CORREZIONE ANNO F24 (stesso fix di confermaAiResult) ────────────
-  let annoTarget = anno;
-  const annoF24 = (r.tipo === 'f24' && r.anno) ? parseInt(r.anno) : null;
-  if (annoF24 && annoF24 !== anno && _anni[annoF24]) {
-    console.log(`[applicaDatiPDFSilent] Anno F24 ${annoF24} ≠ card ${anno} → uso ${annoF24}`);
-    annoTarget = annoF24;
-  }
+  // FIX-1: L'anno della card cliccata dall'utente e' sempre autoritativo.
+  // Non viene mai sovrascritto con l'anno letto da PDF/Gemini.
+  // Gemini puo' leggere la data di pagamento F24, non l'anno fiscale.
+  const annoTarget = anno;
 
   const d = _anni[annoTarget];
   if (!d) {
@@ -3644,18 +3610,7 @@ async function applicaDatiPDFSilent(anno, r) {
       const r_imp      = d.deduci_inps ? Math.max(0, r_forf - inpsPerDed) : r_forf;
 
       // Imposta sostitutiva: usa quella estratta dal PDF se presente, altrimenti ricalcola
-      const imp_sost_raw = imposta > 0 ? imposta : r_imp * d.aliquota;
-
-      // ── LM43 — Eccedenza anno precedente (Validatore.md §4A) ────────
-      // Se il PDF riporta un'eccedenza dal periodo d'imposta precedente,
-      // va sottratta dall'imposta dovuta per evitare che l'utente paghi
-      // più del dovuto rispetto al commercialista.
-      const lm43 = cleanNum(r.lm43_eccedenza || 0);
-      const imp_sost = Math.max(0, imp_sost_raw - lm43);
-      if (lm43 > 0) {
-        console.log(`[applicaDatiPDFSilent] LM43 eccedenza: €${lm43} → imposta netta: €${imp_sost} (era €${imp_sost_raw})`);
-      }
-
+      const imp_sost   = imposta > 0 ? imposta : r_imp * d.aliquota;
       const tot_oneri  = imp_sost + c_inps;
 
       // Acconti (art. 17 TUIR — metodo storico)
@@ -3676,7 +3631,7 @@ async function applicaDatiPDFSilent(anno, r) {
         acconto_1:       acc1,
         acconto_2:       acc2,
         acconto_tot:     acc_tot,
-        acconto_note:    `Dati Master da PDF · ${new Date().toLocaleDateString('it-IT')} · ${r.sezione_rilevata || 'Quadro LM'}${lm43 > 0 ? ` · LM43 eccedenza −${fmt(lm43)}` : ''}`
+        acconto_note:    `Dati Master da PDF · ${new Date().toLocaleDateString('it-IT')} · ${r.sezione_rilevata || 'Quadro LM'}`
       });
     }
   }
@@ -3703,20 +3658,10 @@ async function applicaDatiPDFSilent(anno, r) {
   renderArchivio();
   renderSidebar();
 
-  // ── DASHBOARD RICONCILIAZIONE (Validatore.md §4B) ────────────────
-  // Mostra il confronto Dichiarato vs Teorico solo per le dichiarazioni
-  if (r.tipo === 'dichiarazione' && Object.keys(updates).length > 1) {
-    // Piccolo delay per dare tempo a renderArchivio di costruire il DOM
-    setTimeout(() => renderRiconciliazione(annoTarget, r, updates), 150);
-  }
-
   // Toast successo semplice (nessun confronto visivo)
   const tipoDoc = r.tipo === 'f24' ? 'F24' : 'Dichiarazione';
   const affIco  = r.affidabilita === 'high' ? '🟢' : r.affidabilita === 'medium' ? '🟡' : '';
-  const lm43App = (r.lm43_eccedenza || 0) > 0
-    ? ` · ♻️ LM43 eccedenza −${fmt(r.lm43_eccedenza)} applicata`
-    : '';
-  toast(`✅ Dati aggiornati correttamente dal documento ${affIco} (${tipoDoc} · Anno ${annoTarget})${lm43App}`, 'ok', 7000);
+  toast(`✅ Dati aggiornati correttamente dal documento ${affIco} (${tipoDoc} · Anno ${annoTarget})`, 'ok', 6000);
 
   // ── CASCADE ACCONTI ANNO SUCCESSIVO ──────────────────────────────────
   await syncFutureYears(annoTarget);
@@ -5033,9 +4978,6 @@ async function loadAdmin() {
   }
   g('adm-tbl').innerHTML = '<div class="loading"><div class="spinner"></div><span>Caricamento...</span></div>';
 
-  // ── Controllo aggiornamenti AdE (Sentinel Badge) ──────────────
-  checkSentinelUpdates();
-
   // ⚠️  Admin vede SOLO dati anagrafici — nessun dato fiscale
   const { data: profiles, error: pe } = await sb
     .from('profiles')
@@ -5173,59 +5115,12 @@ function showSentinelBadge(message) {
   }
 }
 
-// ── CHECK AUTOMATICO AGGIORNAMENTI ADE ──────────────────────────
-// Interroga la tabella aggiornamenti_ade per notifiche non confermate.
-// Se la tabella non esiste, fallback automatico (silenzioso).
-let _sentinelId = null;
-
-async function checkSentinelUpdates() {
-  if (_profile?.ruolo !== 'admin') return;
-  try {
-    const { data, error } = await sb
-      .from('aggiornamenti_ade')
-      .select('id, messaggio, anno_riferimento, created_at')
-      .eq('confermato', false)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (!error && data && data.length > 0) {
-      const n = data[0];
-      _sentinelId = n.id;
-      const msg = n.messaggio ||
-        (n.anno_riferimento ? `Rilevata modifica aliquote ${n.anno_riferimento} — Aggiornare?`
-                             : 'Rilevata modifica aliquote AdE — Aggiornare tabelle?');
-      showSentinelBadge(msg);
-      console.log('[sentinel] Notifica AdE non confermata:', msg);
-    } else {
-      // Nessuna notifica: nascondi badge se visibile
-      const badge = g('sentinel-badge');
-      if (badge) badge.style.display = 'none';
-    }
-  } catch(e) {
-    // Tabella aggiornamenti_ade non presente nel progetto Supabase → silenzioso
-    console.warn('[sentinel] Tabella aggiornamenti_ade non disponibile (da creare):', e.message);
-  }
-}
-
-async function confirmSentinelUpdate() {
+function confirmSentinelUpdate() {
   if (!confirm('Confermi di voler aggiornare le tabelle dei parametri fiscali?\nQuesta operazione non può essere annullata automaticamente.')) return;
-
-  // Marca la notifica come confermata nel DB (se esiste l'id)
-  if (_sentinelId) {
-    try {
-      await sb.from('aggiornamenti_ade')
-        .update({ confermato: true, confermato_da: _profile?.email, confermato_il: new Date().toISOString() })
-        .eq('id', _sentinelId);
-      _sentinelId = null;
-    } catch(e) {
-      console.warn('[sentinel] Impossibile marcare notifica:', e.message);
-    }
-  }
-
   const badge = g('sentinel-badge');
   if (badge) badge.style.display = 'none';
   switchAdmTab('fiscal');
-  toast('✅ Sezione Parametri Fiscali aperta — aggiorna i coefficienti e premi Salva.', 'ok', 5000);
+  toast('✅ Sezione Parametri Fiscali aperta per la revisione manuale.', 'ok', 5000);
 }
 
 let _admAnniAll = []; // mantenuto per compatibilità interna
