@@ -980,8 +980,54 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
               </div>
             </div>
           </div>
-        </div>
-      </div>
+
+          <!-- §2 Motore.md — GESTIONE MODELLI AdE: MAPPATURA RIGHI -->
+          <div class="card" style="margin-top:12px">
+            <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+              <span>🗺️ Gestione Modelli AdE (Mappatura Righi)</span>
+              <button class="btn btn-sm btn-gr" onclick="openModalMappingAdE()">➕ Aggiungi / Aggiorna Anno</button>
+            </div>
+            <p style="color:var(--t3);font-size:12px;margin:6px 0 12px">
+              Righi ufficiali per anno fiscale — usati da parser locale e Gemini. Fallback ai valori 2024 (LM22/LM35/LM39/LM43) se l'anno non è presente.
+            </p>
+            <div id="tax-mapping-tbl">
+              <div class="loading"><div class="spinner"></div><span>Caricamento mappature…</span></div>
+            </div>
+          </div>
+
+          <!-- MODAL Aggiungi/Aggiorna Anno AdE -->
+          <div id="modal-mapping-ade" class="modal" style="display:none">
+            <div class="modal-box" style="max-width:460px">
+              <div class="modal-hd">
+                <span id="mapping-modal-title">🗺️ Aggiungi mappatura anno AdE</span>
+                <button class="modal-close" onclick="closeModalMappingAdE()">✕</button>
+              </div>
+              <div style="display:grid;gap:10px;padding:16px">
+                <div class="fg"><label>Anno fiscale</label>
+                  <input type="number" id="map-anno" placeholder="es. 2024" min="2010" max="2040">
+                </div>
+                <div class="fg"><label>Rigo Fatturato</label>
+                  <input type="text" id="map-fatturato" placeholder="LM22" value="LM22" maxlength="8">
+                </div>
+                <div class="fg"><label>Rigo INPS deducibile</label>
+                  <input type="text" id="map-inps" placeholder="LM35" value="LM35" maxlength="8">
+                </div>
+                <div class="fg"><label>Rigo Imposta sostitutiva</label>
+                  <input type="text" id="map-imposta" placeholder="LM39" value="LM39" maxlength="8">
+                </div>
+                <div class="fg"><label>Rigo Eccedenza riportata</label>
+                  <input type="text" id="map-eccedenza" placeholder="LM43" value="LM43" maxlength="8">
+                </div>
+                <div style="display:flex;gap:8px;margin-top:4px">
+                  <button class="btn btn-gr" style="flex:1" onclick="saveMappingAdE()">💾 Salva</button>
+                  <button class="btn btn-ol" style="flex:1" onclick="closeModalMappingAdE()">Annulla</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /adm-panel-fiscal -->
+      </div><!-- /view-admin -->
 
     </main>
   </div>
@@ -1415,6 +1461,21 @@ let _aiFile      = null; // file PDF originale (upload Storage dopo conferma)
 let _aiResult    = null; // risultato normalizzato dalla Edge Function / parser locale
 let _lastPdfText = '';   // testo grezzo estratto dall'ultimo PDF (diagnostica)
 let _fullPdfText = '';   // testo completo PDF (detection tipo documento)
+let _taxMapping  = {};   // { anno: { rigo_fatturato, rigo_inps_deducibile, rigo_imposta_sostitutiva, rigo_eccedenza } }
+
+// Fallback righi AdE 2024 — usato se tax_mapping_ade manca o anno non trovato
+const TAX_MAPPING_DEFAULT = {
+  rigo_fatturato:           'LM22',
+  rigo_inps_deducibile:     'LM35',
+  rigo_imposta_sostitutiva: 'LM39',
+  rigo_eccedenza:           'LM43'
+};
+/** Restituisce il mapping righi per anno (fallback ai valori 2024) */
+function getTaxMapping(anno) {
+  if (anno && _taxMapping[anno]) return _taxMapping[anno];
+  if (_taxMapping[2024])         return _taxMapping[2024];
+  return TAX_MAPPING_DEFAULT;
+}
 
 /* ============================================================
    UTILITY
@@ -1631,6 +1692,7 @@ async function initAppData() {
   g('f-anno').value = now.getFullYear();
 
   await loadAnni();
+  await loadTaxMapping();  // §1 Motore.md: righi AdE per parsing dinamico
   await loadDocumenti(); // attende profile+anni+documenti prima di mostrare la UI
   onAnnoChange();
   setSync('ok', 'Sincronizzato');
@@ -1654,7 +1716,7 @@ async function initAppData() {
 function resetApp() {
   // Reset completo dello stato applicazione (logout o token scaduto)
   _ready = false; _user = null; _profile = null;
-  _anni = {}; _last = null; _admData = []; _documenti = {};
+  _anni = {}; _last = null; _admData = []; _documenti = {}; _taxMapping = {};
   _aiFile = null; _aiAnno = null; _aiResult = null;
   _lastPdfText = ''; _fullPdfText = '';
   _delId = null; _delDoc = null; _bozzaRow = null;
@@ -1684,6 +1746,33 @@ async function loadAnni() {
   renderSidebar();
   fillConfSelectors();
   setSync('ok', 'Sincronizzato');
+}
+
+/* ============================================================
+   TAX MAPPING AdE — §1 Motore.md
+   Carica la tabella tax_mapping_ade in _taxMapping = { anno: {...righi} }
+   Fallback automatico a TAX_MAPPING_DEFAULT se tabella vuota o anno mancante.
+   ============================================================ */
+async function loadTaxMapping() {
+  try {
+    const { data, error } = await sb
+      .from('tax_mapping_ade')
+      .select('anno, rigo_fatturato, rigo_inps_deducibile, rigo_imposta_sostitutiva, rigo_eccedenza')
+      .order('anno', { ascending: false });
+    if (error) { console.warn('[loadTaxMapping] Errore:', error.message); return; }
+    _taxMapping = {};
+    (data || []).forEach(row => {
+      _taxMapping[row.anno] = {
+        rigo_fatturato:           row.rigo_fatturato           || 'LM22',
+        rigo_inps_deducibile:     row.rigo_inps_deducibile     || 'LM35',
+        rigo_imposta_sostitutiva: row.rigo_imposta_sostitutiva || 'LM39',
+        rigo_eccedenza:           row.rigo_eccedenza           || 'LM43'
+      };
+    });
+    console.log('[loadTaxMapping] Anni caricati:', Object.keys(_taxMapping).length);
+  } catch(e) {
+    console.warn('[loadTaxMapping] Eccezione:', e.message);
+  }
 }
 
 /* ============================================================
@@ -1974,18 +2063,32 @@ function tryParseRPF(text) {
   }
 
   /* ══════════════════════════════════════════════════════════════
-     METODO 2: Regex esplicite su LM22/LM35/LM39 (fallback)
-     Funziona quando il testo è estratto in modo più lineare.
+     METODO 2: Regex esplicite sui righi dinamici (fallback)
+     Usa i righi da _taxMapping[anno] invece di LM22/LM35/LM39 fissi.
   ══════════════════════════════════════════════════════════════ */
   if (fatturato === 0) {
+    const mapping = getTaxMapping(anno);
+    const rF = mapping.rigo_fatturato           || 'LM22';
+    const rI = mapping.rigo_inps_deducibile     || 'LM35';
+    const rM = mapping.rigo_imposta_sostitutiva || 'LM39';
     const IMO = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2}|\\d{1,3}(?:\\.\\d{3})+)';
-    const mLM22 = t.match(new RegExp('LM22[\\s\\S]{0,800}?' + IMO, 'i'));
-    const mLM35 = t.match(new RegExp('LM35[\\s\\S]{0,800}?' + IMO, 'i'));
-    const mLM39 = t.match(new RegExp('LM39[\\s\\S]{0,800}?' + IMO, 'i'));
-    if (mLM22) fatturato = parseIT(mLM22[1]);
-    if (mLM35) inps      = parseIT(mLM35[1]);
-    if (mLM39) imposta   = parseIT(mLM39[1]);
-    console.log('[RPF] M2 fallback — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta);
+    const mF = t.match(new RegExp(rF + '[\\s\\S]{0,800}?' + IMO, 'i'));
+    const mI = t.match(new RegExp(rI + '[\\s\\S]{0,800}?' + IMO, 'i'));
+    const mM = t.match(new RegExp(rM + '[\\s\\S]{0,800}?' + IMO, 'i'));
+    if (mF) fatturato = parseIT(mF[1]);
+    if (mI) inps      = parseIT(mI[1]);
+    if (mM) imposta   = parseIT(mM[1]);
+    console.log('[RPF] M2 fallback (' + rF + '/' + rI + '/' + rM + ') — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta);
+  }
+
+  /* ── Eccedenza (rigo dinamico, es. LM43) — §5 Motore.md ── */
+  let eccedenza = 0;
+  {
+    const mapping = getTaxMapping(anno);
+    const rE  = mapping.rigo_eccedenza || 'LM43';
+    const IMO = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2}|\\d{1,3}(?:\\.\\d{3})+)';
+    const mE  = t.match(new RegExp(rE + '[\\s\\S]{0,800}?' + IMO, 'i'));
+    if (mE) { eccedenza = parseIT(mE[1]); console.log('[RPF] Eccedenza ' + rE + ':', eccedenza); }
   }
 
   /* ── ATECO (se non trovato dal blocco) ── */
@@ -1994,18 +2097,26 @@ function tryParseRPF(text) {
     if (mA && parseInt(mA[1]) > 100000) ateco = mA[1];
   }
 
-  console.log('[RPF] FINALE — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta, '| ateco:', ateco, '| anno:', anno);
+  // §6 Vincoli — arrotonda all'intero per valori RPF
+  fatturato = Math.round(fatturato);
+  inps      = Math.round(inps);
+  imposta   = Math.round(imposta);
+  eccedenza = Math.round(eccedenza);
+
+  console.log('[RPF] FINALE — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta, '| eccedenza:', eccedenza, '| ateco:', ateco, '| anno:', anno);
 
   return {
     tipo: 'dichiarazione', anno, ateco,
     fatturato_lm2:       fatturato,
     inps_dedotta_lm7:    inps,
     imposta_dovuta_lm11: imposta,
+    lm43_eccedenza:      eccedenza,
     inps_versata_f24:    0,
-    note: '\u26A1 Estratto da Modello RPF (0 token AI)' +
-          (ateco  ? ` · ATECO ${ateco}` : '') +
-          (anno   ? ` · Anno ${anno}`   : '') +
-          (!inps || !imposta ? ' · \u26A0\uFE0F Verifica INPS/imposta manualmente.' : '')
+    note: '⚡ Estratto da Modello RPF (0 token AI)' +
+          (ateco     ? ` · ATECO ${ateco}` : '') +
+          (anno      ? ` · Anno ${anno}`   : '') +
+          (eccedenza ? ` · Eccedenza €${eccedenza}` : '') +
+          (!inps || !imposta ? ' · ⚠️ Verifica INPS/imposta manualmente.' : '')
   };
 }
 
@@ -2161,63 +2272,59 @@ function tryParseF24(text, annoTarget) {
    • Modello 2025 (redditi 2024): contributi = LM35, imposta = LM39
    • Modello 2024 (redditi 2023): contributi = LM35, imposta = LM39
    ============================================================ */
-const EXPERT_PROMPT = `# LOGICA DI LOCALIZZAZIONE QUADRO LM — REGIME FORFETTARIO ITALIANO
+/* ============================================================
+   EXPERT PROMPT DINAMICO — §3 Motore.md
+   buildExpertPrompt(anno, mapping) sostituisce EXPERT_PROMPT statico.
+   I righi AdE vengono iniettati dal mapping caricato da tax_mapping_ade.
+   ============================================================ */
+function buildExpertPrompt(anno, mapping) {
+  const m   = mapping || getTaxMapping(anno);
+  const rF  = m.rigo_fatturato           || 'LM22';
+  const rI  = m.rigo_inps_deducibile     || 'LM35';
+  const rIM = m.rigo_imposta_sostitutiva || 'LM39';
+  const rE  = m.rigo_eccedenza           || 'LM43';
+  return `# LOGICA DI LOCALIZZAZIONE QUADRO LM — REGIME FORFETTARIO ITALIANO
+# Anno analizzato: ${anno || 'N/D'} — Righi AdE attesi: Fatturato→${rF} INPS→${rI} Imposta→${rIM} Eccedenza→${rE}
 
 ## 1. IDENTIFICAZIONE SEZIONE
-Cerca nel testo le intestazioni "QUADRO LM" o "Sezione II - Regime forfettario" o "Determinazione del reddito".
-Non fare affidamento sul numero di pagina — il Quadro LM può trovarsi a pagina 4 (modelli recenti) o pagina 22 (modelli vecchi).
-Ignora righi di altri quadri (Quadro RN, Quadro RS, Quadro RR): analizza SOLO i righi che iniziano con "LM".
+Cerca "QUADRO LM" o "Sezione II - Regime forfettario" o "Determinazione del reddito".
+Non fare affidamento sul numero di pagina. Analizza SOLO righi LM; ignora Quadro RN, RS, RR.
 
 ## 2. VARIABILITÀ STORICA DEI MODELLI
-- **Modello 2025 (redditi 2024)**: Fatturato → LM22 col.3, INPS → LM35, Imposta → LM39 "Art. 1 L. 190/2014". LM34=reddito lordo, LM38=reddito netto — NON sono INPS né imposta. Verifica LM32/LM33 per Concordato Preventivo Biennale.
-- **Modello 2024 (redditi 2023)**: stessa struttura 2025.
-- **Modelli 2019-2023**: soglia 65k€ (85k€ dal 2023), LM21=ATECO, LM22=Fatturato, LM35=INPS, LM39=Imposta.
-- **Modelli 2015-2018**: struttura simile, verifica che LM39 sia imposta forfettaria e non altro tributo.
-- **Modelli 2010-2014 (Regime dei Minimi)**: imposta sostitutiva 5% o 20%, struttura diversa — cerca "CM" o "reddito minimo". Segnala affidabilità "low" se rilevato.
-- **Anno > 2025**: modello non mappato — segnala nel messaggio, imposta affidabilità "low".
+- Modello 2025 (redditi 2024): Fatturato→${rF} col.3, INPS→${rI}, Imposta→${rIM}. LM34=reddito lordo, LM38=reddito netto. Verifica LM32/LM33 per CPB.
+- Modello 2024 (redditi 2023): stessa struttura 2025.
+- Modelli 2019-2023: soglia 65k€ (85k€ dal 2023), LM21=ATECO, ${rF}=Fatturato, ${rI}=INPS, ${rIM}=Imposta.
+- Modelli 2015-2018: verifica che ${rIM} sia imposta forfettaria.
+- Modelli 2010-2014 (Regime Minimi): imposta 5% o 20%, struttura diversa — segnala affidabilità "low".
+- Anno > 2025: modello non mappato — affidabilità "low".
 
-## 3. VERIFICA INTEGRITÀ (LM38 → LM39 fallback)
-Se non trovi il rigo LM39 (Imposta sostitutiva), cerca LM38 (Reddito al netto delle perdite) e applica l'aliquota (5% o 15%) per dedurre il valore mancante. Segnalalo come "calcolato" nel messaggio di convalida.
+## 3. ECCEDENZA RIPORTATA (${rE})
+Cerca SEMPRE il rigo ${rE} ("Eccedenza riportata"). Se > 0, includi nel JSON come "lm43_eccedenza". Riduce il debito d'imposta effettivo.
 
-## 4. REGOLE DI LETTURA NUMERI
-- **Codice ATECO**: 6 cifre senza virgola (es. 683200). MAI confonderlo con un importo.
-- **Importi**: virgola decimale (es. 1.250,00). Punto = migliaia, virgola = centesimi.
-- **Rigo incollato al valore**: "LM392.021,00" → rigo LM39, valore 2.021,00.
+## 4. FALLBACK IMPOSTA
+Se ${rIM} non trovato, cerca LM38 e applica 5% o 15%. Segnala come "calcolato".
 
-## 5. VALIDAZIONE MATEMATICA OBBLIGATORIA
-1. Reddito Lordo = Fatturato × Coefficiente ATECO
-2. Reddito Imponibile = Reddito Lordo − Contributi INPS
-3. Imposta teorica = Reddito Imponibile × 5% (start-up) oppure × 15% (ordinario)
-4. Scarto imposta dichiarata vs teorica > 10% → congruente=false, descrivi causa.
-5. INPS = 0 con fatturato > 5.000€ → anomalia, congruente=false.
+## 5. REGOLE LETTURA NUMERI
+- ATECO: 6 cifre senza virgola. MAI confonderlo con importo.
+- Importi: virgola decimale (es. 1.250,00). Punto=migliaia, virgola=centesimi.
+- Rigo incollato: "${rIM}2.021,00" → rigo ${rIM}, valore 2.021,00.
 
-## 6. FORMATO OUTPUT — SOLO JSON PURO, ZERO TESTO, ZERO MARKDOWN
-{
-  "anno": integer,
-  "ateco": "6 cifre",
-  "fatturato": float,
-  "inps_versata": float,
-  "imposta_dovuta": float,
-  "tipo": "dichiarazione",
-  "sezione_rilevata": "es: Quadro LM - Sezione II - Regime forfettario",
-  "affidabilita": "high" | "medium" | "low",
-  "congruente": boolean,
-  "convalida": {
-    "status": "verde" | "giallo" | "rosso",
-    "messaggio": "descrizione tecnica breve"
-  }
-}
+## 6. VALIDAZIONE MATEMATICA
+1. Reddito Lordo = Fatturato × Coeff ATECO
+2. Reddito Imponibile = Reddito Lordo − INPS
+3. Imposta teorica = Reddito Imponibile × 5% (startup) o 15% (ordinario)
+4. Scarto > 10% → congruente=false
+5. INPS = 0 con fatturato > 5.000€ → anomalia, congruente=false
 
-## REGOLA CRITICA — ANNO FISCALE DI COMPETENZA
-Il campo "anno" è l'ANNO FISCALE (non l'anno di presentazione):
-- "MODELLO REDDITI PF 2023" → redditi 2022 → restituire anno: 2022
-- "MODELLO REDDITI PF 2024" → redditi 2023 → restituire anno: 2023
-- Fonte prioritaria: "PERIODO D'IMPOSTA XXXX" → usa XXXX
-- Se solo "MODELLO REDDITI XXXX" senza PERIODO: anno = XXXX - 1
+## 7. OUTPUT — SOLO JSON PURO, ZERO TESTO, ZERO MARKDOWN
+{"anno":integer,"ateco":"6cifre","fatturato":float,"inps_versata":float,"imposta_dovuta":float,"lm43_eccedenza":float,"tipo":"dichiarazione","sezione_rilevata":"...","affidabilita":"high"|"medium"|"low","congruente":boolean,"convalida":{"status":"verde"|"giallo"|"rosso","messaggio":"..."}}
+
+## REGOLA CRITICA ANNO
+"MODELLO REDDITI PF 2024" → anno: 2023. Fonte prioritaria: "PERIODO D'IMPOSTA XXXX" → usa XXXX. Solo "MODELLO REDDITI XXXX" → anno = XXXX-1.
 
 ## REGOLA ASSOLUTA
-Non inventare mai cifre assenti. Dati parziali → congruente=false, status=giallo, descrivi cosa manca.
-Se il Quadro LM non è presente nel documento inviato: {"errore": "Quadro LM non rilevato nel documento. Assicurati di aver caricato una dichiarazione completa.", "affidabilita": "low"}`;
+Non inventare cifre assenti. Dati parziali → congruente=false, giallo. Quadro LM assente → {"errore":"Quadro LM non rilevato.","affidabilita":"low"}`;
+}
 
 /* ============================================================
    NORMALIZZAZIONE RISPOSTA
@@ -2427,15 +2534,21 @@ function convalidaLocale(r) {
       messaggio: `Imposta OK (scarto ${scartoStr}%).${avvisoLM22}`
     };
   }
+  // §5 Motore.md — Incongruenza > 1%: alert con rigo dinamico dal mapping AdE
+  const _mapping = getTaxMapping(r.anno ? parseInt(r.anno) : null);
+  const _rigImp  = _mapping.rigo_imposta_sostitutiva || 'LM39';
+  const _msgInc  = `⚠️ Incongruenza rilevata: il rigo ${_rigImp} dichiarato (€${fmt2(imposta)}) ` +
+    `differisce dal calcolo teorico (€${fmt2(impTeor)}, ${aliqUsata}%). ` +
+    `Verificare deduzioni extra, eccedenze o arrotondamenti.`;
   if (scartoMin <= 20) {
     return {
       stato: 'giallo',
-      messaggio: `⚠️ Scarto imposta ${scartoStr}%${suffisso} ${riepilogo}. LM38/LM39: €${fmt2(imposta)} · Teorica (${aliqUsata}%): €${fmt2(impTeor)}. Possibili: deduzioni aggiuntive, arrotondamenti, rigo errato.${avvisoLM22}`
+      messaggio: `${_msgInc}${suffisso} ${riepilogo}.${avvisoLM22}`
     };
   }
   return {
     stato: 'rosso',
-    messaggio: `🔴 Discrepanza ${scartoStr}%.${suffisso} ${riepilogo}. LM38/LM39: €${fmt2(imposta)} · Teorica 15%: €${fmt2(imp15)} · 5%: €${fmt2(imp5)}. Verifica il documento o il codice ATECO.${avvisoLM22}`
+    messaggio: `🔴 ${_msgInc}${suffisso} ${riepilogo}. Teorica 15%: €${fmt2(imp15)} · 5%: €${fmt2(imp5)}.${avvisoLM22}`
   };
 }
 
@@ -2613,7 +2726,7 @@ async function parseTaxPDF(file) {
       pdf_text:      pdf_text_norm,   // testo normalizzato: numeri leggibili da Gemini
       is_f24:        isLikelyF24,
       page_count:    _numPages || 1,
-      expert_prompt: EXPERT_PROMPT
+      expert_prompt: buildExpertPrompt(_aiAnno, getTaxMapping(_aiAnno))
     })
   });
 
@@ -2700,9 +2813,12 @@ function calcola() {
   const inpsVersataInput = parseFloat(g('f-inps-versata')?.value) || 0;
   const inpsPerDeduzione = (deduci && inpsVersataInput > 0) ? inpsVersataInput : c_inps;
 
-  const r_imp     = deduci ? Math.max(0, r_forf - inpsPerDeduzione) : r_forf;
-  const imp_sost  = r_imp * aliq;
-  const tot_oneri = imp_sost + c_inps;
+  const r_imp          = deduci ? Math.max(0, r_forf - inpsPerDeduzione) : r_forf;
+  // §5 Motore.md — Eccedenza LM43: riduce il debito d'imposta sostitutiva dell'anno
+  const eccedenzaPrec  = (_anni[anno] && _anni[anno].eccedenza_precedente) || 0;
+  const imp_sost_lordo = r_imp * aliq;
+  const imp_sost       = Math.max(0, imp_sost_lordo - eccedenzaPrec);
+  const tot_oneri      = imp_sost + c_inps;
 
   // STORICO — obbligo 3 anni per previsione F24 affidabile
   const anniSalvati = Object.keys(_anni).length;
@@ -3177,7 +3293,7 @@ function togAyc(anno) {
    Chiamato dal pulsante "x Rimuovi" sul banner INPS.
    Azzera il campo nel DB e aggiorna la UI. */
 async function resetInpsVersata(rowId, anno) {
-  if (!confirm('Rimuovere il valore INPS versata per l'anno ' + anno + '?')) return;
+  if (!confirm(`Rimuovere il valore INPS versata per l'anno ${anno}?`)) return;
   setSync('busy', 'Rimozione...');
   const { error } = await sb.from('anni_fiscali')
     .update({ inps_versata_anno_solare: null, updated_at: new Date().toISOString() })
@@ -3720,9 +3836,14 @@ async function applicaDatiPDFSilent(anno, r) {
       const inpsPerDed = (d.deduci_inps && inpsVers > 0) ? inpsVers : c_inps;
       const r_imp      = d.deduci_inps ? Math.max(0, r_forf - inpsPerDed) : r_forf;
 
-      // Imposta sostitutiva: usa quella estratta dal PDF se presente, altrimenti ricalcola
-      const imp_sost   = imposta > 0 ? imposta : r_imp * d.aliquota;
-      const tot_oneri  = imp_sost + c_inps;
+      // §5 Motore.md — Eccedenza LM43: salva e sottrai dall'imposta
+      const eccedenza  = cleanNum(r.lm43_eccedenza) || 0;
+      if (eccedenza > 0) updates.eccedenza_precedente = eccedenza;
+
+      // Imposta sostitutiva: usa quella estratta dal PDF (meno eccedenza), altrimenti ricalcola
+      const imp_sost_lordo = imposta > 0 ? imposta : r_imp * d.aliquota;
+      const imp_sost       = Math.max(0, imp_sost_lordo - eccedenza);
+      const tot_oneri      = imp_sost + c_inps;
 
       // Acconti (art. 17 TUIR — metodo storico)
       let acc1 = 0, acc2 = 0, acc_tot = 0;
@@ -5054,7 +5175,7 @@ function switchAdmTab(tab) {
   g('adm-tab-fiscal').style.background  = tab === 'fiscal'  ? 'var(--s1)' : 'transparent';
   g('adm-tab-fiscal').style.border      = tab === 'fiscal'  ? '1px solid var(--bd)' : 'none';
   g('adm-tab-fiscal').style.color       = tab === 'fiscal'  ? 'var(--t1)' : 'var(--t2)';
-  if (tab === 'fiscal') loadTaxRules();
+  if (tab === 'fiscal') { loadTaxRules(); renderTaxMappingTable(); }
 }
 
 // ── TAX RULES CRUD ──────────────────────────────────────────────
@@ -5148,6 +5269,87 @@ async function saveTaxRules() {
   Object.keys(_trEdits).forEach(k => delete _trEdits[k]);
   toast(`✅ ${results.length} parametri fiscali aggiornati e applicati.`, 'ok', 5000);
   loadTaxRules(); // Ricarica per conferma visiva
+}
+
+/* ============================================================
+   §2 Motore.md — GESTIONE MODELLI AdE (Mappatura Righi)
+   ============================================================ */
+async function renderTaxMappingTable() {
+  const el = g('tax-mapping-tbl');
+  if (!el) return;
+  const anni = Object.keys(_taxMapping).sort((a,b) => b - a);
+  if (!anni.length) {
+    el.innerHTML = '<p style="color:var(--t3);font-size:13px;padding:8px 0">Nessuna mappatura presente — si usa il fallback LM22/LM35/LM39/LM43.</p>';
+    return;
+  }
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:1px solid var(--bd)">
+        <th style="text-align:left;padding:6px 8px;color:var(--t2)">Anno</th>
+        <th style="padding:6px 8px;color:var(--t2)">Fatturato</th>
+        <th style="padding:6px 8px;color:var(--t2)">INPS</th>
+        <th style="padding:6px 8px;color:var(--t2)">Imposta</th>
+        <th style="padding:6px 8px;color:var(--t2)">Eccedenza</th>
+        <th style="padding:6px 8px;color:var(--t2)">Azioni</th>
+      </tr></thead>
+      <tbody>
+        ${anni.map(a => {
+          const m = _taxMapping[a];
+          return `<tr style="border-bottom:1px solid var(--s2)">
+            <td style="padding:6px 8px;font-weight:700;color:var(--ac)">${a}</td>
+            <td style="padding:6px 8px;text-align:center">${m.rigo_fatturato}</td>
+            <td style="padding:6px 8px;text-align:center">${m.rigo_inps_deducibile}</td>
+            <td style="padding:6px 8px;text-align:center">${m.rigo_imposta_sostitutiva}</td>
+            <td style="padding:6px 8px;text-align:center">${m.rigo_eccedenza}</td>
+            <td style="padding:6px 8px;text-align:center">
+              <button class="btn btn-sm btn-ol" onclick="editMappingAdE(${a})" style="font-size:11px;padding:3px 8px">✏️</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function openModalMappingAdE(anno) {
+  const m = anno ? (_taxMapping[anno] || TAX_MAPPING_DEFAULT) : TAX_MAPPING_DEFAULT;
+  g('mapping-modal-title').textContent = anno ? `✏️ Modifica mappatura anno ${anno}` : '🗺️ Aggiungi mappatura anno AdE';
+  g('map-anno').value       = anno || '';
+  g('map-anno').readOnly    = !!anno;
+  g('map-fatturato').value  = m.rigo_fatturato           || 'LM22';
+  g('map-inps').value       = m.rigo_inps_deducibile     || 'LM35';
+  g('map-imposta').value    = m.rigo_imposta_sostitutiva || 'LM39';
+  g('map-eccedenza').value  = m.rigo_eccedenza           || 'LM43';
+  g('modal-mapping-ade').style.display = 'flex';
+}
+
+function editMappingAdE(anno) { openModalMappingAdE(anno); }
+
+function closeModalMappingAdE() {
+  g('modal-mapping-ade').style.display = 'none';
+}
+
+async function saveMappingAdE() {
+  const anno = parseInt(g('map-anno').value);
+  if (!anno || anno < 2010 || anno > 2040) { toast('⚠️ Anno non valido (2010-2040)', 'err'); return; }
+  const row = {
+    anno,
+    rigo_fatturato:           (g('map-fatturato').value.trim().toUpperCase() || 'LM22'),
+    rigo_inps_deducibile:     (g('map-inps').value.trim().toUpperCase()      || 'LM35'),
+    rigo_imposta_sostitutiva: (g('map-imposta').value.trim().toUpperCase()   || 'LM39'),
+    rigo_eccedenza:           (g('map-eccedenza').value.trim().toUpperCase() || 'LM43')
+  };
+  const { error } = await sb.from('tax_mapping_ade').upsert(row, { onConflict: 'anno' });
+  if (error) { toast('❌ Errore salvataggio: ' + error.message, 'err'); return; }
+  // Aggiorna cache locale
+  _taxMapping[anno] = {
+    rigo_fatturato:           row.rigo_fatturato,
+    rigo_inps_deducibile:     row.rigo_inps_deducibile,
+    rigo_imposta_sostitutiva: row.rigo_imposta_sostitutiva,
+    rigo_eccedenza:           row.rigo_eccedenza
+  };
+  closeModalMappingAdE();
+  renderTaxMappingTable();
+  toast(`✅ Mappatura anno ${anno} salvata — applicata immediatamente a tutti gli utenti.`, 'ok', 5000);
 }
 
 // ── SENTINEL UPDATE (badge rosso per aggiornamenti AdE) ─────────
