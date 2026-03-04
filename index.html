@@ -92,7 +92,7 @@ nav{
   min-height:100vh;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   text-align:center;
-  padding:120px clamp(20px,5vw,80px) 80px;
+  padding:160px clamp(20px,5vw,80px) 80px;
   overflow:hidden;
 }
 /* Gradient blobs */
@@ -598,6 +598,70 @@ footer{
   text-decoration:line-through;
 }
 
+/* ===== DISCLAIMER BANNER ===== */
+.disclaimer-bar{
+  background:rgba(210,153,34,.06);
+  border-bottom:1px solid rgba(210,153,34,.2);
+  padding:10px clamp(20px,5vw,80px);
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  text-align:center;
+  font-size:12.5px;color:var(--ye);
+  font-family:var(--font-m);
+  position:relative;z-index:998;
+}
+.disclaimer-bar strong{color:#e8b84b}
+.disclaimer-bar a{color:var(--ye);text-decoration:underline;text-underline-offset:3px;opacity:.8}
+.disclaimer-bar a:hover{opacity:1}
+
+/* ===== TRASPARENZA SECTION ===== */
+.trasparenza-section{
+  border-top:1px solid var(--bd);
+  border-bottom:1px solid var(--bd);
+  background:linear-gradient(135deg,rgba(210,153,34,.04) 0%,rgba(31,111,235,.03) 100%);
+}
+.trasparenza-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;
+}
+@media(max-width:768px){.trasparenza-grid{grid-template-columns:1fr;gap:28px}}
+.trsp-icon-block{
+  display:flex;flex-direction:column;gap:20px;
+}
+.trsp-item{
+  display:flex;gap:16px;align-items:flex-start;
+}
+.trsp-ico{
+  width:40px;height:40px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+}
+.trsp-ico.ye{background:rgba(210,153,34,.12);border:1px solid rgba(210,153,34,.25)}
+.trsp-ico.ac{background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.2)}
+.trsp-ico.gr{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.2)}
+.trsp-text strong{display:block;font-size:14px;font-weight:700;color:var(--t1);margin-bottom:3px}
+.trsp-text span{font-size:13px;color:var(--t2);line-height:1.6}
+
+.trsp-callout{
+  background:var(--s1);border:1px solid rgba(210,153,34,.3);border-radius:14px;
+  padding:28px;position:relative;overflow:hidden;
+}
+.trsp-callout::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--ye),rgba(210,153,34,.3),transparent);
+}
+.trsp-callout-ico{font-size:36px;margin-bottom:14px;line-height:1}
+.trsp-callout h3{
+  font-family:var(--font-h);font-size:20px;font-weight:800;
+  color:var(--t1);margin-bottom:10px;line-height:1.2;
+}
+.trsp-callout p{font-size:14px;color:var(--t2);line-height:1.7;margin-bottom:16px}
+.trsp-callout .trsp-note{
+  font-size:12px;color:var(--t3);
+  padding:10px 14px;border-radius:8px;
+  background:rgba(210,153,34,.06);border:1px solid rgba(210,153,34,.15);
+  line-height:1.6;
+}
+.trsp-callout .trsp-note strong{color:var(--ye)}
+
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar{width:6px;background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
@@ -616,10 +680,16 @@ footer{
     <a class="nav-link" href="#demo">Demo</a>
     <a class="nav-link" href="#how">Come funziona</a>
     <a class="nav-link" href="#usecases">Casi d'uso</a>
+    <a class="nav-link" href="#trasparenza" style="color:var(--ye);opacity:.8">Trasparenza</a>
     <a class="nav-cta" href="#" onclick="openModal('login');return false">Accedi / Iscriviti</a>
   </div>
   <button class="mob-menu-btn" onclick="openModal('register')">Iscriviti</button>
 </nav>
+
+<!-- ===== DISCLAIMER BAR ===== -->
+<div class="disclaimer-bar">
+  ⚠️&nbsp;<strong>Strumento informativo:</strong>&nbsp;i calcoli sono basati sulla normativa vigente ma non sostituiscono la consulenza del tuo commercialista.&nbsp;<a href="#trasparenza">Scopri perché →</a>
+</div>
 
 <!-- ===== HERO ===== -->
 <section class="hero">
@@ -627,6 +697,9 @@ footer{
   <div class="blob-br"></div>
 
   <div class="hero-badge">🟢 Aggiornato anno fiscale <span class="dyn-year"></span></div>
+  <div class="hero-badge" style="border-color:rgba(210,153,34,.3);background:rgba(210,153,34,.05);color:var(--ye);margin-bottom:28px;margin-top:-16px">
+    🤝 Complementare al tuo commercialista, non sostitutivo
+  </div>
 
   <h1>Il tuo regime forfettario,<br><span class="hl">finalmente chiaro.</span></h1>
 
@@ -1033,12 +1106,70 @@ footer{
   </div>
 </section>
 
+<!-- ===== TRASPARENZA ===== -->
+<section id="trasparenza" class="trasparenza-section">
+  <div class="section-inner">
+    <div class="trasparenza-grid">
+
+      <!-- Colonna sinistra: i 3 punti -->
+      <div class="reveal">
+        <div class="section-label">Trasparenza</div>
+        <h2 class="section-title" style="font-size:clamp(24px,3.5vw,38px)">Un alleato per capire,<br>non un sostituto per decidere.</h2>
+        <p style="font-size:15px;color:var(--t2);line-height:1.7;margin-bottom:32px">
+          ForfettarioApp applica la normativa vigente (L.190/2014 e aggiornamenti annuali) in modo deterministico. Ma ogni situazione fiscale è unica: deduzioni particolari, attività miste, gestione dei crediti pregressi o situazioni straordinarie richiedono la valutazione di un professionista.
+        </p>
+        <div class="trsp-icon-block">
+          <div class="trsp-item">
+            <div class="trsp-ico ye">⚖️</div>
+            <div class="trsp-text">
+              <strong>La legge è uguale, la situazione no</strong>
+              <span>L'app applica le regole standard al 100%. Ma il tuo commercialista conosce la tua storia fiscale completa: eccedenze pregresse, deduzioni straordinarie, contenziosi aperti.</span>
+            </div>
+          </div>
+          <div class="trsp-item">
+            <div class="trsp-ico ac">🔍</div>
+            <div class="trsp-text">
+              <strong>Usa i calcoli come punto di partenza</strong>
+              <span>I valori che ottieni sono un ottimo strumento di verifica autonoma. Portali al tuo commercialista: se coincidono, ottimo. Se differiscono, chiedi perché — imparerai qualcosa di importante.</span>
+            </div>
+          </div>
+          <div class="trsp-item">
+            <div class="trsp-ico gr">📋</div>
+            <div class="trsp-text">
+              <strong>Trasparenza totale sul metodo</strong>
+              <span>Ogni calcolo riporta il riferimento normativo esatto (es. art.1 c.64 L.190/2014 per la deduzione INPS). Niente scatole nere: sai sempre come si è arrivati al numero.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Colonna destra: callout -->
+      <div class="reveal">
+        <div class="trsp-callout">
+          <div class="trsp-callout-ico">🤝</div>
+          <h3>Il tuo commercialista rimane la figura centrale</h3>
+          <p>
+            ForfettarioApp è progettata per farti arrivare dal commercialista <em>preparato</em>: con i numeri già in mano, le domande giuste da fare e la comprensione di cosa stai pagando e perché.
+          </p>
+          <p>
+            Non siamo un software gestionale professionale. Siamo lo strumento che ti permette di capire la tua fiscalità forfettaria in autonomia, ridurre le sorprese e confrontare i conteggi — ma la firma sulla dichiarazione e la responsabilità professionale restano dove devono essere: con il tuo professionista di fiducia.
+          </p>
+          <div class="trsp-note">
+            <strong>⚠️ Nota bene:</strong> i calcoli mostrati sono basati sulle aliquote e normative standard. Situazioni particolari come <em>attività iniziate a metà anno</em>, <em>cessazione del regime</em>, <em>redditi da lavoro dipendente concomitanti</em> o <em>contributi volontari</em> richiedono sempre la valutazione del tuo commercialista.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 <!-- ===== CTA FINALE ===== -->
 <section class="cta-section">
   <div class="cta-box reveal">
     <div class="hero-badge" style="margin:0 auto 24px">✨ Nessuna carta di credito richiesta</div>
-    <h2>Pronto a smettere di fare i calcoli a mano?</h2>
-    <p>Crea il tuo account in 30 secondi e inizia subito a gestire la tua partita IVA forfettaria con chiarezza.</p>
+    <h2>Arriva dal commercialista già preparato.</h2>
+    <p>Crea il tuo account in 30 secondi. Calcola, verifica e comprendi la tua fiscalità forfettaria — poi confronta i risultati con il tuo professionista di fiducia.</p>
     <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
       <a class="btn-primary" href="#" onclick="openModal('register');return false" style="font-size:17px;padding:16px 32px">
         🚀 Crea account gratuito
@@ -1082,7 +1213,8 @@ footer{
   <!-- Copyright -->
   <div class="foot-copy" style="width:100%;text-align:center;padding-top:8px;border-top:1px solid var(--bd)">
     © <span class="dyn-year"></span> Peppone Tek · Tutti i diritti riservati ·
-    Strumento informativo, non sostituisce la consulenza di un commercialista.
+    <span style="color:var(--ye)">⚠️ Strumento informativo — non sostituisce la consulenza professionale del commercialista.</span>
+    Verifica sempre i calcoli con il tuo professionista di fiducia.
   </div>
 </footer>
 
