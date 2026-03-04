@@ -630,30 +630,6 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 .ai-note-base{font-size:11px;color:var(--t3);margin-bottom:10px;padding:8px 11px;
   background:var(--s2);border:1px solid var(--bd);border-radius:7px;line-height:1.55}
 
-/* ── Banner di Riconciliazione (Motore2.md §3) ────────────── */
-#audit-banner{
-  display:none;
-  background:rgba(210,153,34,.15);
-  border-left:4px solid var(--ye);
-  padding:12px 16px;
-  margin:0 0 14px;
-  border-radius:6px;
-  font-size:.9rem;
-  color:var(--t1);
-  position:sticky;
-  top:70px;
-  z-index:100;
-  backdrop-filter:blur(5px);
-  -webkit-backdrop-filter:blur(5px);
-  line-height:1.5;
-}
-#audit-banner.rosso{
-  background:rgba(248,81,73,.12);
-  border-left-color:var(--re);
-}
-#audit-banner strong{color:var(--ye)}
-#audit-banner.rosso strong{color:var(--re)}
-
 </style>
 </head>
 <body>
@@ -768,8 +744,6 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <div class="ph"><div><h1>Nuovo calcolo anno fiscale</h1><p>Inserisci i dati · sincronizzato con il cloud</p></div></div>
         <div class="prev-banner" id="prev-banner"><span style="font-size:16px;flex-shrink:0">🔗</span><p id="prev-txt"></p></div>
         <div class="past-banner" id="past-banner">🗄️ <strong>Anno Completo e Archiviato:</strong> hai selezionato un anno fiscale già concluso. Il mese è fissato a Dicembre e lo stato sarà automaticamente "Archiviato". Spunta "1° Anno attività" se vuoi inserire un mese specifico.</div>
-        <!-- BANNER RICONCILIAZIONE PDF (Motore2.md §3) -->
-        <div id="audit-banner"></div>
         <!-- STEP 1 -->
         <div class="card">
           <div class="card-t"><span class="step">1</span> Anno fiscale, ATECO e regime</div>
@@ -2160,30 +2134,37 @@ function tryParseRPF(text) {
                       1790/1791/1792 → imposta_sostitutiva_pagata
    ─ Non inventare valori se PDF non leggibile
    ============================================================ */
-function tryParseF24(text, annoTarget) {
-  /*
-   * PARSER F24 v4 — Validatore.md §2 compliant
-   *
-   * FIX v4 rispetto a v3:
-   *   1. Scadenza estratta UNA VOLTA dall'intestazione del F24, non per-riga
-   *   2. Anno fiscale tributo estratto dalla colonna "Anno" specifica (non min del contesto)
-   *   3. Stop condition corretta: si ferma SEMPRE quando incontra un'altra causale
-   *      (rimosso il bug j>1 che catturava importi di tributi successivi)
-   *   4. Saldo Finale usato come CORREZIONE attiva, non solo avviso
-   *      (se imposta=0 e saldo > INPS, inferisce l'imposta mancante)
-   *   5. Deduplicazione rafforzata: usa posizione+sezione come tiebreak
-   *      quando annoFisc è null (evita eliminazione F24 legittimamente identici)
-   *   6. Validazione matematica acconti: verifica che 1791 ≈ 40% e 1792 ≈ 60%
-   *      dell'imposta totale — flagga incongruenza se fuori soglia
-   */
+/* ============================================================
+   SPLIT MULTI-F24
+   Rileva se un PDF contiene più modelli F24 distinti e li separa.
+   Ogni F24 inizia con "Scadenza del DD-MM-YYYY" nella sua intestazione.
+   Ritorna un array di segmenti di testo normalizzato (uno per F24).
+   ============================================================ */
+function splitF24Segments(nt) {
+  // Pattern: "Scadenza del 30-07-2025" oppure "Eseguito il 30/07/2025"
+  const SPLIT_RE = /(?=[Ss]cadenza\s+del\s+\d{2}[-/.]\d{2}[-/.]\d{4}|[Ee]seguito\s+il\s+\d{2}[-/.]\d{2}[-/.]\d{4})/g;
+  const parti = nt.split(SPLIT_RE).filter(s => s.trim().length > 80);
+
+  // Se non ci sono marcatori di scadenza riconoscibili, prova con "MODELLO DI PAGAMENTO UNIFICATO"
+  if (parti.length <= 1) {
+    const SPLIT_RE2 = /(?=MODELLO\s+DI\s+PAGAMENTO\s+UNIFICATO)/gi;
+    const parti2 = nt.split(SPLIT_RE2).filter(s => s.trim().length > 80);
+    if (parti2.length > 1) return parti2;
+  }
+
+  return parti.length > 0 ? parti : [nt];
+}
+
+/* ============================================================
+   PARSER SINGOLO SEGMENTO F24 (logica interna)
+   Opera su testo già normalizzato. Chiamato da tryParseF24.
+   ============================================================ */
+function parseSingleF24Segment(nt, annoTarget) {
   const targetAnno = annoTarget || _aiAnno || null;
 
-  // Detection rapida — 1790 incluso (era assente in v1/v2)
-  const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(text);
+  // Detection rapida sul segmento
+  const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(nt);
   if (!isF24) return null;
-
-  // Normalizza dirty-PDF (condivisa con RPF)
-  const nt = normalizePdfText(text);
 
   /* ── HELPER: parseImporto ───────────────────────────────────────────────
      Formati reali nei PDF ADE (incluso PDF.js con celle spezzate):
@@ -2564,6 +2545,93 @@ function tryParseF24(text, annoTarget) {
   };
 }
 
+/* ============================================================
+   tryParseF24 — ORCHESTRATORE MULTI-F24 v5
+   ─────────────────────────────────────────────────────────────
+   v5 rispetto a v4:
+   • Rileva automaticamente più modelli F24 nello stesso PDF
+   • Splitta il testo per "Scadenza del DD-MM-YYYY"
+   • Parsa ogni segmento separatamente con parseSingleF24Segment
+   • Aggrega INPS e imposta sostitutiva di tutti i moduli
+   • Riporta il numero di moduli trovati per diagnostica
+   ============================================================ */
+function tryParseF24(text, annoTarget) {
+  // Detection rapida globale — esce subito se non è un F24
+  const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(text);
+  if (!isF24) return null;
+
+  // Normalizza una sola volta per tutti i segmenti
+  const nt = normalizePdfText(text);
+
+  // Split: rileva quanti F24 sono nel PDF
+  const segmenti = splitF24Segments(nt);
+  console.log('[F24] v5 — segmenti rilevati:', segmenti.length);
+
+  if (segmenti.length <= 1) {
+    // PDF con un solo F24 — comportamento identico a v4
+    return parseSingleF24Segment(nt, annoTarget);
+  }
+
+  // PDF MULTI-F24: parsa ogni segmento e aggrega
+  const risultati = segmenti
+    .map((seg, idx) => {
+      console.log('[F24] v5 — parsing segmento ' + (idx + 1) + '/' + segmenti.length);
+      return parseSingleF24Segment(seg, annoTarget);
+    })
+    .filter(Boolean); // scarta segmenti non riconosciuti come F24
+
+  if (!risultati.length) {
+    console.warn('[F24] v5 — nessun segmento valido trovato');
+    return null;
+  }
+
+  if (risultati.length === 1) {
+    // Un solo segmento valido (gli altri erano header/piè di pagina)
+    return risultati[0];
+  }
+
+  // ── Aggregazione multi-F24 ───────────────────────────────────
+  const totInps     = risultati.reduce((s, r) => s + (r.inps_versata_f24        || 0), 0);
+  const totImposta  = risultati.reduce((s, r) => s + (r.imposta_sostitutiva_f24 || 0), 0);
+  const totSaldo    = risultati.reduce((s, r) => s + (r.saldo_finale_f24         || 0), 0);
+  const tutteRighe  = risultati.flatMap(r => r.f24_righe || []);
+
+  // Anno fiscale di riferimento = il più piccolo trovato (anno dichiarazione)
+  const anniValidi  = risultati.map(r => r.anno).filter(Boolean);
+  const annoFiscRif = anniValidi.length ? Math.min(...anniValidi) : (annoTarget || null);
+
+  // Dettaglio per segmento — visibile nel campo "note"
+  const dettaglioModuli = risultati.map((r, i) => {
+    const scad = (r.f24_righe && r.f24_righe[0]?.dataScad) ? ' scad:' + r.f24_righe[0].dataScad : '';
+    return `F24#${i+1}${scad} — INPS:€${(r.inps_versata_f24||0).toLocaleString('it-IT',{minimumFractionDigits:2})} Imp:€${(r.imposta_sostitutiva_f24||0).toLocaleString('it-IT',{minimumFractionDigits:2})}`;
+  }).join(' | ');
+
+  const nota = [
+    `⚡ F24 MULTI v5 — ${risultati.length} moduli rilevati nel PDF`,
+    `INPS totale (PXX/DPPI): €${totInps.toLocaleString('it-IT',{minimumFractionDigits:2})}`,
+    `Imposta sost. totale (179x): €${totImposta.toLocaleString('it-IT',{minimumFractionDigits:2})}`,
+    `Saldo finale totale: €${totSaldo.toLocaleString('it-IT',{minimumFractionDigits:2})}`,
+    dettaglioModuli
+  ].join(' · ');
+
+  console.log('[F24] ✅ v5 MULTI', nota);
+
+  return {
+    tipo:                    'f24',
+    anno:                    annoFiscRif,
+    ateco:                   null,
+    fatturato_lm2:           0,
+    inps_dedotta_lm7:        0,
+    imposta_dovuta_lm11:     0,
+    inps_versata_f24:        Math.round(totInps    * 100) / 100,
+    imposta_sostitutiva_f24: Math.round(totImposta * 100) / 100,
+    saldo_finale_f24:        Math.round(totSaldo   * 100) / 100,
+    note:                    nota,
+    f24_righe:               tutteRighe,
+    f24_moduli:              risultati.length   // campo diagnostico
+  };
+}
+
 
 
 /* ============================================================
@@ -2705,49 +2773,7 @@ function normalizzaRisultato(raw, annoFallback) {
     r.convalida = convalidaLocale(r);
   }
 
-  // §3 Motore2.md — aggiorna banner riconciliazione visivo
-  aggiornaAuditBanner(r.convalida);
-
   return r;
-}
-
-/* ============================================================
-   BANNER RICONCILIAZIONE (Motore2.md §3)
-   Mostra/nasconde #audit-banner in view-calcolo dopo ogni
-   parsing PDF. Verde → nasconde, Giallo → warning, Rosso → errore.
-   ============================================================ */
-function aggiornaAuditBanner(convalida) {
-  const banner = document.getElementById('audit-banner');
-  if (!banner) return;
-
-  if (!convalida || !convalida.messaggio || convalida.stato === 'verde') {
-    banner.style.display = 'none';
-    banner.innerHTML = '';
-    banner.classList.remove('rosso');
-    return;
-  }
-
-  const mapping = _taxMapping[new Date().getFullYear()] || TAX_MAPPING_DEFAULT;
-  const isRosso = convalida.stato === 'rosso';
-  banner.classList.toggle('rosso', isRosso);
-
-  const icona   = isRosso ? '🔴' : '⚠️';
-  const titolo  = isRosso
-    ? `Errore di congruenza — rigo <strong>${mapping.rigo_imposta_sostitutiva}</strong>`
-    : `Attenzione — verifica consigliata`;
-
-  banner.innerHTML =
-    `<strong>${icona} ${titolo}:</strong> ${convalida.messaggio}` +
-    `<br><small style="opacity:.75">Motore2 §3 — Riconciliazione PDF. ` +
-    `Righi usati: fatturato=${mapping.rigo_fatturato} · ` +
-    `INPS=${mapping.rigo_inps_deducibile} · ` +
-    `imposta=${mapping.rigo_imposta_sostitutiva} · ` +
-    `eccedenza=${mapping.rigo_eccedenza}</small>`;
-
-  banner.style.display = 'block';
-
-  // Porta in vista: scorri piano verso il banner
-  setTimeout(() => banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 200);
 }
 
 /* ============================================================
