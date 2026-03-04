@@ -630,6 +630,30 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 .ai-note-base{font-size:11px;color:var(--t3);margin-bottom:10px;padding:8px 11px;
   background:var(--s2);border:1px solid var(--bd);border-radius:7px;line-height:1.55}
 
+/* ── Banner di Riconciliazione (Motore2.md §3) ────────────── */
+#audit-banner{
+  display:none;
+  background:rgba(210,153,34,.15);
+  border-left:4px solid var(--ye);
+  padding:12px 16px;
+  margin:0 0 14px;
+  border-radius:6px;
+  font-size:.9rem;
+  color:var(--t1);
+  position:sticky;
+  top:70px;
+  z-index:100;
+  backdrop-filter:blur(5px);
+  -webkit-backdrop-filter:blur(5px);
+  line-height:1.5;
+}
+#audit-banner.rosso{
+  background:rgba(248,81,73,.12);
+  border-left-color:var(--re);
+}
+#audit-banner strong{color:var(--ye)}
+#audit-banner.rosso strong{color:var(--re)}
+
 </style>
 </head>
 <body>
@@ -744,6 +768,8 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <div class="ph"><div><h1>Nuovo calcolo anno fiscale</h1><p>Inserisci i dati · sincronizzato con il cloud</p></div></div>
         <div class="prev-banner" id="prev-banner"><span style="font-size:16px;flex-shrink:0">🔗</span><p id="prev-txt"></p></div>
         <div class="past-banner" id="past-banner">🗄️ <strong>Anno Completo e Archiviato:</strong> hai selezionato un anno fiscale già concluso. Il mese è fissato a Dicembre e lo stato sarà automaticamente "Archiviato". Spunta "1° Anno attività" se vuoi inserire un mese specifico.</div>
+        <!-- BANNER RICONCILIAZIONE PDF (Motore2.md §3) -->
+        <div id="audit-banner"></div>
         <!-- STEP 1 -->
         <div class="card">
           <div class="card-t"><span class="step">1</span> Anno fiscale, ATECO e regime</div>
@@ -2679,7 +2705,49 @@ function normalizzaRisultato(raw, annoFallback) {
     r.convalida = convalidaLocale(r);
   }
 
+  // §3 Motore2.md — aggiorna banner riconciliazione visivo
+  aggiornaAuditBanner(r.convalida);
+
   return r;
+}
+
+/* ============================================================
+   BANNER RICONCILIAZIONE (Motore2.md §3)
+   Mostra/nasconde #audit-banner in view-calcolo dopo ogni
+   parsing PDF. Verde → nasconde, Giallo → warning, Rosso → errore.
+   ============================================================ */
+function aggiornaAuditBanner(convalida) {
+  const banner = document.getElementById('audit-banner');
+  if (!banner) return;
+
+  if (!convalida || !convalida.messaggio || convalida.stato === 'verde') {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+    banner.classList.remove('rosso');
+    return;
+  }
+
+  const mapping = _taxMapping[new Date().getFullYear()] || TAX_MAPPING_DEFAULT;
+  const isRosso = convalida.stato === 'rosso';
+  banner.classList.toggle('rosso', isRosso);
+
+  const icona   = isRosso ? '🔴' : '⚠️';
+  const titolo  = isRosso
+    ? `Errore di congruenza — rigo <strong>${mapping.rigo_imposta_sostitutiva}</strong>`
+    : `Attenzione — verifica consigliata`;
+
+  banner.innerHTML =
+    `<strong>${icona} ${titolo}:</strong> ${convalida.messaggio}` +
+    `<br><small style="opacity:.75">Motore2 §3 — Riconciliazione PDF. ` +
+    `Righi usati: fatturato=${mapping.rigo_fatturato} · ` +
+    `INPS=${mapping.rigo_inps_deducibile} · ` +
+    `imposta=${mapping.rigo_imposta_sostitutiva} · ` +
+    `eccedenza=${mapping.rigo_eccedenza}</small>`;
+
+  banner.style.display = 'block';
+
+  // Porta in vista: scorri piano verso il banner
+  setTimeout(() => banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 200);
 }
 
 /* ============================================================
