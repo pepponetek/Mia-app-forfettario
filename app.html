@@ -630,6 +630,30 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 .ai-note-base{font-size:11px;color:var(--t3);margin-bottom:10px;padding:8px 11px;
   background:var(--s2);border:1px solid var(--bd);border-radius:7px;line-height:1.55}
 
+/* ── Banner di Riconciliazione (Motore2.md §3) ────────────── */
+#audit-banner{
+  display:none;
+  background:rgba(210,153,34,.15);
+  border-left:4px solid var(--ye);
+  padding:12px 16px;
+  margin:0 0 14px;
+  border-radius:6px;
+  font-size:.9rem;
+  color:var(--t1);
+  position:sticky;
+  top:70px;
+  z-index:100;
+  backdrop-filter:blur(5px);
+  -webkit-backdrop-filter:blur(5px);
+  line-height:1.5;
+}
+#audit-banner.rosso{
+  background:rgba(248,81,73,.12);
+  border-left-color:var(--re);
+}
+#audit-banner strong{color:var(--ye)}
+#audit-banner.rosso strong{color:var(--re)}
+
 </style>
 </head>
 <body>
@@ -744,6 +768,8 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <div class="ph"><div><h1>Nuovo calcolo anno fiscale</h1><p>Inserisci i dati · sincronizzato con il cloud</p></div></div>
         <div class="prev-banner" id="prev-banner"><span style="font-size:16px;flex-shrink:0">🔗</span><p id="prev-txt"></p></div>
         <div class="past-banner" id="past-banner">🗄️ <strong>Anno Completo e Archiviato:</strong> hai selezionato un anno fiscale già concluso. Il mese è fissato a Dicembre e lo stato sarà automaticamente "Archiviato". Spunta "1° Anno attività" se vuoi inserire un mese specifico.</div>
+        <!-- BANNER RICONCILIAZIONE PDF (Motore2.md §3) -->
+        <div id="audit-banner"></div>
         <!-- STEP 1 -->
         <div class="card">
           <div class="card-t"><span class="step">1</span> Anno fiscale, ATECO e regime</div>
@@ -2135,9 +2161,28 @@ function tryParseRPF(text) {
                       1790/1791/1792 → imposta_sostitutiva_pagata
    ─ Non inventare valori se PDF non leggibile
    ============================================================ */
-function tryParseF24(text, annoTarget) {
+/* ============================================================
+   SPLIT MULTI-F24 — rileva più modelli F24 nello stesso PDF
+   ============================================================ */
+function splitF24Segments(nt) {
+  const SPLIT_RE = /(?=[Ss]cadenza\s+del\s+\d{2}[-/.]\d{2}[-/.]\d{4}|[Ee]seguito\s+il\s+\d{2}[-/.]\d{2}[-/.]\d{4})/g;
+  const parti = nt.split(SPLIT_RE).filter(s => s.trim().length > 80);
+  if (parti.length <= 1) {
+    const parti2 = nt.split(/(?=MODELLO\s+DI\s+PAGAMENTO\s+UNIFICATO)/gi).filter(s => s.trim().length > 80);
+    if (parti2.length > 1) return parti2;
+  }
+  return parti.length > 0 ? parti : [nt];
+}
+
+/* ============================================================
+   PARSER SINGOLO SEGMENTO F24 (ex tryParseF24 v4)
+   ============================================================ */
+function parseSingleF24Segment(nt, annoTarget) {
+  const isF24seg = /F24|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|PXX|DPPI|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(nt);
+  if (!isF24seg) return null;
+
   /*
-   * PARSER F24 v4 — Validatore.md §2 compliant
+   * (logica originale v4 — invariata)
    *
    * FIX v4 rispetto a v3:
    *   1. Scadenza estratta UNA VOLTA dall'intestazione del F24, non per-riga
@@ -2152,13 +2197,6 @@ function tryParseF24(text, annoTarget) {
    *      dell'imposta totale — flagga incongruenza se fuori soglia
    */
   const targetAnno = annoTarget || _aiAnno || null;
-
-  // Detection rapida — 1790 incluso (era assente in v1/v2)
-  const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(text);
-  if (!isF24) return null;
-
-  // Normalizza dirty-PDF (condivisa con RPF)
-  const nt = normalizePdfText(text);
 
   /* ── HELPER: parseImporto ───────────────────────────────────────────────
      Formati reali nei PDF ADE (incluso PDF.js con celle spezzate):
@@ -2539,7 +2577,50 @@ function tryParseF24(text, annoTarget) {
   };
 }
 
+/* ============================================================
+   tryParseF24 — ORCHESTRATORE MULTI-F24 v5
+   ============================================================ */
+function tryParseF24(text, annoTarget) {
+  const isF24 = /F24|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|PXX|DPPI|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(text);
+  if (!isF24) return null;
 
+  const nt = normalizePdfText(text);
+  const segmenti = splitF24Segments(nt);
+  console.log('[F24] v5 — segmenti rilevati:', segmenti.length);
+
+  if (segmenti.length <= 1) return parseSingleF24Segment(nt, annoTarget);
+
+  const risultati = segmenti
+    .map((seg, idx) => { console.log('[F24] v5 — parsing segmento ' + (idx+1)); return parseSingleF24Segment(seg, annoTarget); })
+    .filter(Boolean);
+
+  if (!risultati.length) return null;
+  if (risultati.length === 1) return risultati[0];
+
+  const totInps    = risultati.reduce((s,r) => s + (r.inps_versata_f24        || 0), 0);
+  const totImposta = risultati.reduce((s,r) => s + (r.imposta_sostitutiva_f24 || 0), 0);
+  const totSaldo   = risultati.reduce((s,r) => s + (r.saldo_finale_f24         || 0), 0);
+  const tutteRighe = risultati.flatMap(r => r.f24_righe || []);
+  const anniValidi = risultati.map(r => r.anno).filter(Boolean);
+  const annoFiscRif = anniValidi.length ? Math.min(...anniValidi) : (annoTarget || null);
+
+  const dettaglio = risultati.map((r,i) => {
+    const scad = r.f24_righe?.[0]?.dataScad ? ' scad:'+r.f24_righe[0].dataScad : '';
+    return `F24#${i+1}${scad} INPS:€${(r.inps_versata_f24||0).toLocaleString('it-IT',{minimumFractionDigits:2})} Imp:€${(r.imposta_sostitutiva_f24||0).toLocaleString('it-IT',{minimumFractionDigits:2})}`;
+  }).join(' | ');
+
+  const nota = `⚡ F24 MULTI v5 — ${risultati.length} moduli · INPS tot:€${totInps.toLocaleString('it-IT',{minimumFractionDigits:2})} · Imposta tot:€${totImposta.toLocaleString('it-IT',{minimumFractionDigits:2})} · ${dettaglio}`;
+  console.log('[F24] ✅ v5 MULTI', nota);
+
+  return {
+    tipo:'f24', anno:annoFiscRif, ateco:null,
+    fatturato_lm2:0, inps_dedotta_lm7:0, imposta_dovuta_lm11:0,
+    inps_versata_f24:        Math.round(totInps    * 100) / 100,
+    imposta_sostitutiva_f24: Math.round(totImposta * 100) / 100,
+    saldo_finale_f24:        Math.round(totSaldo   * 100) / 100,
+    note: nota, f24_righe: tutteRighe, f24_moduli: risultati.length
+  };
+}
 
 /* ============================================================
    PROMPT ESPERTO COMMERCIALISTA — inviato alla Edge Function
@@ -2680,7 +2761,29 @@ function normalizzaRisultato(raw, annoFallback) {
     r.convalida = convalidaLocale(r);
   }
 
+  // §3 Motore2.md — aggiorna banner riconciliazione visivo
+  aggiornaAuditBanner(r.convalida);
+
   return r;
+}
+
+/* ============================================================
+   BANNER RICONCILIAZIONE (Motore2.md §3)
+   ============================================================ */
+function aggiornaAuditBanner(convalida) {
+  const banner = document.getElementById('audit-banner');
+  if (!banner) return;
+  if (!convalida || !convalida.messaggio || convalida.stato === 'verde') {
+    banner.style.display = 'none'; banner.innerHTML = ''; banner.classList.remove('rosso'); return;
+  }
+  const mapping = _taxMapping[new Date().getFullYear()] || TAX_MAPPING_DEFAULT;
+  const isRosso = convalida.stato === 'rosso';
+  banner.classList.toggle('rosso', isRosso);
+  const icona  = isRosso ? '🔴' : '⚠️';
+  const titolo = isRosso ? `Errore di congruenza — rigo <strong>${mapping.rigo_imposta_sostitutiva}</strong>` : `Attenzione — verifica consigliata`;
+  banner.innerHTML = `<strong>${icona} ${titolo}:</strong> ${convalida.messaggio}<br><small style="opacity:.75">Motore2 §3 — Righi: fatturato=${mapping.rigo_fatturato} · INPS=${mapping.rigo_inps_deducibile} · imposta=${mapping.rigo_imposta_sostitutiva} · eccedenza=${mapping.rigo_eccedenza}</small>`;
+  banner.style.display = 'block';
+  setTimeout(() => banner.scrollIntoView({ behavior:'smooth', block:'nearest' }), 200);
 }
 
 /* ============================================================
@@ -3625,20 +3728,23 @@ function renderDocumentiAnno(anno) {
     const dim    = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
     const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
     const ico    = icona[doc.tipo_doc] || '📄';
+    const noFile = !doc.storage_path || doc.storage_path === 'null';
+    const safePath = doc.storage_path || '';
     // FIX: usa data-attributes per evitare problemi con apostrofi e caratteri speciali nei parametri onclick
     return `<div class="doc-row">
       <span class="doc-ico">${ico}</span>
       <div class="doc-info">
-        <div class="doc-name">${sanitizeHTML(doc.nome_file)}</div>
+        <div class="doc-name">${sanitizeHTML(doc.nome_file)}${noFile ? ' <span style="font-size:10px;color:var(--ye);font-weight:700">⚠️ file mancante</span>' : ''}</div>
         <div class="doc-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
       </div>
       <div class="doc-actions">
         <button class="btn btn-xs btn-ol doc-dl-btn"
-          data-path="${doc.storage_path}"
-          data-name="${sanitizeHTML(doc.nome_file)}">⬇️ Scarica</button>
+          data-path="${safePath}"
+          data-name="${sanitizeHTML(doc.nome_file)}"
+          ${noFile ? 'title="File non disponibile — ricarica il PDF" style="opacity:.45;cursor:not-allowed"' : ''}>⬇️ Scarica</button>
         <button class="btn btn-xs btn-ol doc-del-btn" style="color:var(--re)"
           data-id="${doc.id}"
-          data-path="${doc.storage_path}"
+          data-path="${safePath}"
           data-anno="${anno}"
           data-name="${sanitizeHTML(doc.nome_file)}">🗑️</button>
       </div>
@@ -3653,6 +3759,10 @@ function renderDocumentiAnno(anno) {
 
 // Download diretto come blob (evita popup bloccati su mobile) — revokeObjectURL dopo 60s
 async function downloadDoc(storagePath, nomeFile) {
+  if (!storagePath || storagePath === 'null') {
+    toast('⚠️ File non disponibile nello storage. Elimina il documento e ricarica il PDF originale.', 'err', 8000);
+    return;
+  }
   try {
     toast('⏳ Download in corso...', 'info', 2000);
 
@@ -3729,8 +3839,13 @@ async function confDelDoc() {
 
   setSync('busy', 'Eliminazione e ripristino dati...');
   try {
-    // STEP 1: Elimina da Storage
-    await sb.storage.from('documenti-fiscali').remove([storagePath]);
+    // STEP 1: Elimina da Storage (solo se il file esiste)
+    if (storagePath && storagePath !== 'null') {
+      const { error: storErr } = await sb.storage.from('documenti-fiscali').remove([storagePath]);
+      if (storErr) console.warn('[confDelDoc] Storage remove:', storErr.message);
+    } else {
+      console.warn('[confDelDoc] storage_path assente — skip rimozione storage');
+    }
 
     // STEP 2: Elimina dalla tabella documenti_fiscali
     const { error } = await sb.from('documenti_fiscali')
@@ -4558,15 +4673,18 @@ function renderDocumentiView(queryFilter) {
         const dim     = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
         const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
         const ico     = icona[doc.tipo_doc] || '📄';
+        const noFile  = !doc.storage_path || doc.storage_path === 'null';
+        const safePath = doc.storage_path || '';
         html += `<div class="doc-view-row">
           <span class="doc-view-ico">${ico}</span>
           <div class="doc-view-info">
-            <div class="doc-view-name">${sanitizeHTML(doc.nome_file)}</div>
+            <div class="doc-view-name">${sanitizeHTML(doc.nome_file)}${noFile ? ' <span style="font-size:10px;color:var(--ye);font-weight:700">⚠️ file mancante</span>' : ''}</div>
             <div class="doc-view-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
           </div>
           <div class="doc-view-actions">
-            <button class="btn btn-xs btn-ol" onclick="downloadDoc('${doc.storage_path}','${sanitizeHTML(doc.nome_file)}')">⬇️ Scarica</button>
-            <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${doc.storage_path}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️ Elimina</button>
+            <button class="btn btn-xs btn-ol" onclick="downloadDoc('${safePath}','${sanitizeHTML(doc.nome_file)}')"
+              ${noFile ? 'style="opacity:.45;cursor:not-allowed" title="File non disponibile — ricarica il PDF"' : ''}>⬇️ Scarica</button>
+            <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${safePath}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️ Elimina</button>
           </div>
         </div>`;
       });
