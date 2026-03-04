@@ -533,6 +533,71 @@ footer{
 .reveal{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
 .reveal.visible{opacity:1;transform:none}
 
+/* ===== PDF AI DEMO SECTION ===== */
+.demo-section{background:linear-gradient(180deg,transparent 0%,rgba(28,35,48,.4) 50%,transparent 100%)}
+.demo-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:40px}
+@media(max-width:900px){.demo-grid{grid-template-columns:1fr}}
+.demo-card{
+  background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);
+  padding:20px;position:relative;overflow:hidden;
+}
+.demo-step-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:50%;
+  font-family:var(--font-m);font-size:12px;font-weight:700;
+  margin-bottom:12px;flex-shrink:0;
+}
+.demo-step-badge.ac{background:rgba(31,111,235,.2);border:1px solid rgba(88,166,255,.4);color:var(--ac)}
+.demo-step-badge.pu{background:rgba(188,140,255,.2);border:1px solid rgba(188,140,255,.4);color:var(--pu)}
+.demo-step-badge.gr{background:rgba(63,185,80,.2);border:1px solid rgba(63,185,80,.4);color:var(--gr)}
+.demo-card-title{font-family:var(--font-h);font-size:15px;font-weight:700;margin-bottom:6px}
+.demo-card-desc{font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:14px}
+.demo-arrow{
+  display:none;
+}
+@media(min-width:900px){
+  .demo-grid{position:relative}
+  .demo-arrow{display:block;position:absolute;top:50%;font-size:20px;color:var(--t3);transform:translateY(-50%)}
+}
+.demo-tag-list{display:flex;flex-wrap:wrap;gap:6px}
+.demo-tag{
+  font-family:var(--font-m);font-size:11px;
+  padding:3px 9px;border-radius:5px;
+  background:var(--s2);border:1px solid var(--bd);color:var(--t3);
+}
+.demo-tag.ac{color:var(--ac);background:rgba(31,111,235,.08);border-color:rgba(88,166,255,.2)}
+.demo-tag.pu{color:var(--pu);background:rgba(188,140,255,.08);border-color:rgba(188,140,255,.2)}
+.demo-tag.gr{color:var(--gr);background:rgba(63,185,80,.08);border-color:rgba(63,185,80,.2)}
+.demo-tag.ye{color:var(--ye);background:rgba(210,153,34,.08);border-color:rgba(210,153,34,.2)}
+.demo-tag.re{color:var(--re);background:rgba(248,81,73,.08);border-color:rgba(248,81,73,.2)}
+
+/* Tabella esempio calcolo corretto */
+.calc-table{width:100%;border-collapse:collapse;font-family:var(--font-m);font-size:13px;margin-top:24px}
+.calc-table th{
+  text-align:left;padding:8px 12px;
+  font-size:10px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--t3);border-bottom:1px solid var(--bd);font-weight:500;
+}
+.calc-table td{padding:9px 12px;border-bottom:1px solid rgba(42,49,64,.4);color:var(--t2);vertical-align:top}
+.calc-table td:last-child{text-align:right;font-weight:600;color:var(--t1)}
+.calc-table tr:last-child td{border-bottom:none}
+.calc-table tr.total td{color:var(--gr);font-weight:700;border-top:1px solid var(--bd);padding-top:12px}
+.calc-table tr.total td:first-child{color:var(--t1)}
+.calc-table .lbl-note{font-size:10px;color:var(--t3);font-weight:400;display:block;margin-top:2px}
+.calc-badge-correct{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 12px;border-radius:999px;
+  background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.25);
+  color:var(--gr);font-size:11px;font-family:var(--font-m);margin-bottom:16px;
+}
+.calc-badge-wrong{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 12px;border-radius:999px;
+  background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.25);
+  color:var(--re);font-size:11px;font-family:var(--font-m);margin-bottom:16px;
+  text-decoration:line-through;
+}
+
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar{width:6px;background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
@@ -548,6 +613,7 @@ footer{
   </a>
   <div class="nav-links">
     <a class="nav-link" href="#features">Funzionalità</a>
+    <a class="nav-link" href="#demo">Demo</a>
     <a class="nav-link" href="#how">Come funziona</a>
     <a class="nav-link" href="#usecases">Casi d'uso</a>
     <a class="nav-cta" href="#" onclick="openModal('login');return false">Accedi / Iscriviti</a>
@@ -565,8 +631,8 @@ footer{
   <h1>Il tuo regime forfettario,<br><span class="hl">finalmente chiaro.</span></h1>
 
   <p class="hero-sub">
-    Calcola tasse, contributi INPS e netto reale in pochi secondi.
-    Pianifica, archivia e genera PDF da condividere con il commercialista.
+    Carica la tua dichiarazione PDF: l'AI estrae i dati fiscali in automatico.
+    Calcola tasse, contributi INPS e netto reale secondo la normativa AdE.
   </p>
 
   <div class="hero-actions">
@@ -601,18 +667,18 @@ footer{
       </div>
       <div class="hp-stat">
         <div class="label">Imposta Sostitutiva</div>
-        <div class="value ye">€ 6.337</div>
-        <div class="delta">Aliquota 15%</div>
+        <div class="value ye">€ 4.685</div>
+        <div class="delta">15% su base netta (31.235)</div>
       </div>
       <div class="hp-stat">
         <div class="label">Contributi INPS</div>
         <div class="value re">€ 11.015</div>
-        <div class="delta">Gestione Separata</div>
+        <div class="delta">Gestione Separata · deducibili</div>
       </div>
       <div class="hp-stat">
         <div class="label">Netto Effettivo</div>
-        <div class="value gr">€ 47.648</div>
-        <div class="delta">Residuo <span>73.3%</span></div>
+        <div class="value gr">€ 49.300</div>
+        <div class="delta">Residuo <span>75.8%</span></div>
       </div>
       <div class="hp-stat">
         <div class="label">Stato</div>
@@ -634,15 +700,15 @@ footer{
     </div>
     <div class="stat-item">
       <div class="stat-num gr">5 sec</div>
-      <div class="stat-label">Per calcolare tasse e INPS</div>
+      <div class="stat-label">Per estrarre dati da PDF con AI</div>
     </div>
     <div class="stat-item">
       <div class="stat-num ye">100%</div>
-      <div class="stat-label">normativa forfettaria <span class="dyn-year"></span></div>
+      <div class="stat-label">normativa L.190/2014 · aliquote <span class="dyn-year"></span></div>
     </div>
     <div class="stat-item">
-      <div class="stat-num pu">PDF</div>
-      <div class="stat-label">Esportazione istantanea</div>
+      <div class="stat-num pu">2012</div>
+      <div class="stat-label">Dichiarazioni supportate fino al <span class="dyn-year"></span></div>
     </div>
   </div>
 </section>
@@ -688,15 +754,22 @@ footer{
       <div class="feat-card ac-glow reveal">
         <div class="feat-ico ac" style="font-size:20px">🗂️</div>
         <div class="feat-name">Archivio anni fiscali</div>
-        <div class="feat-desc">Tieni traccia di tutti gli anni con stati Bozza, Definitivo e Archiviato. La storicità dei dati è fondamentale per la pianificazione.</div>
+        <div class="feat-desc">Tieni traccia di tutti gli anni con stati Bozza, Definitivo e Archiviato. La storicità è fondamentale per il calcolo corretto degli acconti.</div>
         <span class="feat-tag ac">Multi-anno</span>
       </div>
 
+      <div class="feat-card pu-glow reveal">
+        <div class="feat-ico pu" style="font-size:20px">🤖</div>
+        <div class="feat-name">Analisi AI da PDF (Gemini)</div>
+        <div class="feat-desc">Carica la Dichiarazione Redditi PF: l'AI localizza il Quadro LM, estrae i righi LM22–LM39 e compila i campi in automatico. Funziona su modelli dal 2012 al 2025.</div>
+        <span class="feat-tag pu">Powered by Gemini</span>
+      </div>
+
       <div class="feat-card gr-glow reveal">
-        <div class="feat-ico gr" style="font-size:20px">🧙</div>
-        <div class="feat-name">Wizard di onboarding</div>
-        <div class="feat-desc">Alla prima configurazione, il wizard ti guida nel recupero degli anni precedenti per avere subito uno storico completo.</div>
-        <span class="feat-tag gr">Guidato</span>
+        <div class="feat-ico gr" style="font-size:20px">🔍</div>
+        <div class="feat-name">Riconciliazione & Audit</div>
+        <div class="feat-desc">Il motore confronta il dato estratto dal PDF (dichiarato) con il calcolo teorico determinista. Se la differenza supera l'1%, genera un alert con la regola fiscale che influenza il risultato.</div>
+        <span class="feat-tag gr">Validatore integrato</span>
       </div>
 
     </div>
@@ -709,42 +782,44 @@ footer{
     <div class="how-grid">
       <div class="reveal">
         <div class="section-label">Come funziona</div>
-        <h2 class="section-title">Da zero a quadro fiscale completo in 4 passi.</h2>
+        <h2 class="section-title">Da PDF a quadro fiscale<br>completo in 4 passi.</h2>
 
         <div class="steps-list">
           <div class="step-item">
             <div class="step-num">01</div>
             <div class="step-content">
               <div class="step-title">Crea un account</div>
-              <div class="step-desc">Registrazione in 30 secondi con email o Google. I tuoi dati sono privati e protetti.</div>
+              <div class="step-desc">Registrazione in 30 secondi con email o Google. I tuoi dati sono privati, cifrati e visibili solo a te.</div>
             </div>
           </div>
           <div class="step-item">
             <div class="step-num">02</div>
             <div class="step-content">
               <div class="step-title">Configura il profilo fiscale</div>
-              <div class="step-desc">Scegli il codice ATECO, il coefficiente di redditività, l'aliquota applicabile e il tipo di contribuzione INPS.</div>
+              <div class="step-desc">Scegli il codice ATECO, il coefficiente di redditività (es. 67% per IT), l'aliquota (5% o 15%) e il tipo di gestione previdenziale INPS.</div>
             </div>
           </div>
           <div class="step-item">
             <div class="step-num">03</div>
             <div class="step-content">
-              <div class="step-title">Inserisci il fatturato</div>
-              <div class="step-desc">Digita il totale fatturato per l'anno. Il calcolo avviene istantaneamente: INPS, imposta sostitutiva, netto reale e acconti.</div>
+              <div class="step-title">Carica il PDF o inserisci manualmente</div>
+              <div class="step-desc">Carica la Dichiarazione Redditi PF: l'AI individua il Quadro LM, estrae i righi LM22–LM39 e popola i campi in automatico. In alternativa, digita il fatturato direttamente.</div>
             </div>
           </div>
           <div class="step-item">
             <div class="step-num">04</div>
             <div class="step-content">
-              <div class="step-title">Salva, esporta e pianifica</div>
-              <div class="step-desc">Salva come bozza o definitivo. Genera il PDF o analizza i trend negli anni archiviati.</div>
+              <div class="step-title">Verifica, salva ed esporta</div>
+              <div class="step-desc">Il motore determinista ricalcola e confronta i dati estratti con i valori teorici. Se tutto torna, salva come definitivo e genera il PDF o analizza i trend storici.</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Terminal simulato -->
-      <div class="reveal">
+      <!-- Doppio pannello: PDF input → AI JSON output -->
+      <div class="reveal" style="display:flex;flex-direction:column;gap:14px">
+
+        <!-- Pannello 1: Upload PDF simulato -->
         <div class="terminal">
           <div class="term-bar">
             <div class="term-dots">
@@ -752,26 +827,127 @@ footer{
               <div class="term-dot" style="background:#d29922"></div>
               <div class="term-dot" style="background:#3fb950"></div>
             </div>
-            <div class="term-label">prospetto_fiscale_2025.json</div>
+            <div class="term-label">📄 dichiarazione_redditi_2024.pdf — Analisi in corso…</div>
           </div>
-          <div class="term-body">
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">anno</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val"><span class="dyn-year"></span></span></div>
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">ateco</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">"62.01.09 — Dev. Software"</span></div>
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">fatturato</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val gr">65.000 €</span></div>
-            <hr class="term-divider">
-            <div class="term-line"><span class="term-comment">// calcolo automatico ↓</span></div>
-            <hr class="term-divider">
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">coefficiente</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">65%</span></div>
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">reddito_forfettario</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">42.250 €</span></div>
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">inps_gestione_sep</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val re">11.015 €</span></div>
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">imposta_sostitutiva</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val ye">6.337 €</span></div>
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">totale_oneri</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">17.352 €</span></div>
-            <hr class="term-divider">
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">netto_effettivo</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val gr" style="font-weight:700">47.648 €</span></div>
-            <div class="term-line"><span class="term-prompt">›</span><span class="term-key">stato</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val pu">"definitivo"</span></div>
+          <div class="term-body" style="line-height:1.8">
+            <div class="term-line"><span class="term-prompt">⟳</span>&nbsp;<span style="color:var(--pu)">Scansione tutte le pagine PDF…</span></div>
+            <div class="term-line"><span class="term-prompt">✓</span>&nbsp;<span style="color:var(--t3)">pag. 1-3: Dati anagrafici</span></div>
+            <div class="term-line"><span class="term-prompt">✓</span>&nbsp;<span style="color:var(--gr)">pag. 4: <strong>QUADRO LM rilevato</strong> — Sezione II Forfettario</span></div>
+            <div class="term-line"><span class="term-prompt">✓</span>&nbsp;<span style="color:var(--t3)">Estratte pag. 4-5 → invio a Gemini AI…</span></div>
           </div>
         </div>
+
+        <!-- Pannello 2: JSON risposta Gemini -->
+        <div class="terminal">
+          <div class="term-bar">
+            <div class="term-dots">
+              <div class="term-dot" style="background:#f85149"></div>
+              <div class="term-dot" style="background:#d29922"></div>
+              <div class="term-dot" style="background:#3fb950"></div>
+            </div>
+            <div class="term-label">🤖 gemini_response.json — Estrazione completata</div>
+          </div>
+          <div class="term-body" style="font-size:12px;line-height:1.9">
+            <div class="term-line"><span style="color:var(--t3)">{</span></div>
+            <div class="term-line">&nbsp;&nbsp;<span class="term-key">anno</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val ac">2024</span><span style="color:var(--t3)">,</span></div>
+            <div class="term-line">&nbsp;&nbsp;<span class="term-key">sezione_rilevata</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val pu">"Quadro LM — Sezione II"</span><span style="color:var(--t3)">,</span></div>
+            <div class="term-line">&nbsp;&nbsp;<span class="term-key">ateco</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">"62.01.09"</span><span style="color:var(--t3)">,</span></div>
+            <div class="term-line">&nbsp;&nbsp;<span class="term-key">rigo_fatturato</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">"LM22"</span><span style="color:var(--t3)">,</span></div>
+            <div class="term-line">&nbsp;&nbsp;<span class="term-key">fatturato</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val gr">65000</span><span style="color:var(--t3)">,</span></div>
+            <div class="term-line">&nbsp;&nbsp;<span class="term-key">rigo_imposta</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val">"LM39"</span><span style="color:var(--t3)">,</span></div>
+            <div class="term-line">&nbsp;&nbsp;<span class="term-key">imposta</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val ye">4685</span><span style="color:var(--t3)">,</span></div>
+            <div class="term-line">&nbsp;&nbsp;<span class="term-key">affidabilita</span><span style="color:var(--t3)">:</span>&nbsp;<span class="term-val gr">"high"</span></div>
+            <div class="term-line"><span style="color:var(--t3)">}</span></div>
+            <hr class="term-divider">
+            <div class="term-line"><span class="term-comment">// ✓ Campi compilati · Motore avvia verifica riconciliazione…</span></div>
+          </div>
+        </div>
+
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== PDF AI DEMO SECTION ===== -->
+<section id="demo" class="demo-section">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label">Demo pratico</div>
+      <h2 class="section-title">Dal PDF al calcolo corretto:<br>come funziona l'AI.</h2>
+      <p class="section-sub">L'AI fa solo da estrattore. Il commercialista certificatore è il motore JavaScript determinista che applica la L.190/2014 alla lettera.</p>
+    </div>
+
+    <!-- 3 step workflow -->
+    <div class="demo-grid reveal">
+      <div class="demo-card">
+        <div class="demo-step-badge ac">1</div>
+        <div class="demo-card-title">📤 Carica il PDF</div>
+        <div class="demo-card-desc">Trascina o seleziona la tua Dichiarazione Redditi PF (qualsiasi anno dal 2012). Il parser pdf.js scansiona tutte le pagine cercando "QUADRO LM" o "Sezione II Forfettario".</div>
+        <div class="demo-tag-list">
+          <span class="demo-tag ac">Tutti gli anni</span>
+          <span class="demo-tag">Solo upload, no digitazione</span>
+          <span class="demo-tag">Privacy: locale</span>
+        </div>
+      </div>
+
+      <div class="demo-card">
+        <div class="demo-step-badge pu">2</div>
+        <div class="demo-card-title">🤖 Gemini analizza il Quadro LM</div>
+        <div class="demo-card-desc">Solo le pagine rilevanti vengono inviate a Gemini via Edge Function sicura. L'AI localizza i righi LM22 (fatturato), LM35 (INPS), LM39 (imposta) e restituisce un JSON strutturato con livello di affidabilità.</div>
+        <div class="demo-tag-list">
+          <span class="demo-tag pu">Gemini Flash</span>
+          <span class="demo-tag">LM22 · LM35 · LM39 · LM43</span>
+          <span class="demo-tag pu">affidabilita: "high"</span>
+        </div>
+      </div>
+
+      <div class="demo-card">
+        <div class="demo-step-badge gr">3</div>
+        <div class="demo-card-title">🔍 Motore verifica & certifica</div>
+        <div class="demo-card-desc">Il motore deterministico ricalcola l'imposta in modo indipendente e confronta con il dato del PDF. Se la differenza supera l'1% genera un alert di riconciliazione. Zero allucinazioni: se un rigo manca, mostra 0.</div>
+        <div class="demo-tag-list">
+          <span class="demo-tag gr">Riconciliazione</span>
+          <span class="demo-tag">Dato Dichiarato vs Teorico</span>
+          <span class="demo-tag re">Alert se Δ &gt; 1%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabella: calcolo corretto vs errato -->
+    <div class="reveal" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div>
+        <div class="section-label" style="margin-bottom:10px">Esempio concreto · ATECO 62.01 · €65.000</div>
+        <div class="calc-badge-wrong">❌ Calcolo errato (imposta su lordo) · vecchio metodo</div>
+        <table class="calc-table">
+          <thead><tr><th>Voce</th><th>Importo</th></tr></thead>
+          <tbody>
+            <tr><td>Fatturato<span class="lbl-note">Anno 2024</span></td><td>€ 65.000</td></tr>
+            <tr><td>Reddito forfettario<span class="lbl-note">65.000 × 65% coeff.</span></td><td>€ 42.250</td></tr>
+            <tr><td>Imposta sostitutiva<span class="lbl-note">42.250 × 15% ← SBAGLIATO</span></td><td style="color:var(--re)">€ 6.337</td></tr>
+            <tr><td>INPS Gestione Separata</td><td>€ 11.015</td></tr>
+            <tr class="total"><td>Netto effettivo</td><td style="color:var(--re)">€ 47.648</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <div class="section-label" style="margin-bottom:10px">Formula corretta · art.1 c.64 L.190/2014</div>
+        <div class="calc-badge-correct">✓ Calcolo corretto (INPS dedotti dalla base) · ForfettarioApp</div>
+        <table class="calc-table">
+          <thead><tr><th>Voce</th><th>Importo</th></tr></thead>
+          <tbody>
+            <tr><td>Fatturato<span class="lbl-note">Anno 2024</span></td><td>€ 65.000</td></tr>
+            <tr><td>Reddito forfettario<span class="lbl-note">65.000 × 65% coeff.</span></td><td>€ 42.250</td></tr>
+            <tr><td>INPS Gestione Separata<span class="lbl-note">Deducibile per legge</span></td><td style="color:var(--re)">- € 11.015</td></tr>
+            <tr><td>Base imponibile netta<span class="lbl-note">42.250 − 11.015</span></td><td style="color:var(--ac)">€ 31.235</td></tr>
+            <tr><td>Imposta sostitutiva<span class="lbl-note">31.235 × 15% ← CORRETTO</span></td><td style="color:var(--ye)">€ 4.685</td></tr>
+            <tr class="total"><td>Netto effettivo</td><td>€ 49.300</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="reveal" style="margin-top:14px;padding:12px 16px;background:rgba(63,185,80,.05);border:1px solid rgba(63,185,80,.2);border-radius:10px;font-size:13px;color:var(--t2)">
+      💡 <strong style="color:var(--t1)">La differenza è €1.652 all'anno</strong> — il metodo errato farebbe pagare più tasse del dovuto. ForfettarioApp applica la deduzione INPS correttamente come previsto dall'art.1 comma 64 della L.190/2014.
     </div>
   </div>
 </section>
@@ -789,63 +965,67 @@ footer{
       <div class="uc-card reveal">
         <div class="uc-ico">💻</div>
         <div class="uc-title">Sviluppatori & IT</div>
-        <div class="uc-desc">Freelance tech con ATECO 62.01. Calcolo con coefficiente 67%, Gestione Separata INPS e acconti novembre/giugno.</div>
+        <div class="uc-desc">Freelance tech con ATECO 62.01. Calcolo con coefficiente 67%, Gestione Separata INPS e acconti novembre/giugno. Carica il PDF della dichiarazione e l'AI estrae tutto.</div>
         <div class="uc-tags">
           <span class="uc-tag">ATECO 62.01</span>
           <span class="uc-tag">Gestione Separata</span>
           <span class="uc-tag">Coeff. 67%</span>
+          <span class="uc-tag">AI PDF</span>
         </div>
       </div>
 
       <div class="uc-card reveal">
         <div class="uc-ico">🎨</div>
         <div class="uc-title">Designer & Creativi</div>
-        <div class="uc-desc">Grafici, UX designer, fotografi. Verifica il limite dei 85.000€ e pianifica le entrate nel corso dell'anno.</div>
+        <div class="uc-desc">Grafici, UX designer, fotografi. Verifica il limite dei 85.000€ e pianifica le entrate nel corso dell'anno. Import da PDF per confrontare anni precedenti.</div>
         <div class="uc-tags">
           <span class="uc-tag">Monitoraggio limite</span>
           <span class="uc-tag">Pianificazione</span>
+          <span class="uc-tag">Storico PDF</span>
         </div>
       </div>
 
       <div class="uc-card reveal">
         <div class="uc-ico">⚖️</div>
         <div class="uc-title">Consulenti & Avvocati</div>
-        <div class="uc-desc">Professionisti iscritti a Casse di previdenza. Supporto per contribuzione alternativa con percentuale personalizzabile.</div>
+        <div class="uc-desc">Professionisti iscritti a Casse di previdenza. Supporto per contribuzione alternativa con percentuale personalizzabile e verifica riconciliazione automatica.</div>
         <div class="uc-tags">
           <span class="uc-tag">Cassa Previdenziale</span>
           <span class="uc-tag">% Personalizzabile</span>
+          <span class="uc-tag">Riconciliazione</span>
         </div>
       </div>
 
       <div class="uc-card reveal">
         <div class="uc-ico">🏗️</div>
         <div class="uc-title">Artigiani & Commercianti</div>
-        <div class="uc-desc">INPS con minimale e contributo fisso + percentuale sul reddito eccedente. Tutto calcolato in automatico.</div>
+        <div class="uc-desc">INPS con minimale fisso (€4.460 artigiani / €4.549 commercianti 2025) + percentuale sul reddito eccedente i €18.555. Tutto calcolato in automatico con riduzione 35%.</div>
         <div class="uc-tags">
           <span class="uc-tag">INPS Artigiani</span>
           <span class="uc-tag">INPS Commercianti</span>
-          <span class="uc-tag">Minimale</span>
+          <span class="uc-tag">Minimale 2025</span>
         </div>
       </div>
 
       <div class="uc-card reveal">
         <div class="uc-ico">🔢</div>
         <div class="uc-title">Startup & Nuovi iscritti</div>
-        <div class="uc-desc">Aliquota agevolata al 5% per i primi 5 anni. ForfettarioApp gestisce automaticamente il periodo di vantaggio.</div>
+        <div class="uc-desc">Aliquota agevolata al 5% per i primi 5 anni (art.1 c.65 L.190/2014). ForfettarioApp gestisce automaticamente il passaggio al 15% e la verifica dei requisiti di accesso.</div>
         <div class="uc-tags">
           <span class="uc-tag">Aliquota 5%</span>
           <span class="uc-tag">Agevolazione startup</span>
+          <span class="uc-tag">Switch 15%</span>
         </div>
       </div>
 
       <div class="uc-card reveal">
         <div class="uc-ico">📋</div>
-        <div class="uc-title">Storico multi-anno</div>
-        <div class="uc-desc">Chi ha già anni di attività può ricostruire lo storico con il wizard e analizzare la crescita del fatturato nel tempo.</div>
+        <div class="uc-title">Dichiarazioni Storiche</div>
+        <div class="uc-desc">Hai anni di attività passati? Carica le vecchie dichiarazioni PDF (anche modelli 2012–2020): l'AI localizza il Quadro LM dinamicamente e ricostruisce lo storico completo.</div>
         <div class="uc-tags">
-          <span class="uc-tag">Wizard storico</span>
-          <span class="uc-tag">Grafici trend</span>
-          <span class="uc-tag">Archivio</span>
+          <span class="uc-tag">Import PDF storico</span>
+          <span class="uc-tag">Modelli 2012–2025</span>
+          <span class="uc-tag">AI dinamico</span>
         </div>
       </div>
 
@@ -887,6 +1067,7 @@ footer{
   <!-- Link di navigazione -->
   <div class="foot-links">
     <a href="#features">Funzionalità</a>
+    <a href="#demo">Demo</a>
     <a href="#how">Come funziona</a>
     <a href="#usecases">Casi d'uso</a>
   </div>
