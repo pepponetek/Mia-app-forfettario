@@ -2136,100 +2136,82 @@ function tryParseRPF(text) {
    ============================================================ */
 function tryParseF24(text, annoTarget) {
   /*
-   * PARSER F24 v3 — Validatore.md §2 compliant
+   * PARSER F24 v4 — Validatore.md §2 compliant
    *
-   * STRUTTURA REALE F24 ORDINARIO (ADE PDF):
-   *   Sezione ERARIO:  codice_tributo | rateazione | anno_rif | importo_debito | importo_credito
-   *   Sezione INPS:    causale_contrib | codice_sede | matricola | da_mm_aa | a_mm_aa | importo_debito
-   *   SALDO FINALE (F): importo totale a debito
-   *
-   * CODICI TRIBUTO classificati (Validatore.md §2):
-   *   1790 (saldo), 1791 (I acc.), 1792 (II acc.) → imposta sostitutiva forfettaria
-   *   PXX, DPPI, CF** → contributi INPS (deducibili da reddito)
-   *
-   * PRINCIPIO DI CASSA (Validatore.md §2):
-   *   Conta SOLO i pagamenti con data scadenza nell'anno solare targetAnno.
-   *   F24 pagato il 15/01/2025 per debiti 2024 → si deduce nel 2025.
-   *
-   * FIX rispetto v2:
-   *   1. parseImporto() gestisce tutti i formati italiani + "dirty PDF" con spazi
-   *   2. Scansione riga-per-riga con finestra di contesto (non troncata a 1200 char)
-   *   3. 1790 aggiunto alla detection iniziale e classificazione
-   *   4. annoScadenza estratto correttamente dall'anno a 4 cifre del pattern data
-   *   5. classificaCausale restituisce 'altro' (non 'inps') per causali ignote
-   *   6. Deduplicazione causale+importo+anno per evitare doppio conteggio
-   *   7. SALDO FINALE usato come validazione di coerenza
+   * FIX v4 rispetto a v3:
+   *   1. Scadenza estratta UNA VOLTA dall'intestazione del F24, non per-riga
+   *   2. Anno fiscale tributo estratto dalla colonna "Anno" specifica (non min del contesto)
+   *   3. Stop condition corretta: si ferma SEMPRE quando incontra un'altra causale
+   *      (rimosso il bug j>1 che catturava importi di tributi successivi)
+   *   4. Saldo Finale usato come CORREZIONE attiva, non solo avviso
+   *      (se imposta=0 e saldo > INPS, inferisce l'imposta mancante)
+   *   5. Deduplicazione rafforzata: usa posizione+sezione come tiebreak
+   *      quando annoFisc è null (evita eliminazione F24 legittimamente identici)
+   *   6. Validazione matematica acconti: verifica che 1791 ≈ 40% e 1792 ≈ 60%
+   *      dell'imposta totale — flagga incongruenza se fuori soglia
    */
   const targetAnno = annoTarget || _aiAnno || null;
 
-  // Detection rapida — include 1790 che era assente
+  // Detection rapida — 1790 incluso (era assente in v1/v2)
   const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(text);
   if (!isF24) return null;
 
-  // Usa normalizePdfText condivisa (gestisce "2 . 7 7 1 , 0 4" → "2.771,04")
+  // Normalizza dirty-PDF (condivisa con RPF)
   const nt = normalizePdfText(text);
 
-  /* ─── STEP 1: Parser importo robusto ───────────────────────────────────
-     Formati reali nei PDF ADE:
-       "2.771,04"   → italiano standard
-       "2.771 04"   → spazio al posto della virgola (PDF.js)
-       "271,04"     → sotto 1000, senza separatore migliaia
-       "2.771.04"   → punto sia come migliaia che decimale (raro)
+  /* ── HELPER: parseImporto ───────────────────────────────────────────────
+     Formati reali nei PDF ADE (incluso PDF.js con celle spezzate):
+       "2.771,04"   "271,04"   "2.771 04"   "1234.56"
   ────────────────────────────────────────────────────────────────────── */
   function parseImporto(s) {
     if (!s) return 0;
     s = String(s).trim().replace(/\s+/g, ' ');
-
-    // "1.234 56" o "234 56" → spazio come separatore decimale
     const mSp = s.match(/^([\d.]+)\s+(\d{2})$/);
     if (mSp) return parseFloat(mSp[1].replace(/\./g, '') + '.' + mSp[2]) || 0;
-
-    // Formato italiano: "1.234,56" o "234,56"
     if (/^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(s))
       return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
-
-    // Senza separatore migliaia: "1234,56"
-    if (/^\d+,\d{2}$/.test(s))
-      return parseFloat(s.replace(',', '.')) || 0;
-
-    // Formato internazionale: "1234.56"
-    if (/^\d+\.\d{2}$/.test(s))
-      return parseFloat(s) || 0;
-
+    if (/^\d+,\d{2}$/.test(s)) return parseFloat(s.replace(',', '.')) || 0;
+    if (/^\d+\.\d{2}$/.test(s)) return parseFloat(s) || 0;
     return 0;
   }
 
-  /* ─── STEP 2: Estrai TUTTI gli importi validi da una stringa ───────────
-     Ritorna array di float ≥ 10 e < 200.000 (soglia F24 plausibile)
+  /* ── HELPER: estraiImporti ──────────────────────────────────────────────
+     Ritorna importi in ordine di apparizione nel testo (sinistra→destra).
+     Filtro: >= 10 e < 200.000 (range plausibile per F24 forfettario).
+     "0,00" → filtrato. Rateazione "0101" → non matcha (no decimale).
   ────────────────────────────────────────────────────────────────────── */
   function estraiImporti(s) {
     const res = [];
-    // Formato italiano "1.234,56" o "234,56"
     for (const m of s.matchAll(/\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g)) {
       const v = parseImporto(m[1]);
-      if (v >= 10 && v < 200000) res.push(v);
+      if (v >= 10 && v < 200000) res.push({ v, pos: m.index });
     }
-    // Formato spazio-decimale "1.234 56"
     for (const m of s.matchAll(/\b(\d{1,3}(?:\.\d{3})+)\s+(\d{2})\b/g)) {
       const v = parseImporto(m[1] + ' ' + m[2]);
-      if (v >= 10 && v < 200000) res.push(v);
+      if (v >= 10 && v < 200000) res.push({ v, pos: m.index });
     }
-    // Deduplica
-    return [...new Set(res)];
+    // Ordina per posizione di apparizione (left-to-right nel testo)
+    res.sort((a, b) => a.pos - b.pos);
+    // Dedup per valore (float identity)
+    const seen = new Set();
+    return res.filter(x => { if (seen.has(x.v)) return false; seen.add(x.v); return true; })
+              .map(x => x.v);
   }
 
-  /* ─── STEP 3: Classifica causale tributo ───────────────────────────────
-     Validatore.md §2: solo 3 tipi rilevanti per il forfettario
+  /* ── HELPER: classificaCausale ─────────────────────────────────────────
+     Ritorna 'imposta' | 'inps' | 'altro'.
+     SOLO questi tre tipi sono rilevanti per il regime forfettario.
   ────────────────────────────────────────────────────────────────────── */
   function classificaCausale(c) {
     c = String(c).toUpperCase().trim();
-    if (/^179[012]$/.test(c))         return 'imposta'; // saldo+acconti imposta sost.
-    if (/^(PXX|DPPI|CF\d{2})$/.test(c)) return 'inps';   // contributi INPS
-    return 'altro';   // non inventare: causale ignota non va aggregata
+    if (/^179[012]$/.test(c))            return 'imposta'; // 1790 saldo, 1791 I acc., 1792 II acc.
+    if (/^(PXX|DPPI|CF\d{2})$/.test(c)) return 'inps';    // contributi INPS previdenziali
+    return 'altro'; // causale non forfettaria: non aggregare
   }
 
-  /* ─── STEP 4: Anno da stringa data "DD-MM-YYYY" o "DD/MM/YYYY" ─────────
-     FIX: usa sempre il gruppo con 4 cifre, non il gruppo mese (2 cifre)
+  /* ── HELPER: annoFromData ───────────────────────────────────────────────
+     Estrae l'anno (4 cifre) da una data "DD-MM-YYYY" o "DD/MM/YYYY".
+     Usa SEMPRE il gruppo a 4 cifre (FIX rispetto a v1 che usava il gruppo mese).
   ────────────────────────────────────────────────────────────────────── */
   function annoFromData(s) {
     if (!s) return null;
@@ -2237,220 +2219,309 @@ function tryParseF24(text, annoTarget) {
     return m ? parseInt(m[1]) : null;
   }
 
-  /* ─── STEP 5: Cerca SALDO FINALE come âncora di verifica ────────────────
-     Appare come "SALDO (F)  2.771,04" o "SALDO FINALE  2.771,04"
+  /* ── FIX 1: Scadenza estratta dall'intestazione del F24 ─────────────────
+     La scadenza è UNA sola per tutto il F24 e appare nell'intestazione,
+     tipicamente nelle prime 40 righe del documento.
+     "Scadenza del 30-07-2025" oppure "Eseguito il 30/07/2025"
+  ────────────────────────────────────────────────────────────────────── */
+  let dataScadGlobale = null;
+  let annoScadGlobale = null;
+  {
+    // Cerca nelle prime 3000 char (intestazione + prima pagina)
+    const header = nt.slice(0, 3000);
+    const mScad = header.match(/(?:[Ss]cadenza|[Ee]seguito)\s+(?:del\s+|il\s+)?(\d{2}[-/.]\d{2}[-/.]\d{4})/i)
+               || header.match(/(\d{2}[-/.]\d{2}[-/.]\d{4})/);
+    if (mScad) {
+      dataScadGlobale = mScad[1];
+      annoScadGlobale = annoFromData(dataScadGlobale);
+      console.log('[F24] Scadenza globale:', dataScadGlobale, '→ anno:', annoScadGlobale);
+    }
+    // Se non trovata nell'header, cerca nel testo completo
+    if (!dataScadGlobale) {
+      const mScad2 = nt.match(/(?:[Ss]cadenza|[Ee]seguito)\s+(?:del\s+|il\s+)?(\d{2}[-/.]\d{2}[-/.]\d{4})/i)
+                  || nt.match(/(\d{2}[-/.]\d{2}[-/.]\d{4})/);
+      if (mScad2) {
+        dataScadGlobale = mScad2[1];
+        annoScadGlobale = annoFromData(dataScadGlobale);
+        console.log('[F24] Scadenza globale (fallback):', dataScadGlobale, '→ anno:', annoScadGlobale);
+      }
+    }
+  }
+
+  /* ── STEP 5: Cerca SALDO FINALE come ancora di verifica ─────────────────
+     "SALDO (F)  2.771,04" oppure "SALDO FINALE  2.771,04"
+     Cerca nelle ultime 1500 char (bottom del F24) dove appare sempre.
   ────────────────────────────────────────────────────────────────────── */
   let saldoFinaleDoc = 0;
   {
-    const mSF = nt.match(/SALDO\s*(?:FINALE|\(F\)|F\b)[^\d]*?([\d.,]+(?:\s+\d{2})?)/i);
+    const tail = nt.slice(-1500); // SALDO FINALE è sempre in fondo
+    const mSF = tail.match(/SALDO\s*(?:FINALE|\(F\)|F\b)[^\d]*?([\d.,]+(?:\s+\d{2})?)/i)
+             || nt.match(/SALDO\s*(?:FINALE|\(F\)|F\b)[^\d]*?([\d.,]+(?:\s+\d{2})?)/i);
     if (mSF) {
       saldoFinaleDoc = parseImporto(mSF[1]);
       console.log('[F24] SALDO FINALE documento:', saldoFinaleDoc);
     }
   }
 
-  /* ─── STEP 6: Parser SEZIONE-BASED — analisi separata ERARIO e INPS ───
+  /* ── STEP 6: Parser sezione-based con stop-condition corretta ───────────
    *
-   * Struttura reale F24 ADE (PDF.js estrae ogni cella come token separato):
+   * STRUTTURA F24 ORDINARIO ADE (da PDF.js con normalizzazione):
+   *   SEZIONE ERARIO
+   *     1791  0101  2024  1.380,00  0,00        ← debito | credito
+   *     1792  0101  2024  1.380,00  0,00
+   *   SEZIONE INPS
+   *     PXX   sede  matricola  01/2024  12/2024  2.760,00  0,00
    *
-   *   SEZIONE ERARIO:
-   *     [vuoto] [vuoto] [T] [1792] [0101] [2024] [1.380,00] [0,00]
-   *     → Dopo normalizzazione le celle sulla stessa y finiscono sulla stessa riga
-   *     → Ma in alcuni PDF vengono su righe separate (una cella per riga)
+   * FIX 3 (stop condition):
+   *   Ci si ferma IMMEDIATAMENTE quando sulla riga j si trova un'altra causale
+   *   nota, anche se j=1. Questo previene il cattura-importo del tributo successivo.
    *
-   *   SEZIONE INPS:
-   *     [sede] [PXX] [matricola] [01/2024] [12/2024] [2.760,00] [0,00]
+   * FIX 2 (debito vs credito):
+   *   La colonna debito è sempre PRIMA della colonna credito nella riga.
+   *   estraiImporti restituisce importi in ordine di apparizione (left-to-right),
+   *   quindi il PRIMO è sempre il debito. Il secondo (credito) viene ignorato.
    *
-   * Strategia robusta:
-   *   1. Isola i blocchi SEZIONE ERARIO e SEZIONE INPS nel testo
-   *   2. Per ogni causale trovata, cerca l'importo nel MINIMO contesto possibile
-   *      (stessa riga prima, poi righe successive fino a 6)
-   *   3. Usa il PRIMO importo trovato dopo la causale (non il massimo dell'intera finestra)
-   *      — il primo importo dopo la causale è quasi sempre il debito
-   * ────────────────────────────────────────────────────────────────────── */
+   * FIX 3b (anno fiscale):
+   *   L'anno fiscale è il numero a 4 cifre (20xx) sulla riga della causale,
+   *   NON il minimo del contesto allargato (che potrebbe includere anni errati).
+  ────────────────────────────────────────────────────────────────────── */
 
-  // Estrai il primo importo valido in una stringa (non il massimo)
-  function primoImporto(s) {
-    const res = estraiImporti(s);
-    return res.length ? res[0] : 0;
-  }
+  // Separa SEZIONE ERARIO e SEZIONE INPS
+  const nt_up = nt.toUpperCase();
+  const idxErario = nt_up.indexOf('SEZIONE ERARIO');
+  const idxInps   = Math.max(nt_up.indexOf('SEZIONE INPS'), nt_up.indexOf('SEZIONE I.N.P.S'));
+  const idxTerzi  = nt_up.indexOf('SEZIONE ALTRI ENTI');
+  const sezioniTrovate = (idxErario >= 0 ? 1 : 0) + (idxInps >= 0 ? 1 : 0);
 
-  // Separa SEZIONE ERARIO e SEZIONE INPS (o usa tutto se non trovate)
-  const nt_upper = nt.toUpperCase();
-  const idxErario = nt_upper.indexOf('SEZIONE ERARIO');
-  const idxInps   = Math.max(nt_upper.indexOf('SEZIONE INPS'), nt_upper.indexOf('SEZIONE I.N.P.S'));
-  const idxTerzi  = nt_upper.indexOf('SEZIONE ALTRI ENTI');
-
-  // Blocco ERARIO: tra "SEZIONE ERARIO" e "SEZIONE INPS" (o fine)
   const blocoErario = idxErario >= 0
     ? nt.slice(idxErario, idxInps > idxErario ? idxInps : nt.length)
-    : nt; // fallback: usa tutto
-
-  // Blocco INPS: tra "SEZIONE INPS" e "SEZIONE ALTRI ENTI" (o fine)
+    : '';
   const blocoInps = idxInps >= 0
     ? nt.slice(idxInps, idxTerzi > idxInps ? idxTerzi : nt.length)
-    : nt; // fallback: usa tutto
+    : '';
 
-  console.log('[F24] Sezioni: ERARIO idx=' + idxErario + ' INPS idx=' + idxInps);
+  console.log('[F24] v4 sezioni: ERARIO=' + idxErario + ' INPS=' + idxInps + ' TERZI=' + idxTerzi);
 
   const righeRilevate = [];
-  const CAUSALI_RE = /\b(179[012]|PXX|DPPI|CF\d{2})\b/gi;
+  const CAUSALI_PAT = /\b(179[012]|PXX|DPPI|CF\d{2})\b/gi;
 
-  // Scan generico su un blocco di testo con contesto riga per riga
   function scanBloco(testo, nomeSez) {
     const linee = testo.split('\n');
     for (let i = 0; i < linee.length; i++) {
       const riga = linee[i];
-      const causaliRiga = [...riga.matchAll(CAUSALI_RE)].map(m => m[1].toUpperCase());
+      const causaliRiga = [...riga.matchAll(CAUSALI_PAT)].map(m => m[1].toUpperCase());
       if (!causaliRiga.length) continue;
 
-      // Cerca importo: prima sulla stessa riga, poi sulle righe successive (max 6)
-      // Usa il PRIMO importo trovato dopo la posizione della causale nella riga
-      let importo = 0;
-      let annoFiscCtx = null;
-      let dataScad = null;
-      let annoScad = null;
+      // FIX 3b: Anno fiscale = anno 20xx sulla riga stessa (non min del contesto)
+      // In ERARIO: "1791 0101 2024 1.380,00" → 2024 è l'anno di riferimento tributo
+      const anniRiga = (riga.match(/\b(20\d{2})\b/g) || []).map(Number)
+                         .filter(a => a >= 2010 && a <= 2040);
+      // Se più anni sulla riga, il più piccolo è l'anno fiscale (non l'anno di scadenza)
+      const annoFiscRiga = anniRiga.length ? Math.min(...anniRiga) : null;
 
-      // 1. Cerca sulla riga stessa dopo la posizione della causale
+      // Usa la scadenza globale estratta dall'intestazione (FIX 1)
+      const dataScad = dataScadGlobale;
+      const annoScad = annoScadGlobale;
+
+      // FIX 2: cerca importo sulla riga della causale prima, poi righe successive
+      // FIX 3 (stop corretta): ci fermiamo SUBITO se la riga j contiene un'altra causale
+      let importo = 0;
+
+      // Cerca per ogni causale il testo DOPO di essa sulla stessa riga
       for (const causale of causaliRiga) {
         const posC = riga.indexOf(causale);
-        const dopoC = riga.slice(posC + causale.length);
-        const imp1 = primoImporto(dopoC);
-        if (imp1 > 0) { importo = imp1; break; }
-      }
-
-      // 2. Se non trovato sulla riga, allarga il contesto verso il basso (max 6 righe)
-      //    IMPORTANTE: allarga di 1 riga alla volta e si ferma appena trova un importo
-      //    Questo evita di "catturare" importi di tributi successivi
-      if (importo === 0) {
-        for (let j = 1; j <= 6 && i + j < linee.length; j++) {
-          const rigaJ = linee[i + j];
-          // Stop se la riga j contiene un'altra causale (sarebbe un altro tributo)
-          if (/\b(179[012]|PXX|DPPI|CF\d{2})\b/i.test(rigaJ) && j > 1) break;
-          const imp1 = primoImporto(rigaJ);
-          if (imp1 > 0) { importo = imp1; break; }
+        const dopoC = posC >= 0 ? riga.slice(posC + causale.length) : '';
+        const imps = estraiImporti(dopoC);
+        if (imps.length) {
+          importo = imps[0]; // PRIMO = debito (FIX 2)
+          break;
         }
       }
 
-      if (importo === 0) continue; // nessun importo trovato per questa causale
+      // Se non trovato sulla riga, cerca nelle successive
+      // FIX 3: STOP IMMEDIATO se riga successiva contiene un'altra causale nota
+      if (importo === 0) {
+        for (let j = 1; j <= 8 && i + j < linee.length; j++) {
+          const rigaJ = linee[i + j];
+          // STOP: un'altra causale nota significa un tributo diverso — non catturare il suo importo
+          if (/\b(179[012]|PXX|DPPI|CF\d{2})\b/i.test(rigaJ)) break;
+          const impsJ = estraiImporti(rigaJ);
+          if (impsJ.length) {
+            importo = impsJ[0]; // PRIMO = debito
+            break;
+          }
+        }
+      }
 
-      // Anno fiscale e data di scadenza: cerca nel contesto ampio (±3 righe)
-      const contestoAmpio = linee.slice(Math.max(0, i - 2), Math.min(linee.length, i + 8)).join(' ');
-      const anniCtx = (contestoAmpio.match(/\b(20\d{2})\b/g) || []).map(Number).filter(a => a >= 2010 && a <= 2040);
-      annoFiscCtx = anniCtx.length ? Math.min(...anniCtx) : null;
-
-      const mData = contestoAmpio.match(/(?:[Ss]cadenza|[Ee]seguito)\s+(?:del\s+)?(\d{2}[-/.]\d{2}[-/.]\d{4})/i)
-                 || contestoAmpio.match(/(\d{2}[-/.]\d{2}[-/.]\d{4})/);
-      dataScad = mData ? mData[1] : null;
-      annoScad = annoFromData(dataScad);
+      if (importo === 0) {
+        console.log('[F24] ' + nomeSez + ': causale ' + causaliRiga.join(',') + ' — nessun importo trovato (riga ' + i + ')');
+        continue;
+      }
 
       for (const causale of causaliRiga) {
         const tipo = classificaCausale(causale);
-        if (tipo === 'altro') continue;
-        righeRilevate.push({ causale, tipo, importo, annoFisc: annoFiscCtx, annoScad, dataScad, sezione: nomeSez });
-        console.log(`[F24] ${nomeSez}: ${causale}(${tipo}) €${importo} annoFisc=${annoFiscCtx} scad=${dataScad}`);
+        if (tipo === 'altro') {
+          console.log('[F24] Causale ' + causale + ' ignorata (non forfettario)');
+          continue;
+        }
+        righeRilevate.push({
+          causale, tipo, importo,
+          annoFisc:  annoFiscRiga,
+          annoScad,
+          dataScad,
+          sezione:   nomeSez,
+          rigaIdx:   i  // FIX 5: indice per deduplicazione tiebreak
+        });
+        console.log('[F24] ' + nomeSez + '[' + i + ']: ' + causale + '(' + tipo + ') €' + importo + ' annoFisc=' + annoFiscRiga + ' scad=' + dataScad);
       }
     }
   }
 
-  // Se abbiamo sezioni separate, scansionale individualmente (più preciso)
-  if (idxErario >= 0 || idxInps >= 0) {
-    if (idxErario >= 0) scanBloco(blocoErario, 'ERARIO');
-    if (idxInps >= 0)   scanBloco(blocoInps,   'INPS');
+  // Scansione primaria con sezioni separate (più precisa)
+  if (sezioniTrovate > 0) {
+    if (blocoErario) scanBloco(blocoErario, 'ERARIO');
+    if (blocoInps)   scanBloco(blocoInps,   'INPS');
   } else {
-    // Fallback: scansiona tutto il documento
+    // Fallback: nessuna intestazione di sezione trovata
     scanBloco(nt, 'TUTTO');
   }
 
-  /* ─── STEP 7: Fallback globale char-by-char per PDF non strutturati ────
-     (F24 semplificato, CAF, layout anomalo senza intestazioni di sezione)
+  /* ── STEP 7: Fallback char-by-char per F24 semplificato / CAF ──────────
+     Se la scansione riga-per-riga non ha trovato nulla (layout non standard).
   ────────────────────────────────────────────────────────────────────── */
   if (!righeRilevate.length) {
-    console.log('[F24] Fallback char-by-char...');
-    const allMatches = [...nt.matchAll(/\b(179[012]|PXX|DPPI|CF\d{2})\b/gi)];
-    for (const m of allMatches) {
+    console.log('[F24] Fallback globale char-by-char...');
+    const allM = [...nt.matchAll(/\b(179[012]|PXX|DPPI|CF\d{2})\b/gi)];
+    for (const m of allM) {
       const causale = m[1].toUpperCase();
       const tipo    = classificaCausale(causale);
       if (tipo === 'altro') continue;
-      // Cerca il primo importo nei 300 char successivi alla causale
-      const fin = nt.slice(m.index + causale.length, m.index + causale.length + 300);
-      const imp = primoImporto(fin);
-      if (!imp) continue;
+      // Cerca il primo importo nei 300 char successivi
+      const fin  = nt.slice(m.index + causale.length, m.index + causale.length + 300);
+      const imps = estraiImporti(fin);
+      if (!imps.length) continue;
       righeRilevate.push({
-        causale, tipo, importo: imp,
-        annoFisc: null, annoScad: null, dataScad: null, sezione: 'FALLBACK'
+        causale, tipo, importo: imps[0],
+        annoFisc: null, annoScad: annoScadGlobale,
+        dataScad: dataScadGlobale,
+        sezione: 'FALLBACK', rigaIdx: m.index
       });
     }
   }
 
   if (!righeRilevate.length) {
-    console.warn('[F24] Nessuna causale riconosciuta. Testo norm (500):', nt.slice(0, 500));
+    console.warn('[F24] v4: nessuna causale trovata. Testo norm (500):', nt.slice(0, 500));
     return null;
   }
 
-  /* ─── STEP 8: Filtro temporale (Principio di Cassa) ────────────────────
-     Escludi righe con anno-scadenza diverso da targetAnno.
-     Se la riga non ha data, la includiamo (non possiamo escluderla).
+  /* ── STEP 8: Filtro principio di cassa ─────────────────────────────────
+     Escludi pagamenti con anno-scadenza diverso da targetAnno.
+     Se la riga non ha data di scadenza, includila (non possiamo escluderla).
   ────────────────────────────────────────────────────────────────────── */
   const righeFiltrate = righeRilevate.filter(r => {
     if (!targetAnno || !r.annoScad) return true;
     if (r.annoScad === targetAnno) return true;
-    console.log(`[F24] ESCLUSA cassa: ${r.causale} scad ${r.dataScad} anno ${r.annoScad} ≠ target ${targetAnno}`);
+    console.log('[F24] ESCLUSA cassa: ' + r.causale + ' scad ' + r.dataScad + ' (' + r.annoScad + ') target=' + targetAnno);
     return false;
   });
 
-  /* ─── STEP 9: Deduplicazione causale+importo+anno ───────────────────────
-     Stesso tributo nello stesso anno pagato una volta sola.
+  /* ── STEP 9: Deduplicazione rafforzata ──────────────────────────────────
+     FIX 5: quando annoFisc è null, usa sezione+rigaIdx come tiebreak
+     per evitare di eliminare F24 diversi con importo casualmente uguale.
   ────────────────────────────────────────────────────────────────────── */
   const visti = new Set();
   const righeDef = righeFiltrate.filter(r => {
-    const k = `${r.causale}|${r.importo.toFixed(2)}|${r.annoFisc}`;
-    if (visti.has(k)) { console.log(`[F24] Dedup: ${k}`); return false; }
+    // Chiave: causale + importo + anno (se noto) + sezione+riga (tiebreak se anno ignoto)
+    const k = r.annoFisc != null
+      ? r.causale + '|' + r.importo.toFixed(2) + '|' + r.annoFisc
+      : r.causale + '|' + r.importo.toFixed(2) + '|' + r.sezione + '_' + r.rigaIdx;
+    if (visti.has(k)) { console.log('[F24] Dedup skip: ' + k); return false; }
     visti.add(k);
     return true;
   });
 
   if (!righeDef.length) {
-    console.warn('[F24] Tutte le righe escluse da filtro temporale o deduplicazione');
+    console.warn('[F24] Tutte le righe escluse dal filtro');
     return null;
   }
 
-  /* ─── STEP 10: Aggregazione per tipo e validazione ──────────────────────
-     INPS (PXX/DPPI) = inps_versata_anno_solare
-     Imposta (179x)  = imposta_sostitutiva_f24
+  /* ── STEP 10: Aggregazione ──────────────────────────────────────────────
+     INPS  (PXX/DPPI/CF**) = inps_versata_f24
+     Imposta (1790/91/92)  = imposta_sostitutiva_f24
   ────────────────────────────────────────────────────────────────────── */
   const totInps    = righeDef.filter(r => r.tipo === 'inps')   .reduce((s, r) => s + r.importo, 0);
   const totImposta = righeDef.filter(r => r.tipo === 'imposta').reduce((s, r) => s + r.importo, 0);
+  const totAll     = totInps + totImposta;
 
-  // Verifica coerenza con SALDO FINALE se disponibile
-  const totCalcolato = totInps + totImposta;
-  if (saldoFinaleDoc > 0 && totCalcolato > 0) {
-    const scarto = Math.abs(saldoFinaleDoc - totCalcolato) / saldoFinaleDoc;
+  /* ── FIX 4: Saldo Finale come CORREZIONE attiva ─────────────────────────
+     Se totImposta=0 ma saldoFinaleDoc > totInps con margine > 5%,
+     inferisce l'imposta mancante come: saldoFinaleDoc - totInps
+     Questo gestisce i casi dove il parser non ha trovato i codici 179x
+     ma il saldo finale è disponibile e affidabile.
+     La correzione viene segnalata nel campo note (non è silenziosa).
+  ────────────────────────────────────────────────────────────────────── */
+  let totImpostaCorr = totImposta;
+  let notaCorrezione = '';
+  if (saldoFinaleDoc > 0) {
+    const scarto = totAll > 0 ? Math.abs(saldoFinaleDoc - totAll) / saldoFinaleDoc : 1;
     if (scarto > 0.05) {
-      console.warn(`[F24] ⚠️ Scarto ${(scarto*100).toFixed(1)}%: somma righe ${totCalcolato.toFixed(2)} vs saldo finale ${saldoFinaleDoc.toFixed(2)}`);
+      console.warn('[F24] ⚠️ Scarto ' + (scarto * 100).toFixed(1) + '%: calcolato ' + totAll.toFixed(2) + ' vs saldo ' + saldoFinaleDoc.toFixed(2));
+      // Se imposta non trovata ma c'è differenza positiva → inferisci
+      if (totImposta === 0 && saldoFinaleDoc > totInps && totInps > 0) {
+        totImpostaCorr = Math.round((saldoFinaleDoc - totInps) * 100) / 100;
+        notaCorrezione = ' ⚠️ Imposta inferita dal saldo finale (codici 179x non trovati — verifica manualmente)';
+        console.warn('[F24] FIX4 imposta inferita:', totImpostaCorr);
+      }
+      // Se invece manca l'INPS ma c'è saldo > imposta trovata
+      // Non inferiamo l'INPS perché è più volatile e soggetto a copertura parziale
     } else {
-      console.log(`[F24] ✔ Coerenza saldo: ${(scarto*100).toFixed(1)}% scarto`);
+      console.log('[F24] ✔ Coerenza saldo: ' + (scarto * 100).toFixed(1) + '% scarto');
     }
   }
 
-  // Anno fiscale di riferimento
+  /* ── FIX 6: Validazione matematica acconti ──────────────────────────────
+     1790 = saldo, 1791 = I acconto (40%), 1792 = II acconto (60%).
+     Se tutti e tre presenti, verifica i rapporti attesi.
+  ────────────────────────────────────────────────────────────────────── */
+  let notaAcConti = '';
+  {
+    const imp1790 = righeDef.filter(r => r.causale === '1790').reduce((s, r) => s + r.importo, 0);
+    const imp1791 = righeDef.filter(r => r.causale === '1791').reduce((s, r) => s + r.importo, 0);
+    const imp1792 = righeDef.filter(r => r.causale === '1792').reduce((s, r) => s + r.importo, 0);
+    if (imp1791 > 0 && imp1792 > 0) {
+      const ratioAtt = imp1792 / (imp1791 + imp1792);
+      if (Math.abs(ratioAtt - 0.6) > 0.15) {
+        notaAcConti = ' ⚠️ Ratio acconti anomalo: I acc=' + imp1791.toFixed(0) + ' II acc=' + imp1792.toFixed(0) + ' (atteso 40%/60%)';
+        console.warn('[F24] ' + notaAcConti);
+      }
+    }
+  }
+
+  // Anno fiscale di riferimento del documento
   const anniFisc   = righeDef.map(r => r.annoFisc).filter(Boolean);
   const annoFiscRif = anniFisc.length ? Math.min(...anniFisc) : targetAnno;
 
-  // Nota dettagliata (visibile nel modale PDF)
+  // Nota diagnostica completa
   const dettaglioRighe = righeDef
-    .map(r => `${r.causale}(${r.tipo}) €${r.importo.toLocaleString('it-IT',{minimumFractionDigits:2})}${r.annoFisc ? ' ref'+r.annoFisc : ''}${r.dataScad ? ' scad:'+r.dataScad : ''}`)
+    .map(r => r.causale + '(' + r.tipo + ') €' + r.importo.toLocaleString('it-IT', {minimumFractionDigits:2})
+            + (r.annoFisc ? ' ref' + r.annoFisc : '')
+            + (r.dataScad ? ' scad:' + r.dataScad : ''))
     .join(' | ');
 
   const nota = [
-    `⚡ F24 v3 · anno solare ${targetAnno || annoFiscRif}`,
-    `INPS (PXX/DPPI): €${totInps.toLocaleString('it-IT',{minimumFractionDigits:2})}`,
-    `Imposta sost. (179x): €${totImposta.toLocaleString('it-IT',{minimumFractionDigits:2})}`,
-    saldoFinaleDoc > 0 ? `Saldo finale doc: €${saldoFinaleDoc.toLocaleString('it-IT',{minimumFractionDigits:2})}` : null,
+    '⚡ F24 v4 · anno solare ' + (targetAnno || annoFiscRif),
+    'INPS (PXX/DPPI): €' + totInps.toLocaleString('it-IT', {minimumFractionDigits:2}),
+    'Imposta sost. (179x): €' + totImpostaCorr.toLocaleString('it-IT', {minimumFractionDigits:2}),
+    saldoFinaleDoc > 0 ? 'Saldo finale: €' + saldoFinaleDoc.toLocaleString('it-IT', {minimumFractionDigits:2}) : null,
+    notaCorrezione || null,
+    notaAcConti   || null,
     dettaglioRighe
   ].filter(Boolean).join(' · ');
 
-  console.log('[F24] ✅', nota);
+  console.log('[F24] ✅ v4', nota);
+
+  // Aggiorna totImposta con la versione corretta (eventualmente inferita)
+  const totImpostaFinale = totImpostaCorr;
 
   return {
     tipo:                    'f24',
@@ -2459,13 +2530,14 @@ function tryParseF24(text, annoTarget) {
     fatturato_lm2:           0,
     inps_dedotta_lm7:        0,
     imposta_dovuta_lm11:     0,
-    inps_versata_f24:        totInps,        // PXX/DPPI → deducibile da reddito
-    imposta_sostitutiva_f24: totImposta,     // 179x → imposta già versata
-    saldo_finale_f24:        saldoFinaleDoc, // SALDO (F) per verifica
+    inps_versata_f24:        totInps,          // PXX/DPPI → deducibile da reddito
+    imposta_sostitutiva_f24: totImpostaFinale, // 179x → imposta già versata
+    saldo_finale_f24:        saldoFinaleDoc,   // SALDO (F) verifica
     note:                    nota,
-    f24_righe:               righeDef        // dettaglio righe (ex f24_pagine)
+    f24_righe:               righeDef
   };
 }
+
 
 
 /* ============================================================
