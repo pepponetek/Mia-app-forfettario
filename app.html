@@ -2134,37 +2134,30 @@ function tryParseRPF(text) {
                       1790/1791/1792 → imposta_sostitutiva_pagata
    ─ Non inventare valori se PDF non leggibile
    ============================================================ */
-/* ============================================================
-   SPLIT MULTI-F24
-   Rileva se un PDF contiene più modelli F24 distinti e li separa.
-   Ogni F24 inizia con "Scadenza del DD-MM-YYYY" nella sua intestazione.
-   Ritorna un array di segmenti di testo normalizzato (uno per F24).
-   ============================================================ */
-function splitF24Segments(nt) {
-  // Pattern: "Scadenza del 30-07-2025" oppure "Eseguito il 30/07/2025"
-  const SPLIT_RE = /(?=[Ss]cadenza\s+del\s+\d{2}[-/.]\d{2}[-/.]\d{4}|[Ee]seguito\s+il\s+\d{2}[-/.]\d{2}[-/.]\d{4})/g;
-  const parti = nt.split(SPLIT_RE).filter(s => s.trim().length > 80);
-
-  // Se non ci sono marcatori di scadenza riconoscibili, prova con "MODELLO DI PAGAMENTO UNIFICATO"
-  if (parti.length <= 1) {
-    const SPLIT_RE2 = /(?=MODELLO\s+DI\s+PAGAMENTO\s+UNIFICATO)/gi;
-    const parti2 = nt.split(SPLIT_RE2).filter(s => s.trim().length > 80);
-    if (parti2.length > 1) return parti2;
-  }
-
-  return parti.length > 0 ? parti : [nt];
-}
-
-/* ============================================================
-   PARSER SINGOLO SEGMENTO F24 (logica interna)
-   Opera su testo già normalizzato. Chiamato da tryParseF24.
-   ============================================================ */
-function parseSingleF24Segment(nt, annoTarget) {
+function tryParseF24(text, annoTarget) {
+  /*
+   * PARSER F24 v4 — Validatore.md §2 compliant
+   *
+   * FIX v4 rispetto a v3:
+   *   1. Scadenza estratta UNA VOLTA dall'intestazione del F24, non per-riga
+   *   2. Anno fiscale tributo estratto dalla colonna "Anno" specifica (non min del contesto)
+   *   3. Stop condition corretta: si ferma SEMPRE quando incontra un'altra causale
+   *      (rimosso il bug j>1 che catturava importi di tributi successivi)
+   *   4. Saldo Finale usato come CORREZIONE attiva, non solo avviso
+   *      (se imposta=0 e saldo > INPS, inferisce l'imposta mancante)
+   *   5. Deduplicazione rafforzata: usa posizione+sezione come tiebreak
+   *      quando annoFisc è null (evita eliminazione F24 legittimamente identici)
+   *   6. Validazione matematica acconti: verifica che 1791 ≈ 40% e 1792 ≈ 60%
+   *      dell'imposta totale — flagga incongruenza se fuori soglia
+   */
   const targetAnno = annoTarget || _aiAnno || null;
 
-  // Detection rapida sul segmento
-  const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(nt);
+  // Detection rapida — 1790 incluso (era assente in v1/v2)
+  const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(text);
   if (!isF24) return null;
+
+  // Normalizza dirty-PDF (condivisa con RPF)
+  const nt = normalizePdfText(text);
 
   /* ── HELPER: parseImporto ───────────────────────────────────────────────
      Formati reali nei PDF ADE (incluso PDF.js con celle spezzate):
@@ -2542,93 +2535,6 @@ function parseSingleF24Segment(nt, annoTarget) {
     saldo_finale_f24:        saldoFinaleDoc,   // SALDO (F) verifica
     note:                    nota,
     f24_righe:               righeDef
-  };
-}
-
-/* ============================================================
-   tryParseF24 — ORCHESTRATORE MULTI-F24 v5
-   ─────────────────────────────────────────────────────────────
-   v5 rispetto a v4:
-   • Rileva automaticamente più modelli F24 nello stesso PDF
-   • Splitta il testo per "Scadenza del DD-MM-YYYY"
-   • Parsa ogni segmento separatamente con parseSingleF24Segment
-   • Aggrega INPS e imposta sostitutiva di tutti i moduli
-   • Riporta il numero di moduli trovati per diagnostica
-   ============================================================ */
-function tryParseF24(text, annoTarget) {
-  // Detection rapida globale — esce subito se non è un F24
-  const isF24 = /\bF24\b|MODELLO\s*F24|SALDO\s*(?:FINALE|\(F\))|\bPXX\b|\bDPPI\b|CODICE\s+TRIBUTO|179[012]|CF2[0-9]|CF3[0-2]/i.test(text);
-  if (!isF24) return null;
-
-  // Normalizza una sola volta per tutti i segmenti
-  const nt = normalizePdfText(text);
-
-  // Split: rileva quanti F24 sono nel PDF
-  const segmenti = splitF24Segments(nt);
-  console.log('[F24] v5 — segmenti rilevati:', segmenti.length);
-
-  if (segmenti.length <= 1) {
-    // PDF con un solo F24 — comportamento identico a v4
-    return parseSingleF24Segment(nt, annoTarget);
-  }
-
-  // PDF MULTI-F24: parsa ogni segmento e aggrega
-  const risultati = segmenti
-    .map((seg, idx) => {
-      console.log('[F24] v5 — parsing segmento ' + (idx + 1) + '/' + segmenti.length);
-      return parseSingleF24Segment(seg, annoTarget);
-    })
-    .filter(Boolean); // scarta segmenti non riconosciuti come F24
-
-  if (!risultati.length) {
-    console.warn('[F24] v5 — nessun segmento valido trovato');
-    return null;
-  }
-
-  if (risultati.length === 1) {
-    // Un solo segmento valido (gli altri erano header/piè di pagina)
-    return risultati[0];
-  }
-
-  // ── Aggregazione multi-F24 ───────────────────────────────────
-  const totInps     = risultati.reduce((s, r) => s + (r.inps_versata_f24        || 0), 0);
-  const totImposta  = risultati.reduce((s, r) => s + (r.imposta_sostitutiva_f24 || 0), 0);
-  const totSaldo    = risultati.reduce((s, r) => s + (r.saldo_finale_f24         || 0), 0);
-  const tutteRighe  = risultati.flatMap(r => r.f24_righe || []);
-
-  // Anno fiscale di riferimento = il più piccolo trovato (anno dichiarazione)
-  const anniValidi  = risultati.map(r => r.anno).filter(Boolean);
-  const annoFiscRif = anniValidi.length ? Math.min(...anniValidi) : (annoTarget || null);
-
-  // Dettaglio per segmento — visibile nel campo "note"
-  const dettaglioModuli = risultati.map((r, i) => {
-    const scad = (r.f24_righe && r.f24_righe[0]?.dataScad) ? ' scad:' + r.f24_righe[0].dataScad : '';
-    return `F24#${i+1}${scad} — INPS:€${(r.inps_versata_f24||0).toLocaleString('it-IT',{minimumFractionDigits:2})} Imp:€${(r.imposta_sostitutiva_f24||0).toLocaleString('it-IT',{minimumFractionDigits:2})}`;
-  }).join(' | ');
-
-  const nota = [
-    `⚡ F24 MULTI v5 — ${risultati.length} moduli rilevati nel PDF`,
-    `INPS totale (PXX/DPPI): €${totInps.toLocaleString('it-IT',{minimumFractionDigits:2})}`,
-    `Imposta sost. totale (179x): €${totImposta.toLocaleString('it-IT',{minimumFractionDigits:2})}`,
-    `Saldo finale totale: €${totSaldo.toLocaleString('it-IT',{minimumFractionDigits:2})}`,
-    dettaglioModuli
-  ].join(' · ');
-
-  console.log('[F24] ✅ v5 MULTI', nota);
-
-  return {
-    tipo:                    'f24',
-    anno:                    annoFiscRif,
-    ateco:                   null,
-    fatturato_lm2:           0,
-    inps_dedotta_lm7:        0,
-    imposta_dovuta_lm11:     0,
-    inps_versata_f24:        Math.round(totInps    * 100) / 100,
-    imposta_sostitutiva_f24: Math.round(totImposta * 100) / 100,
-    saldo_finale_f24:        Math.round(totSaldo   * 100) / 100,
-    note:                    nota,
-    f24_righe:               tutteRighe,
-    f24_moduli:              risultati.length   // campo diagnostico
   };
 }
 
@@ -3718,20 +3624,22 @@ function renderDocumentiAnno(anno) {
     const dim    = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
     const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
     const ico    = icona[doc.tipo_doc] || '📄';
+    const noFile = !doc.storage_path || doc.storage_path === 'null';
     // FIX: usa data-attributes per evitare problemi con apostrofi e caratteri speciali nei parametri onclick
     return `<div class="doc-row">
       <span class="doc-ico">${ico}</span>
       <div class="doc-info">
-        <div class="doc-name">${sanitizeHTML(doc.nome_file)}</div>
+        <div class="doc-name">${sanitizeHTML(doc.nome_file)}${noFile ? ' <span style="font-size:10px;color:var(--ye);font-weight:700">⚠️ file mancante</span>' : ''}</div>
         <div class="doc-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
       </div>
       <div class="doc-actions">
         <button class="btn btn-xs btn-ol doc-dl-btn"
-          data-path="${doc.storage_path}"
-          data-name="${sanitizeHTML(doc.nome_file)}">⬇️ Scarica</button>
+          data-path="${doc.storage_path || ''}"
+          data-name="${sanitizeHTML(doc.nome_file)}"
+          ${noFile ? 'title="File non disponibile nello storage — ricarica il PDF" style="opacity:.45;cursor:not-allowed"' : ''}>⬇️ Scarica</button>
         <button class="btn btn-xs btn-ol doc-del-btn" style="color:var(--re)"
           data-id="${doc.id}"
-          data-path="${doc.storage_path}"
+          data-path="${doc.storage_path || ''}"
           data-anno="${anno}"
           data-name="${sanitizeHTML(doc.nome_file)}">🗑️</button>
       </div>
@@ -3746,6 +3654,17 @@ function renderDocumentiAnno(anno) {
 
 // Download diretto come blob (evita popup bloccati su mobile) — revokeObjectURL dopo 60s
 async function downloadDoc(storagePath, nomeFile) {
+  // Gestione storage_path mancante (upload fallito in passato per errore rete/RLS)
+  if (!storagePath || storagePath === 'null') {
+    toast(
+      '⚠️ File non disponibile nello storage. ' +
+      'Il PDF fu tracciato ma non caricato correttamente. ' +
+      'Elimina il documento e ricarica il PDF originale.',
+      'err', 8000
+    );
+    return;
+  }
+
   try {
     toast('⏳ Download in corso...', 'info', 2000);
 
@@ -3822,8 +3741,15 @@ async function confDelDoc() {
 
   setSync('busy', 'Eliminazione e ripristino dati...');
   try {
-    // STEP 1: Elimina da Storage
-    await sb.storage.from('documenti-fiscali').remove([storagePath]);
+    // STEP 1: Elimina da Storage (solo se il file esiste realmente)
+    if (storagePath && storagePath !== 'null') {
+      const { error: storErr } = await sb.storage
+        .from('documenti-fiscali')
+        .remove([storagePath]);
+      if (storErr) console.warn('[confDelDoc] Storage remove:', storErr.message);
+    } else {
+      console.warn('[confDelDoc] storage_path assente — skip rimozione storage');
+    }
 
     // STEP 2: Elimina dalla tabella documenti_fiscali
     const { error } = await sb.from('documenti_fiscali')
@@ -4651,15 +4577,18 @@ function renderDocumentiView(queryFilter) {
         const dim     = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
         const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
         const ico     = icona[doc.tipo_doc] || '📄';
+        const noFile  = !doc.storage_path || doc.storage_path === 'null';
+        const safePath = doc.storage_path || '';
         html += `<div class="doc-view-row">
           <span class="doc-view-ico">${ico}</span>
           <div class="doc-view-info">
-            <div class="doc-view-name">${sanitizeHTML(doc.nome_file)}</div>
+            <div class="doc-view-name">${sanitizeHTML(doc.nome_file)}${noFile ? ' <span style="font-size:10px;color:var(--ye);font-weight:700">⚠️ file mancante</span>' : ''}</div>
             <div class="doc-view-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
           </div>
           <div class="doc-view-actions">
-            <button class="btn btn-xs btn-ol" onclick="downloadDoc('${doc.storage_path}','${sanitizeHTML(doc.nome_file)}')">⬇️ Scarica</button>
-            <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${doc.storage_path}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️ Elimina</button>
+            <button class="btn btn-xs btn-ol" onclick="downloadDoc('${safePath}','${sanitizeHTML(doc.nome_file)}')"
+              ${noFile ? 'style="opacity:.45;cursor:not-allowed" title="File non disponibile — ricarica il PDF"' : ''}>⬇️ Scarica</button>
+            <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${safePath}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️ Elimina</button>
           </div>
         </div>`;
       });
