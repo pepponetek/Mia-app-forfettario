@@ -1,188 +1,456 @@
-<!DOCTYPE html><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Termini di Servizio · ForfettarioApp</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<title>Termini di Servizio · ForfettarioApp · Peppone Tek</title>
+<meta name="description" content="Termini e Condizioni di utilizzo di ForfettarioApp. Strumento informativo — non sostituisce la consulenza professionale.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0d1117;--s1:#161b22;--bd:#2a3140;
+  --bg:#0d1117;--s1:#161b22;--s2:#1c2330;--bd:#2a3140;--bd2:#374151;
   --t1:#e6edf3;--t2:#8b949e;--t3:#6e7681;
-  --ac:#58a6ff;--ac2:#1f6feb;--gr:#3fb950;--ye:#d29922;--r:10px;
+  --ac:#58a6ff;--ac2:#1f6feb;--gr:#3fb950;--ye:#d29922;--re:#f85149;--pu:#bc8cff;
+  --r:10px;
+  --font-h:'Syne',sans-serif;
+  --font-b:'DM Sans',sans-serif;
+  --font-m:'DM Mono',monospace;
 }
-body{background:var(--bg);color:var(--t1);font-family:'DM Sans',sans-serif;font-size:16px;line-height:1.7;
-  background-image:radial-gradient(ellipse 80% 40% at 50% -10%,rgba(31,111,235,.1),transparent)}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--t1);
+  font-family:var(--font-b);font-size:16px;line-height:1.75;
+  background-image:radial-gradient(ellipse 80% 40% at 50% -10%,rgba(31,111,235,.08),transparent);
+}
 nav{
   position:sticky;top:0;z-index:99;
-  background:rgba(13,17,23,.9);border-bottom:1px solid var(--bd);
-  backdrop-filter:blur(16px);padding:0 clamp(20px,5vw,80px);
-  height:60px;display:flex;align-items:center;justify-content:space-between;
+  background:rgba(13,17,23,.92);border-bottom:1px solid var(--bd);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  padding:0 clamp(20px,5vw,80px);
+  height:64px;display:flex;align-items:center;justify-content:space-between;
 }
-.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
-.nav-logo img{height:36px;width:auto;flex-shrink:0}
+.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none}
+.nav-logo .name{font-family:var(--font-h);font-size:16px;font-weight:800;color:var(--t1)}
+.nav-logo .by{font-size:10px;color:var(--t3);font-family:var(--font-m)}
 .back{
   display:inline-flex;align-items:center;gap:6px;
   font-size:13px;color:var(--t2);text-decoration:none;
-  padding:6px 12px;border-radius:7px;border:1px solid var(--bd);
+  padding:7px 14px;border-radius:7px;border:1px solid var(--bd);
   transition:color .15s,border-color .15s;
 }
-.back:hover{color:var(--t1);border-color:var(--t2)}
-main{max-width:760px;margin:0 auto;padding:60px clamp(20px,5vw,40px) 100px}
+.back:hover{color:var(--t1);border-color:var(--bd2)}
+
+/* ===== CRITICAL WARNING BAR ===== */
+.critical-bar{
+  background:rgba(248,81,73,.08);
+  border-bottom:1px solid rgba(248,81,73,.25);
+  padding:12px clamp(20px,5vw,80px);
+  display:flex;align-items:center;justify-content:center;
+  gap:10px;text-align:center;
+  font-size:13px;color:#f98080;font-family:var(--font-b);font-weight:500;
+  line-height:1.5;
+}
+
+main{max-width:800px;margin:0 auto;padding:60px clamp(20px,5vw,40px) 120px}
+
 .doc-header{margin-bottom:48px;padding-bottom:28px;border-bottom:1px solid var(--bd)}
 .doc-label{
   display:inline-flex;align-items:center;gap:7px;
   font-size:11px;color:var(--ac);font-weight:600;
   text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px;
+  font-family:var(--font-m);
 }
 .doc-label::before{content:'';width:18px;height:1px;background:var(--ac)}
-h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,40px);font-weight:800;
-  letter-spacing:-.02em;margin-bottom:12px}
-.doc-meta{font-size:13px;color:var(--t3)}
+h1{font-family:var(--font-h);font-size:clamp(28px,5vw,42px);font-weight:800;
+  letter-spacing:-.02em;margin-bottom:12px;line-height:1.1}
+.doc-meta{font-size:13px;color:var(--t3);font-family:var(--font-m);margin-top:10px}
 .doc-meta span{color:var(--t2);font-weight:500}
 
-section{margin-bottom:40px}
-h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;
-  color:var(--ac);margin-bottom:12px;padding-bottom:8px;
-  border-bottom:1px solid rgba(88,166,255,.15)}
-p{color:var(--t2);margin-bottom:12px}
-ul{color:var(--t2);padding-left:20px;margin-bottom:12px}
-ul li{margin-bottom:6px}
+.toc{
+  background:var(--s1);border:1px solid var(--bd);border-radius:12px;
+  padding:22px 26px;margin-bottom:40px;
+}
+.toc-title{font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--t2);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;}
+.toc ol{padding-left:18px;display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
+@media(max-width:600px){.toc ol{grid-template-columns:1fr}}
+.toc li{font-size:13px;color:var(--t3);margin-bottom:0}
+.toc a{color:var(--t2);text-decoration:none;transition:color .15s}
+.toc a:hover{color:var(--ac)}
+
+section{margin-bottom:44px;scroll-margin-top:80px}
+h2{font-family:var(--font-h);font-size:17px;font-weight:700;
+  color:var(--ac);margin-bottom:14px;padding-bottom:8px;
+  border-bottom:1px solid rgba(88,166,255,.15);
+  display:flex;align-items:baseline;gap:10px}
+.art-num{font-family:var(--font-m);font-size:11px;color:var(--t3);font-weight:400;flex-shrink:0}
+p{color:var(--t2);margin-bottom:12px;line-height:1.75}
+ul,ol{color:var(--t2);padding-left:22px;margin-bottom:14px}
+ul li,ol li{margin-bottom:7px;line-height:1.65}
 strong{color:var(--t1)}
-a{color:var(--ac);text-decoration:none}
-a:hover{text-decoration:underline}
+em{color:var(--t2);font-style:italic}
+a{color:var(--ac);text-decoration:none;transition:opacity .15s}
+a:hover{opacity:.8;text-decoration:underline}
 
-.highlight{
-  background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.18);
-  border-radius:var(--r);padding:16px 20px;margin-bottom:20px;
+/* Boxes */
+.box{border-radius:var(--r);padding:18px 22px;margin-bottom:18px}
+.box-blue{background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2)}
+.box-blue p,.box-blue li{color:var(--t2)}
+.box-blue strong{color:var(--ac)}
+.box-yellow{background:rgba(210,153,34,.06);border:1px solid rgba(210,153,34,.22)}
+.box-yellow p,.box-yellow li{color:var(--t2)}
+.box-yellow strong{color:var(--ye)}
+.box-red{background:rgba(248,81,73,.06);border:1px solid rgba(248,81,73,.22)}
+.box-red p,.box-red li{color:#f0a0a0}
+.box-red strong{color:var(--re)}
+.box-green{background:rgba(63,185,80,.05);border:1px solid rgba(63,185,80,.2)}
+.box-green p,.box-green li{color:var(--t2)}
+.box-green strong{color:var(--gr)}
+.box p:last-child,.box ul:last-child{margin-bottom:0}
+
+/* Clausola in rilievo */
+.clause-critical{
+  background:rgba(248,81,73,.05);
+  border:1px solid rgba(248,81,73,.3);
+  border-left:3px solid var(--re);
+  border-radius:0 var(--r) var(--r) 0;
+  padding:16px 20px;margin-bottom:18px;
 }
-.highlight p{margin:0;color:var(--t2)}
-.highlight strong{color:var(--ac)}
+.clause-critical p{color:#f0a0a0;margin:0}
+.clause-critical strong{color:var(--re)}
 
-.warn-box{
-  background:rgba(210,153,34,.06);border:1px solid rgba(210,153,34,.2);
-  border-radius:var(--r);padding:16px 20px;margin-bottom:20px;
+.clause-warn{
+  background:rgba(210,153,34,.05);
+  border:1px solid rgba(210,153,34,.3);
+  border-left:3px solid var(--ye);
+  border-radius:0 var(--r) var(--r) 0;
+  padding:16px 20px;margin-bottom:18px;
 }
-.warn-box p{margin:0;color:var(--t2)}
-.warn-box strong{color:var(--ye)}
+.clause-warn p{color:#e0c070;margin:0}
+.clause-warn strong{color:var(--ye)}
 
-footer{border-top:1px solid var(--bd);padding:30px clamp(20px,5vw,80px);
-  text-align:center;font-size:12px;color:var(--t3)}
-footer a{color:var(--ac)}
+/* Firma finale */
+.sign-block{
+  margin-top:60px;padding-top:32px;border-top:1px solid var(--bd);
+  font-size:13px;color:var(--t3);font-family:var(--font-m);
+  line-height:1.8;
+}
+.sign-block strong{color:var(--t2)}
+
+footer{
+  border-top:1px solid var(--bd);
+  padding:28px clamp(20px,5vw,80px);
+  text-align:center;font-size:12px;color:var(--t3);
+  display:flex;flex-direction:column;gap:8px;align-items:center;
+}
+footer a{color:var(--ac);text-decoration:none}
+footer a:hover{text-decoration:underline}
+.foot-links{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
 </style>
 </head>
 <body>
 
 <nav>
   <a class="nav-logo" href="/index.html">
-    <img src="/logo-orizzontale.svg" alt="ForfettarioApp" style="height:36px;width:auto;flex-shrink:0">
+    <img src="/logo.png" alt="ForfettarioApp"
+         style="width:30px;height:30px;border-radius:6px;object-fit:cover;flex-shrink:0">
+    <div>
+      <div class="name">ForfettarioApp</div>
+      <div class="by">by Peppone Tek</div>
+    </div>
   </a>
   <a class="back" href="/index.html">← Torna alla home</a>
 </nav>
 
+<div class="critical-bar">
+  ⚠️ <strong>Attenzione:</strong> ForfettarioApp è uno strumento esclusivamente informativo. I calcoli prodotti NON costituiscono consulenza fiscale, tributaria o legale e NON devono essere utilizzati come unica base per dichiarazioni dei redditi, pagamenti F24 o qualsiasi adempimento fiscale verso l'Erario.
+</div>
+
 <main>
+
   <div class="doc-header">
     <div class="doc-label">Documento legale</div>
-    <h1>Termini di Servizio</h1>
+    <h1>Termini e Condizioni<br>di Utilizzo del Servizio</h1>
     <div class="doc-meta">
-      Ultimo aggiornamento: <span>Febbraio 2025</span> ·
-      Versione: <span>1.0</span>
+      Ultima revisione: <span>Marzo 2025</span> ·
+      Versione: <span>2.0</span> ·
+      Entrata in vigore: <span>01 Marzo 2025</span>
     </div>
   </div>
 
-  <div class="highlight">
-    <p><strong>In sintesi:</strong> ForfettarioApp è uno strumento informativo di supporto alla gestione fiscale. I calcoli prodotti hanno valore indicativo e non sostituiscono la consulenza di un commercialista.</p>
+  <!-- INDICE -->
+  <div class="toc">
+    <div class="toc-title">Indice degli articoli</div>
+    <ol>
+      <li><a href="#art1">Definizioni</a></li>
+      <li><a href="#art2">Accettazione e ambito</a></li>
+      <li><a href="#art3">Natura informativa</a></li>
+      <li><a href="#art4">Esclusione di responsabilità fiscale</a></li>
+      <li><a href="#art5">Intelligenza Artificiale e PDF</a></li>
+      <li><a href="#art6">Limitazione totale di responsabilità</a></li>
+      <li><a href="#art7">Descrizione del Servizio</a></li>
+      <li><a href="#art8">Registrazione e Account</a></li>
+      <li><a href="#art9">Uso accettabile</a></li>
+      <li><a href="#art10">Dati dell'utente</a></li>
+      <li><a href="#art11">Proprietà intellettuale</a></li>
+      <li><a href="#art12">Disponibilità del Servizio</a></li>
+      <li><a href="#art13">Modifiche ai Termini</a></li>
+      <li><a href="#art14">Legge applicabile e foro</a></li>
+      <li><a href="#art15">Clausola di salvaguardia</a></li>
+      <li><a href="#art16">Contatti</a></li>
+    </ol>
   </div>
 
-  <section>
-    <h2>1. Accettazione dei termini</h2>
-    <p>Utilizzando ForfettarioApp (il "Servizio"), disponibile all'indirizzo <a href="https://tax-forfettario.vercel.app">tax-forfettario.vercel.app</a>, accetti integralmente i presenti Termini di Servizio. Se non accetti questi termini, ti chiediamo di non utilizzare il Servizio.</p>
-    <p>Il Servizio è fornito da <strong>Peppone Tek</strong> (il "Fornitore").</p>
-  </section>
-
-  <section>
-    <h2>2. Descrizione del servizio</h2>
-    <p>ForfettarioApp è un'applicazione web che permette ai professionisti in regime forfettario di:</p>
+  <!-- ART. 1 -->
+  <section id="art1">
+    <h2><span class="art-num">Art. 1</span> Definizioni</h2>
+    <p>Ai fini dei presenti Termini e Condizioni di Utilizzo si intende per:</p>
     <ul>
-      <li>Calcolare imposta sostitutiva, contributi INPS e netto effettivo in base al fatturato inserito</li>
-      <li>Archiviare e consultare lo storico dei propri anni fiscali</li>
-      <li>Visualizzare grafici e statistiche sull'andamento fiscale</li>
-      <li>Generare ed esportare prospetti fiscali in formato PDF</li>
+      <li><strong>"Servizio"</strong>: l'applicazione web ForfettarioApp, disponibile all'indirizzo <a href="https://tax-forfettario.vercel.app" target="_blank" rel="noopener">tax-forfettario.vercel.app</a>, comprensiva di tutte le funzionalità offerte (calcolo, archiviazione, analisi PDF, esportazione).</li>
+      <li><strong>"Fornitore"</strong>: Peppone Tek, soggetto sviluppatore e gestore del Servizio.</li>
+      <li><strong>"Utente"</strong>: qualsiasi persona fisica che acceda o utilizzi il Servizio, a prescindere dall'avvenuta registrazione.</li>
+      <li><strong>"Account"</strong>: l'area personale dell'Utente creata a seguito di registrazione mediante credenziali email/password o OAuth Google.</li>
+      <li><strong>"Dati Fiscali"</strong>: fatturato, codice ATECO, tipo di gestione previdenziale, anno fiscale e qualsiasi altro dato di natura fiscale o tributaria inserito dall'Utente nel Servizio.</li>
+      <li><strong>"Calcolo"</strong>: qualsiasi elaborazione numerica prodotta dal Servizio a partire dai Dati Fiscali, compresi imposta sostitutiva, contributi previdenziali, netto effettivo e acconti.</li>
+      <li><strong>"Dichiarazione Redditi PF"</strong>: il modello dichiarativo dell'Agenzia delle Entrate (Persone Fisiche) eventualmente caricato dall'Utente in formato PDF.</li>
+      <li><strong>"Normativa di Riferimento"</strong>: principalmente Legge 23 dicembre 2014, n. 190 (cd. Legge di Stabilità 2015) e successive modificazioni, nonché circolari INPS e prassi amministrativa dell'Agenzia delle Entrate vigenti.</li>
     </ul>
   </section>
 
-  <section>
-    <h2>3. Natura informativa del servizio</h2>
-    <div class="warn-box">
-      <p><strong>⚠️ Importante:</strong> ForfettarioApp è uno strumento di supporto informativo. I calcoli prodotti sono indicativi e basati sulle aliquote e coefficienti vigenti al momento dello sviluppo. Non costituiscono consulenza fiscale, tributaria o legale.</p>
+  <!-- ART. 2 -->
+  <section id="art2">
+    <h2><span class="art-num">Art. 2</span> Accettazione dei Termini e Ambito di Applicazione</h2>
+    <div class="clause-warn">
+      <p><strong>⚠️ Lettura obbligatoria:</strong> l'accesso, la navigazione, la registrazione o qualsiasi utilizzo del Servizio — anche senza creazione di un Account — costituisce accettazione piena, consapevole e incondizionata dei presenti Termini nella loro interezza. Chi non accetta anche un solo articolo è tenuto a cessare immediatamente l'utilizzo del Servizio.</p>
     </div>
-    <p>Il Fornitore non si assume responsabilità per:</p>
+    <p>I presenti Termini disciplinano in modo esclusivo il rapporto giuridico tra il Fornitore e l'Utente. Qualsiasi uso del Servizio avviene a <strong>rischio esclusivo dell'Utente</strong>, entro i limiti di cui agli articoli seguenti e nel rispetto della legislazione italiana vigente.</p>
+    <p>Il Servizio è destinato esclusivamente a persone fisiche maggiorenni residenti in Italia che svolgano attività in regime forfettario ai sensi della L. 190/2014. È espressamente escluso l'utilizzo da parte di minori di 18 anni e da parte di soggetti che non operino in regime forfettario.</p>
+  </section>
+
+  <!-- ART. 3 -->
+  <section id="art3">
+    <h2><span class="art-num">Art. 3</span> Natura Esclusivamente Informativa del Servizio</h2>
+    <div class="box box-red">
+      <p><strong>🚨 Dichiarazione fondamentale non derogabile:</strong> ForfettarioApp è, in ogni sua componente, uno strumento di <em>informazione e supporto alla comprensione</em> della fiscalità forfettaria. Il Servizio <strong>non costituisce</strong>, non sostituisce e non può essere equiparato a:</p>
+      <ul>
+        <li>Consulenza fiscale o tributaria ai sensi del D.Lgs. 139/2005 e del D.Lgs. 28 giugno 2005, n. 139</li>
+        <li>Consulenza legale o giuridica</li>
+        <li>Assistenza contabile professionale</li>
+        <li>Parere o attestazione di un dottore commercialista, esperto contabile o consulente del lavoro iscritto ai relativi Ordini professionali</li>
+      </ul>
+    </div>
+    <p>I Calcoli prodotti dal Servizio sono elaborati algoritmicamente sulla base di parametri standard (aliquote, coefficienti di redditività, contributi previdenziali) aggiornati alle disposizioni vigenti alla data dell'ultimo rilascio dell'applicazione. Tali Calcoli:</p>
     <ul>
-      <li>Errori nei calcoli derivanti da dati inseriti in modo errato dall'utente</li>
-      <li>Variazioni normative successive all'ultimo aggiornamento dell'applicazione</li>
-      <li>Decisioni fiscali prese esclusivamente sulla base dei risultati dell'app</li>
+      <li>hanno valore puramente <strong>indicativo ed esemplificativo</strong>;</li>
+      <li>non tengono conto di situazioni fiscali individuali, pregresse o straordinarie dell'Utente;</li>
+      <li>non costituiscono in alcun modo l'adempimento di un obbligo dichiarativo o di versamento;</li>
+      <li>non sono vincolanti per l'Agenzia delle Entrate né per alcun ente previdenziale.</li>
     </ul>
-    <p>Si raccomanda sempre di confrontare i risultati con un commercialista o consulente fiscale abilitato.</p>
+    <div class="box box-yellow">
+      <p><strong>Raccomandazione vincolante per l'uso corretto del Servizio:</strong> prima di presentare qualsiasi dichiarazione dei redditi, effettuare pagamenti tramite modello F24, modificare il proprio regime fiscale o assumere qualsiasi decisione fiscale di rilevanza, l'Utente è tenuto a confrontare i risultati ottenuti con un <strong>commercialista, dottore commercialista o consulente fiscale abilitato</strong> iscritto al proprio Ordine professionale.</p>
+    </div>
   </section>
 
-  <section>
-    <h2>4. Registrazione e account</h2>
-    <p>Per utilizzare le funzionalità del Servizio è necessario creare un account fornendo un indirizzo email valido e una password, oppure tramite accesso con Google.</p>
-    <p>L'utente è responsabile di:</p>
+  <!-- ART. 4 -->
+  <section id="art4">
+    <h2><span class="art-num">Art. 4</span> Esclusione Specifica di Responsabilità per Adempimenti Fiscali</h2>
+    <div class="clause-critical">
+      <p><strong>🚨 Clausola di esonero totale di responsabilità fiscale:</strong> il Fornitore è espressamente esonerato da qualsiasi responsabilità — contrattuale, extracontrattuale, aquiliana o di altra natura — derivante dall'utilizzo, anche corretto, dei Calcoli prodotti dal Servizio ai fini di adempimenti fiscali reali.</p>
+    </div>
+    <p>In particolare, il Fornitore non sarà in alcun caso responsabile per:</p>
     <ul>
-      <li>Mantenere riservate le proprie credenziali di accesso</li>
-      <li>Tutte le attività svolte tramite il proprio account</li>
-      <li>Notificare immediatamente al Fornitore qualsiasi accesso non autorizzato</li>
+      <li><strong>Dichiarazioni dei redditi errate</strong> presentate all'Agenzia delle Entrate sulla base — anche parziale — dei Calcoli del Servizio;</li>
+      <li><strong>Pagamenti F24 errati, incompleti, tardivi o effettuati con codici tributo sbagliati</strong> a qualsiasi ente (Agenzia delle Entrate, INPS, INAIL o altro);</li>
+      <li><strong>Sanzioni amministrative o tributarie</strong> irrogate dall'Agenzia delle Entrate, dall'INPS, dalla Guardia di Finanza o da qualsiasi altra autorità competente, incluse sanzioni per omesso o tardivo versamento;</li>
+      <li><strong>Interessi di mora</strong>, somme aggiuntive o oneri accessori derivanti da versamenti errati o tardivi;</li>
+      <li><strong>Perdita del regime forfettario</strong> conseguente al superamento della soglia di ricavi (€ 85.000) non tempestivamente rilevato dall'Utente per affidamento ai soli Calcoli dell'app;</li>
+      <li><strong>Omessa o errata applicazione dell'aliquota agevolata al 5%</strong> o del passaggio all'aliquota ordinaria del 15%;</li>
+      <li><strong>Errori nel calcolo dei contributi INPS</strong> derivanti da minimali annuali variati dopo l'ultimo aggiornamento del Servizio;</li>
+      <li><strong>Avvisi di irregolarità, accertamenti o controlli fiscali</strong> conseguenti a difformità tra i Calcoli del Servizio e i valori dichiarati;</li>
+      <li><strong>Qualsiasi danno patrimoniale o non patrimoniale</strong> direttamente o indirettamente riconducibile all'utilizzo del Servizio come unico o prevalente strumento di calcolo ai fini di adempimenti tributari o previdenziali reali.</li>
     </ul>
-    <p>È consentito un solo account per persona. Account multipli possono essere sospesi.</p>
+    <div class="box box-yellow">
+      <p><strong>Principio fondamentale:</strong> l'Utente è il solo e unico responsabile dei propri adempimenti fiscali e previdenziali. L'utilizzo del Servizio non trasferisce tale responsabilità al Fornitore in nessuna misura e per nessuna ragione.</p>
+    </div>
   </section>
 
-  <section>
-    <h2>5. Uso accettabile</h2>
-    <p>L'utente si impegna a utilizzare il Servizio esclusivamente per scopi legittimi e personali. È vietato:</p>
+  <!-- ART. 5 -->
+  <section id="art5">
+    <h2><span class="art-num">Art. 5</span> Intelligenza Artificiale, Analisi PDF e Affidabilità dei Dati Estratti</h2>
+    <p>Il Servizio integra funzionalità di analisi automatica di documenti in formato PDF (Dichiarazioni dei Redditi PF) mediante tecnologie di Intelligenza Artificiale di terze parti (in particolare Google Gemini API). L'Utente che utilizzi tale funzionalità prende atto e accetta irrevocabilmente quanto segue:</p>
+    <div class="clause-critical">
+      <p><strong>🚨 Limitazione critica dei dati estratti da AI:</strong> i valori numerici (fatturato, righi LM22–LM43, imposta sostitutiva) estratti automaticamente dal PDF mediante AI sono da considerarsi <em>esclusivamente indicativi</em>. L'AI potrebbe estrarre valori errati, parziali o non pertinenti, specialmente in presenza di PDF scansionati, di qualità degradata, protetti da password, contenenti errori tipografici o strutturati in modo non standard.</p>
+    </div>
+    <p>In particolare, il Fornitore non garantisce e non risponde di:</p>
     <ul>
-      <li>Tentare di accedere ai dati di altri utenti</li>
-      <li>Utilizzare strumenti automatizzati (bot, scraper) per accedere al Servizio</li>
-      <li>Caricare contenuti illegali, offensivi o che violino diritti di terzi</li>
-      <li>Tentare di compromettere la sicurezza o il funzionamento del Servizio</li>
-      <li>Rivendere o sublicenziare l'accesso al Servizio a terzi</li>
+      <li>L'accuratezza, completezza o correttezza dei dati estratti da qualsiasi PDF caricato dall'Utente;</li>
+      <li>La corretta identificazione del "Quadro LM" o di qualsiasi altro quadro della dichiarazione, specialmente per modelli antecedenti all'anno 2015;</li>
+      <li>La corretta lettura di importi con formattazioni non standard (es. PDF con spaziatura irregolare nei numeri);</li>
+      <li>Qualsiasi allucinazione o inferenza errata prodotta dal modello di AI;</li>
+      <li>La disponibilità continuativa del servizio di AI di terze parti (Google Gemini), le cui condizioni di utilizzo sono indipendenti da quelle del presente Servizio.</li>
     </ul>
+    <p>L'Utente è tenuto a <strong>verificare manualmente e integralmente</strong> ogni singolo valore estratto dal PDF prima di qualsiasi utilizzo, anche ai soli fini informativi. Il Fornitore raccomanda di confrontare sistematicamente i valori estratti con il documento originale e con le elaborazioni del proprio commercialista.</p>
+    <div class="box box-yellow">
+      <p><strong>Nota sul trasferimento dati a terze parti:</strong> caricando un PDF nel Servizio, l'Utente acconsente espressamente all'invio del testo estratto dal documento a servizi di AI di terze parti (Google LLC) per l'elaborazione. L'Utente è invitato a non caricare documenti contenenti dati di terzi o informazioni la cui riservatezza sia incompatibile con tale trasferimento. Per maggiori dettagli si rimanda alla <a href="/privacy.html">Privacy Policy</a>.</p>
+    </div>
   </section>
 
-  <section>
-    <h2>6. Dati inseriti dall'utente</h2>
-    <p>I dati fiscali inseriti (fatturato, codice ATECO, ecc.) rimangono di <strong>esclusiva proprietà dell'utente</strong>. Il Fornitore non utilizza tali dati per scopi diversi dall'erogazione del Servizio.</p>
-    <p>L'utente può in qualsiasi momento richiedere la cancellazione del proprio account e di tutti i dati associati scrivendo a <a href="/cdn-cgi/l/email-protection#0e7e6b7e7e61606b207a6b654e69636f6762206d6163"><span class="__cf_email__" data-cfemail="bacadfcacad5d4df94cedfd1faddd7dbd3d694d9d5d7">[email&#160;protected]</span></a>.</p>
+  <!-- ART. 6 -->
+  <section id="art6">
+    <h2><span class="art-num">Art. 6</span> Limitazione Generale e Massimale di Responsabilità</h2>
+    <p>Nei limiti massimi consentiti dalla legislazione italiana e dal diritto dell'Unione Europea applicabile, il Fornitore non è responsabile per danni diretti, indiretti, incidentali, speciali, consequenziali o punitivi di qualsiasi natura, inclusi a titolo esemplificativo:</p>
+    <ul>
+      <li>Perdita di dati o di opportunità economiche;</li>
+      <li>Mancati guadagni, perdita di fatturato o di clientela;</li>
+      <li>Interruzione dell'attività professionale o imprenditoriale;</li>
+      <li>Sanzioni, interessi o oneri fiscali di qualsiasi tipo;</li>
+      <li>Danni reputazionali;</li>
+      <li>Qualsiasi danno derivante da accesso non autorizzato ai dati dell'Utente da parte di terzi, salvo dolo o colpa grave del Fornitore;</li>
+      <li>Malfunzionamenti del Servizio causati da terze parti (provider di hosting, servizi di autenticazione, API di AI).</li>
+    </ul>
+    <div class="clause-warn">
+      <p><strong>Massimale assoluto:</strong> in ogni caso, la responsabilità complessiva del Fornitore nei confronti dell'Utente per qualsiasi causa — contrattuale o extracontrattuale — non potrà mai eccedere <strong>l'importo di Euro zero (€ 0,00)</strong> per gli Utenti che utilizzino il Servizio nella versione gratuita, ovvero l'importo complessivamente versato dall'Utente al Fornitore negli ultimi 12 (dodici) mesi per gli Utenti di eventuali versioni a pagamento.</p>
+    </div>
+    <p>Nulla nei presenti Termini esclude o limita la responsabilità del Fornitore per morte o lesioni personali causate da sua negligenza grave, per frode o per qualsiasi altra responsabilità che non possa essere esclusa o limitata ai sensi del diritto italiano vigente.</p>
   </section>
 
-  <section>
-    <h2>7. Disponibilità del servizio</h2>
-    <p>Il Fornitore si impegna a garantire la disponibilità del Servizio, ma non può garantire un'operatività del 100%. Il Servizio potrebbe essere temporaneamente non disponibile per manutenzione, aggiornamenti o cause di forza maggiore.</p>
-    <p>Il Fornitore si riserva il diritto di modificare, sospendere o interrompere il Servizio, in tutto o in parte, con ragionevole preavviso agli utenti registrati.</p>
+  <!-- ART. 7 -->
+  <section id="art7">
+    <h2><span class="art-num">Art. 7</span> Descrizione del Servizio</h2>
+    <p>ForfettarioApp fornisce all'Utente le seguenti funzionalità:</p>
+    <ul>
+      <li>Calcolo indicativo dell'imposta sostitutiva (5% o 15%), dei contributi previdenziali INPS e del reddito netto, in base al fatturato e ai parametri inseriti dall'Utente;</li>
+      <li>Supporto alle diverse gestioni previdenziali INPS (Gestione Separata, Artigiani, Commercianti, Casse professionali);</li>
+      <li>Archiviazione in cloud (Supabase) dei Dati Fiscali inseriti dall'Utente per consultazione storica multi-anno;</li>
+      <li>Analisi automatica di PDF di Dichiarazioni dei Redditi PF mediante AI (Google Gemini) per estrazione indicativa dei righi del Quadro LM;</li>
+      <li>Generazione di prospetti fiscali esportabili in formato PDF a uso personale;</li>
+      <li>Dashboard con grafici informativi sull'andamento storico del fatturato.</li>
+    </ul>
+    <p>Il Servizio è aggiornato periodicamente per riflettere le variazioni normative. Tuttavia, il Fornitore non garantisce che i parametri siano sempre allineati in tempo reale con le disposizioni dell'Agenzia delle Entrate o dell'INPS. L'Utente è tenuto a verificare autonomamente o tramite il proprio commercialista la correttezza dei parametri utilizzati rispetto alla normativa vigente alla data di effettuazione dei propri adempimenti fiscali.</p>
   </section>
 
-  <section>
-    <h2>8. Proprietà intellettuale</h2>
-    <p>Tutti i contenuti del Servizio (codice, design, testi, loghi) sono di proprietà di <strong>Peppone Tek</strong> e sono protetti dalle leggi sul diritto d'autore. È vietata la riproduzione, distribuzione o modifica senza autorizzazione scritta.</p>
+  <!-- ART. 8 -->
+  <section id="art8">
+    <h2><span class="art-num">Art. 8</span> Registrazione, Account e Obblighi dell'Utente</h2>
+    <p>L'accesso alle funzionalità del Servizio richiede la creazione di un Account tramite indirizzo email e password, o tramite autenticazione OAuth con Google. L'Utente si impegna a:</p>
+    <ul>
+      <li>Fornire dati di registrazione veritieri, completi e aggiornati;</li>
+      <li>Mantenere riservate le credenziali di accesso, non condividerle con terzi e adottare misure ragionevoli per impedirne la compromissione;</li>
+      <li>Notificare immediatamente il Fornitore all'indirizzo <a href="mailto:info@pepponek.it">info@pepponek.it</a> in caso di accesso non autorizzato o sospetta compromissione delle credenziali;</li>
+      <li>Rispondere di qualsiasi attività svolta tramite il proprio Account, incluso l'uso non autorizzato da parte di terzi che abbiano avuto accesso alle sue credenziali per fatto imputabile all'Utente;</li>
+      <li>Non cedere, trasferire o condividere l'Account con terzi.</li>
+    </ul>
+    <p>È consentito un solo Account per persona fisica. Il Fornitore si riserva il diritto di sospendere o cancellare Account multipli riferibili al medesimo soggetto, nonché Account che risultino inattivi da oltre 24 mesi.</p>
   </section>
 
-  <section>
-    <h2>9. Limitazione di responsabilità</h2>
-    <p>Nei limiti consentiti dalla legge applicabile, il Fornitore non sarà responsabile per danni indiretti, incidentali o consequenziali derivanti dall'uso o dall'impossibilità di usare il Servizio, inclusi mancati guadagni, perdita di dati o sanzioni fiscali.</p>
-    <p>La responsabilità massima del Fornitore nei confronti dell'utente non potrà in ogni caso superare l'importo eventualmente pagato dall'utente per il Servizio negli ultimi 12 mesi.</p>
+  <!-- ART. 9 -->
+  <section id="art9">
+    <h2><span class="art-num">Art. 9</span> Uso Accettabile — Comportamenti Vietati</h2>
+    <p>L'utilizzo del Servizio è consentito esclusivamente per scopi personali, informativi e non commerciali. Sono espressamente vietati i seguenti comportamenti:</p>
+    <ul>
+      <li>Tentare di accedere ai dati, agli Account o ai sistemi di altri Utenti;</li>
+      <li>Utilizzare strumenti automatizzati (bot, scraper, crawler) per accedere, raccogliere dati o interagire con il Servizio in modo non previsto;</li>
+      <li>Caricare PDF contenenti dati personali di terzi senza il loro consenso esplicito;</li>
+      <li>Tentare di violare la sicurezza del Servizio, dei suoi server, delle API o dell'infrastruttura;</li>
+      <li>Rivendere, sublicenziare, cedere o mettere a disposizione di terzi l'accesso al Servizio;</li>
+      <li>Effettuare reverse engineering, decompilazione o disassemblaggio del codice sorgente del Servizio;</li>
+      <li>Utilizzare il Servizio per fornire consulenza fiscale o contabile a terzi a titolo professionale o oneroso;</li>
+      <li>Inserire dati falsi, fittizi o appartenenti a terzi al fine di eludere controlli o ottenere calcoli non corrispondenti alla propria situazione reale.</li>
+    </ul>
+    <p>La violazione dei divieti di cui al presente articolo comporta la sospensione immediata dell'Account e potrà essere oggetto di segnalazione alle autorità competenti.</p>
   </section>
 
-  <section>
-    <h2>10. Modifiche ai termini</h2>
-    <p>Il Fornitore si riserva il diritto di modificare i presenti Termini in qualsiasi momento. Le modifiche sostanziali saranno comunicate tramite email o avviso in app almeno <strong>15 giorni prima</strong> dell'entrata in vigore. L'utilizzo continuato del Servizio dopo tale data costituisce accettazione dei nuovi Termini.</p>
+  <!-- ART. 10 -->
+  <section id="art10">
+    <h2><span class="art-num">Art. 10</span> Dati Inseriti dall'Utente e Conservazione</h2>
+    <p>I Dati Fiscali inseriti dall'Utente rimangono di <strong>esclusiva proprietà dell'Utente</strong>. Il Fornitore non utilizza tali dati per scopi diversi dall'erogazione del Servizio, né li vende o cede a terzi a fini commerciali.</p>
+    <p>Il Fornitore si riserva il diritto di aggregare e anonimizzare dati statistici (es. distribuzione per codice ATECO, fasce di fatturato) privi di qualsiasi riferimento identificativo, al fine di migliorare il Servizio.</p>
+    <p>L'Utente può richiedere in qualsiasi momento la cancellazione del proprio Account e di tutti i dati associati inviando richiesta a <a href="mailto:info@pepponek.it">info@pepponek.it</a>. La cancellazione sarà eseguita entro 30 giorni dalla ricezione della richiesta, fatti salvi obblighi di legge. Per il trattamento dei dati personali si rimanda integralmente alla <a href="/privacy.html">Privacy Policy</a>.</p>
   </section>
 
-  <section>
-    <h2>11. Legge applicabile e foro competente</h2>
-    <p>I presenti Termini sono regolati dalla legge italiana. Per qualsiasi controversia derivante dall'uso del Servizio, le parti si impegnano a ricercare una soluzione amichevole. In mancanza, sarà competente il Foro di residenza del Fornitore.</p>
+  <!-- ART. 11 -->
+  <section id="art11">
+    <h2><span class="art-num">Art. 11</span> Proprietà Intellettuale</h2>
+    <p>Tutti i contenuti del Servizio — compresi, a titolo non esaustivo, il codice sorgente, il design, i testi, i loghi, i grafici, la struttura dell'interfaccia, gli algoritmi di calcolo, le basi dati e la documentazione — sono di <strong>esclusiva proprietà di Peppone Tek</strong> e sono protetti dalla legislazione sul diritto d'autore (L. 633/1941 e successive modificazioni) e dalle normative comunitarie applicabili.</p>
+    <p>È fatto espresso divieto di riprodurre, distribuire, modificare, creare opere derivate, vendere o trasmettere, integralmente o parzialmente, qualsiasi contenuto del Servizio senza preventiva autorizzazione scritta del Fornitore.</p>
+    <p>L'Utente concede al Fornitore una licenza non esclusiva, gratuita e revocabile per l'elaborazione dei Dati Fiscali inseriti al solo fine dell'erogazione del Servizio.</p>
   </section>
 
-  <section>
-    <h2>12. Contatti</h2>
-    <p>Per qualsiasi domanda relativa ai presenti Termini di Servizio scrivi a: <a href="/cdn-cgi/l/email-protection#6b1b0e1b1b04050e451f0e002b0c060a020745080406"><span class="__cf_email__" data-cfemail="94e4f1e4e4fbfaf1bae0f1ffd4f3f9f5fdf8baf7fbf9">[email&#
+  <!-- ART. 12 -->
+  <section id="art12">
+    <h2><span class="art-num">Art. 12</span> Disponibilità del Servizio e Aggiornamenti</h2>
+    <p>Il Fornitore si impegna ragionevolmente a garantire la disponibilità del Servizio, ma non offre garanzie di continuità operativa ininterrotta. Il Servizio potrebbe risultare temporaneamente non disponibile per:</p>
+    <ul>
+      <li>Operazioni di manutenzione ordinaria o straordinaria;</li>
+      <li>Aggiornamenti normativi che richiedano interventi tecnici urgenti;</li>
+      <li>Malfunzionamenti dell'infrastruttura di hosting (Vercel Inc.) o del database (Supabase Inc.);</li>
+      <li>Causa di forza maggiore, eventi imprevedibili o attacchi informatici.</li>
+    </ul>
+    <p>Il Fornitore si riserva il diritto di modificare, sospendere o interrompere — definitivamente o temporaneamente — il Servizio, in tutto o in parte, senza obbligo di preavviso per interventi urgenti e con ragionevole preavviso via email per interruzioni programmate.</p>
+    <p><strong>Aggiornamento normativo:</strong> il Fornitore si impegna ad aggiornare i parametri fiscali (aliquote INPS, coefficienti di redditività, soglie di accesso al regime) al più presto dopo le pubblicazioni ufficiali di legge. Tuttavia, tra l'entrata in vigore di una variazione normativa e l'aggiornamento del Servizio possono intercorrere giorni o settimane. L'Utente è tenuto a verificare autonomamente la correttezza dei parametri applicati in relazione ai propri adempimenti.</p>
+  </section>
+
+  <!-- ART. 13 -->
+  <section id="art13">
+    <h2><span class="art-num">Art. 13</span> Modifiche ai Presenti Termini</h2>
+    <p>Il Fornitore si riserva il diritto di modificare i presenti Termini in qualsiasi momento. Le modifiche saranno comunicate mediante:</p>
+    <ul>
+      <li>Email all'indirizzo registrato dell'Utente, con almeno <strong>15 giorni di preavviso</strong> per modifiche sostanziali;</li>
+      <li>Avviso visibile all'interno del Servizio al successivo accesso;</li>
+      <li>Aggiornamento della data di "Ultima revisione" in testa al presente documento.</li>
+    </ul>
+    <p>L'utilizzo continuato del Servizio dopo l'entrata in vigore delle modifiche costituisce accettazione integrale dei nuovi Termini. In caso di disaccordo, l'Utente ha il diritto di recedere cancellando il proprio Account prima della data di entrata in vigore.</p>
+  </section>
+
+  <!-- ART. 14 -->
+  <section id="art14">
+    <h2><span class="art-num">Art. 14</span> Legge Applicabile, Foro Competente e Risoluzione delle Controversie</h2>
+    <p>I presenti Termini sono regolati esclusivamente dalla <strong>legge italiana</strong>. Per qualsiasi controversia derivante dall'interpretazione, esecuzione o violazione dei presenti Termini, le parti si impegnano preliminarmente a tentare una risoluzione amichevole entro 30 giorni dalla notifica scritta del contenzioso.</p>
+    <p>In mancanza di accordo amichevole, sarà <strong>esclusivamente competente il Tribunale Ordinario del luogo di residenza o domicilio elettivo del Fornitore</strong>, con espressa deroga a qualsiasi altro foro, ivi incluso quello del consumatore, nei limiti consentiti dalla normativa vigente a tutela dei consumatori (D.Lgs. 206/2005).</p>
+    <p>Per le controversie transfrontaliere all'interno dell'Unione Europea, si applica il Regolamento (UE) n. 1215/2012. L'Utente consumatore residente nell'UE può altresì ricorrere alla piattaforma ODR (Online Dispute Resolution) della Commissione Europea, accessibile all'indirizzo <a href="https://ec.europa.eu/odr" target="_blank" rel="noopener">ec.europa.eu/odr</a>.</p>
+  </section>
+
+  <!-- ART. 15 -->
+  <section id="art15">
+    <h2><span class="art-num">Art. 15</span> Clausola di Salvaguardia</h2>
+    <p>Qualora una o più disposizioni dei presenti Termini risultassero nulle, invalide o inapplicabili in tutto o in parte ai sensi della normativa vigente, tale nullità o inapplicabilità non pregiudica la validità e l'efficacia delle restanti disposizioni, che continueranno ad applicarsi integralmente. La clausola invalida sarà sostituita, nei limiti del possibile, da una disposizione valida che si avvicini maggiormente all'intenzione originaria delle parti.</p>
+  </section>
+
+  <!-- ART. 16 -->
+  <section id="art16">
+    <h2><span class="art-num">Art. 16</span> Contatti</h2>
+    <p>Per qualsiasi comunicazione relativa ai presenti Termini di Servizio, richieste di chiarimento, segnalazioni o esercizio dei diritti riconosciuti all'Utente:</p>
+    <div class="box box-blue">
+      <p>
+        <strong>Peppone Tek — ForfettarioApp</strong><br>
+        Email: <a href="mailto:info@pepponek.it">info@pepponek.it</a><br>
+        Sito web: <a href="https://tax-forfettario.vercel.app" target="_blank" rel="noopener">tax-forfettario.vercel.app</a><br>
+        Per la gestione dei dati personali: <a href="/privacy.html">Privacy Policy</a>
+      </p>
+    </div>
+  </section>
+
+  <div class="sign-block">
+    <strong>ForfettarioApp · Peppone Tek</strong><br>
+    Termini e Condizioni di Utilizzo del Servizio — Versione 2.0<br>
+    Data di entrata in vigore: 01 Marzo 2025<br>
+    <br>
+    Il presente documento ha valore di accettazione contrattuale ai sensi degli artt. 1326 e ss. del Codice Civile italiano.<br>
+    L'utilizzo del Servizio implica la lettura e l'accettazione integrale di tutti gli articoli qui contenuti.
+  </div>
+
+</main>
+
+<footer>
+  <div class="foot-links">
+    <a href="/index.html">← Home</a>
+    <a href="/privacy.html">Privacy Policy</a>
+    <a href="mailto:info@pepponek.it">info@pepponek.it</a>
+  </div>
+  <div>© <script>document.write(new Date().getFullYear())</script> Peppone Tek · Tutti i diritti riservati · Strumento informativo, non sostituisce la consulenza di un commercialista.</div>
+</footer>
+
+</body>
+</html>
