@@ -1073,6 +1073,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     <div style="display:flex;flex-direction:column;gap:8px">
       <button class="btn btn-ol btn-sm btn-full" onclick="exportJSON();closeModal('modal-user')">⬇ Esporta backup JSON</button>
       <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user');document.getElementById('imp-file').click()">⬆ Importa backup JSON</button>
+      <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user');setTimeout(()=>openModal('modal-reset-pw'),150)">🔑 Cambia password</button>
       <button class="btn btn-re btn-sm btn-full" onclick="doLogout()">🚪 Disconnetti</button>
       <button class="btn btn-ol btn-sm btn-full" onclick="closeModal('modal-user')" style="color:var(--t3)">Chiudi</button>
     </div>
@@ -3624,22 +3625,20 @@ function renderDocumentiAnno(anno) {
     const dim    = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
     const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
     const ico    = icona[doc.tipo_doc] || '📄';
-    const noFile = !doc.storage_path || doc.storage_path === 'null';
     // FIX: usa data-attributes per evitare problemi con apostrofi e caratteri speciali nei parametri onclick
     return `<div class="doc-row">
       <span class="doc-ico">${ico}</span>
       <div class="doc-info">
-        <div class="doc-name">${sanitizeHTML(doc.nome_file)}${noFile ? ' <span style="font-size:10px;color:var(--ye);font-weight:700">⚠️ file mancante</span>' : ''}</div>
+        <div class="doc-name">${sanitizeHTML(doc.nome_file)}</div>
         <div class="doc-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
       </div>
       <div class="doc-actions">
         <button class="btn btn-xs btn-ol doc-dl-btn"
-          data-path="${doc.storage_path || ''}"
-          data-name="${sanitizeHTML(doc.nome_file)}"
-          ${noFile ? 'title="File non disponibile nello storage — ricarica il PDF" style="opacity:.45;cursor:not-allowed"' : ''}>⬇️ Scarica</button>
+          data-path="${doc.storage_path}"
+          data-name="${sanitizeHTML(doc.nome_file)}">⬇️ Scarica</button>
         <button class="btn btn-xs btn-ol doc-del-btn" style="color:var(--re)"
           data-id="${doc.id}"
-          data-path="${doc.storage_path || ''}"
+          data-path="${doc.storage_path}"
           data-anno="${anno}"
           data-name="${sanitizeHTML(doc.nome_file)}">🗑️</button>
       </div>
@@ -3654,17 +3653,6 @@ function renderDocumentiAnno(anno) {
 
 // Download diretto come blob (evita popup bloccati su mobile) — revokeObjectURL dopo 60s
 async function downloadDoc(storagePath, nomeFile) {
-  // Gestione storage_path mancante (upload fallito in passato per errore rete/RLS)
-  if (!storagePath || storagePath === 'null') {
-    toast(
-      '⚠️ File non disponibile nello storage. ' +
-      'Il PDF fu tracciato ma non caricato correttamente. ' +
-      'Elimina il documento e ricarica il PDF originale.',
-      'err', 8000
-    );
-    return;
-  }
-
   try {
     toast('⏳ Download in corso...', 'info', 2000);
 
@@ -3741,15 +3729,8 @@ async function confDelDoc() {
 
   setSync('busy', 'Eliminazione e ripristino dati...');
   try {
-    // STEP 1: Elimina da Storage (solo se il file esiste realmente)
-    if (storagePath && storagePath !== 'null') {
-      const { error: storErr } = await sb.storage
-        .from('documenti-fiscali')
-        .remove([storagePath]);
-      if (storErr) console.warn('[confDelDoc] Storage remove:', storErr.message);
-    } else {
-      console.warn('[confDelDoc] storage_path assente — skip rimozione storage');
-    }
+    // STEP 1: Elimina da Storage
+    await sb.storage.from('documenti-fiscali').remove([storagePath]);
 
     // STEP 2: Elimina dalla tabella documenti_fiscali
     const { error } = await sb.from('documenti_fiscali')
@@ -4577,18 +4558,15 @@ function renderDocumentiView(queryFilter) {
         const dim     = doc.dimensione > 0 ? (doc.dimensione / 1024).toFixed(0) + ' KB' : '';
         const tipoLbl = doc.tipo_doc === 'dichiarazione' ? 'Dichiarazione' : doc.tipo_doc === 'f24' ? 'F24' : 'Documento';
         const ico     = icona[doc.tipo_doc] || '📄';
-        const noFile  = !doc.storage_path || doc.storage_path === 'null';
-        const safePath = doc.storage_path || '';
         html += `<div class="doc-view-row">
           <span class="doc-view-ico">${ico}</span>
           <div class="doc-view-info">
-            <div class="doc-view-name">${sanitizeHTML(doc.nome_file)}${noFile ? ' <span style="font-size:10px;color:var(--ye);font-weight:700">⚠️ file mancante</span>' : ''}</div>
+            <div class="doc-view-name">${sanitizeHTML(doc.nome_file)}</div>
             <div class="doc-view-meta">${tipoLbl} · ${data}${dim ? ' · ' + dim : ''}</div>
           </div>
           <div class="doc-view-actions">
-            <button class="btn btn-xs btn-ol" onclick="downloadDoc('${safePath}','${sanitizeHTML(doc.nome_file)}')"
-              ${noFile ? 'style="opacity:.45;cursor:not-allowed" title="File non disponibile — ricarica il PDF"' : ''}>⬇️ Scarica</button>
-            <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${safePath}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️ Elimina</button>
+            <button class="btn btn-xs btn-ol" onclick="downloadDoc('${doc.storage_path}','${sanitizeHTML(doc.nome_file)}')">⬇️ Scarica</button>
+            <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${doc.storage_path}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️ Elimina</button>
           </div>
         </div>`;
       });
