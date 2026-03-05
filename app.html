@@ -2304,6 +2304,22 @@ function parseSingleF24Segment(nt, annoTarget) {
     }
   }
 
+  // ── FIX A: Identifica il limite tra dati reali e boilerplate del template ──
+  // DEVE stare QUI — prima di STEP 5 e STEP 6 che usano entrambi testoReale.
+  // Nel PDF F24, il testo estratto contiene prima i DATI REALI (codici tributo,
+  // importi) e poi il template precompilato (boilerplate) con le stesse etichette
+  // "SEZIONE ERARIO", "SEZIONE INPS" ma senza valori numerici.
+  // Senza questo limite, indexOf() trovava le etichette nel boilerplate → blocchi
+  // vuoti → fallback errato. Con const, usarla prima della dichiarazione lancia
+  // "Cannot access 'testoReale' before initialization" — per questo è salita qui.
+  const nt_up = nt.toUpperCase();
+  const idxBoilerplate = nt_up.search(
+    /ITDELEGA\s{0,4}IRREVOCABILE|1\s*A\s*COPIA\s*PER\s*LA\s*BANCA|AGENZIA\s*PROV[\s\S]{0,10}CODICE\s*FISCALE\s*DATI\s*ANAGRAFI/
+  );
+  // testoReale = solo la parte con dati numerici (prima del boilerplate)
+  const testoReale    = (idxBoilerplate > 200) ? nt.slice(0, idxBoilerplate) : nt;
+  const testoRealeUp  = testoReale.toUpperCase();
+
   /* ── STEP 5: Cerca SALDO FINALE come ancora di verifica ─────────────────
      "SALDO (F)  2.771,04" oppure "SALDO FINALE  2.771,04"
      Cerca nelle ultime 1500 char (bottom del F24) dove appare sempre.
@@ -2344,19 +2360,6 @@ function parseSingleF24Segment(nt, annoTarget) {
    *   L'anno fiscale è il numero a 4 cifre (20xx) sulla riga della causale,
    *   NON il minimo del contesto allargato (che potrebbe includere anni errati).
   ────────────────────────────────────────────────────────────────────── */
-
-  // ── FIX A: Identifica il limite tra dati reali e boilerplate del template ──
-  // Nel PDF F24, il testo estratto ha prima i DATI REALI (codici tributo, importi)
-  // poi il template precompilato del modulo (boilerplate) che contiene anch'esso
-  // le etichette "SEZIONE ERARIO", "SEZIONE INPS" ma senza dati numerici.
-  // indexOf() trovava le etichette nel boilerplate → blocchi vuoti → fallback errato.
-  const nt_up = nt.toUpperCase();
-  const idxBoilerplate = nt_up.search(
-    /ITDELEGA\s{0,4}IRREVOCABILE|1\s*A\s*COPIA\s*PER\s*LA\s*BANCA|AGENZIA\s*PROV[\s\S]{0,10}CODICE\s*FISCALE\s*DATI\s*ANAGRAFI/
-  );
-  // testoReale = solo la parte con dati numerici (prima del boilerplate)
-  const testoReale    = (idxBoilerplate > 200) ? nt.slice(0, idxBoilerplate) : nt;
-  const testoRealeUp  = testoReale.toUpperCase();
 
   // Separa SEZIONE ERARIO e SEZIONE INPS — cerca SOLO nel testo reale
   const idxErario = testoRealeUp.indexOf('SEZIONE ERARIO');
