@@ -2293,8 +2293,11 @@ function parseSingleF24Segment(nt, annoTarget) {
   ────────────────────────────────────────────────────────────────────── */
   let saldoFinaleDoc = 0;
   {
-    const tail = nt.slice(-1500); // SALDO FINALE è sempre in fondo
+    // FIX D: cerca il saldo finale nel testoReale (prima del boilerplate)
+    // per evitare di catturare valori dalla seconda copia del modello.
+    const tail = testoReale.slice(-1500);
     const mSF = tail.match(/SALDO\s*(?:FINALE|\(F\)|F\b)[^\d]*?([\d.,]+(?:\s+\d{2})?)/i)
+             || testoReale.match(/SALDO\s*(?:FINALE|\(F\)|F\b)[^\d]*?([\d.,]+(?:\s+\d{2})?)/i)
              || nt.match(/SALDO\s*(?:FINALE|\(F\)|F\b)[^\d]*?([\d.,]+(?:\s+\d{2})?)/i);
     if (mSF) {
       saldoFinaleDoc = parseImporto(mSF[1]);
@@ -2325,21 +2328,40 @@ function parseSingleF24Segment(nt, annoTarget) {
    *   NON il minimo del contesto allargato (che potrebbe includere anni errati).
   ────────────────────────────────────────────────────────────────────── */
 
-  // Separa SEZIONE ERARIO e SEZIONE INPS
+  // ── FIX A: Identifica il limite tra dati reali e boilerplate del template ──
+  // Nel PDF F24, il testo estratto ha prima i DATI REALI (codici tributo, importi)
+  // poi il template precompilato del modulo (boilerplate) che contiene anch'esso
+  // le etichette "SEZIONE ERARIO", "SEZIONE INPS" ma senza dati numerici.
+  // indexOf() trovava le etichette nel boilerplate → blocchi vuoti → fallback errato.
   const nt_up = nt.toUpperCase();
-  const idxErario = nt_up.indexOf('SEZIONE ERARIO');
-  const idxInps   = Math.max(nt_up.indexOf('SEZIONE INPS'), nt_up.indexOf('SEZIONE I.N.P.S'));
-  const idxTerzi  = nt_up.indexOf('SEZIONE ALTRI ENTI');
-  const sezioniTrovate = (idxErario >= 0 ? 1 : 0) + (idxInps >= 0 ? 1 : 0);
+  const idxBoilerplate = nt_up.search(
+    /ITDELEGA\s{0,4}IRREVOCABILE|1\s*A\s*COPIA\s*PER\s*LA\s*BANCA|AGENZIA\s*PROV[\s\S]{0,10}CODICE\s*FISCALE\s*DATI\s*ANAGRAFI/
+  );
+  // testoReale = solo la parte con dati numerici (prima del boilerplate)
+  const testoReale    = (idxBoilerplate > 200) ? nt.slice(0, idxBoilerplate) : nt;
+  const testoRealeUp  = testoReale.toUpperCase();
+
+  // Separa SEZIONE ERARIO e SEZIONE INPS — cerca SOLO nel testo reale
+  const idxErario = testoRealeUp.indexOf('SEZIONE ERARIO');
+  const idxInps   = Math.max(testoRealeUp.indexOf('SEZIONE INPS'), testoRealeUp.indexOf('SEZIONE I.N.P.S'));
+  const idxTerzi  = testoRealeUp.indexOf('SEZIONE ALTRI ENTI');
 
   const blocoErario = idxErario >= 0
-    ? nt.slice(idxErario, idxInps > idxErario ? idxInps : nt.length)
+    ? testoReale.slice(idxErario, idxInps > idxErario ? idxInps : testoReale.length)
     : '';
   const blocoInps = idxInps >= 0
-    ? nt.slice(idxInps, idxTerzi > idxInps ? idxTerzi : nt.length)
+    ? testoReale.slice(idxInps, idxTerzi > idxInps ? idxTerzi : testoReale.length)
     : '';
 
-  console.log('[F24] v4 sezioni: ERARIO=' + idxErario + ' INPS=' + idxInps + ' TERZI=' + idxTerzi);
+  // ── FIX B: Valida che i blocchi contengano causali reali ────────────────
+  // Se le sezioni trovate non contengono causali (cioè sono nel boilerplate),
+  // forza sezioniTrovate=0 così da usare il fallback sul testoReale completo.
+  const CAUSALI_CHECK = /\b(179[012]|PXX|DPPI|CF\d{2})\b/i;
+  const erarioHaDati  = CAUSALI_CHECK.test(blocoErario);
+  const inpsHaDati    = CAUSALI_CHECK.test(blocoInps);
+  const sezioniTrovate = (erarioHaDati ? 1 : 0) + (inpsHaDati ? 1 : 0);
+
+  console.log('[F24] v4 sezioni: ERARIO=' + idxErario + '(dati:' + erarioHaDati + ') INPS=' + idxInps + '(dati:' + inpsHaDati + ') boilerplate@' + idxBoilerplate);
 
   const righeRilevate = [];
   const CAUSALI_PAT = /\b(179[012]|PXX|DPPI|CF\d{2})\b/gi;
@@ -2418,25 +2440,27 @@ function parseSingleF24Segment(nt, annoTarget) {
 
   // Scansione primaria con sezioni separate (più precisa)
   if (sezioniTrovate > 0) {
-    if (blocoErario) scanBloco(blocoErario, 'ERARIO');
-    if (blocoInps)   scanBloco(blocoInps,   'INPS');
+    if (erarioHaDati) scanBloco(blocoErario, 'ERARIO');
+    if (inpsHaDati)   scanBloco(blocoInps,   'INPS');
   } else {
-    // Fallback: nessuna intestazione di sezione trovata
-    scanBloco(nt, 'TUTTO');
+    // Fallback: nessuna sezione con dati trovata → scansione su testoReale
+    // (evita di catturare valori spurii dal boilerplate del template)
+    scanBloco(testoReale, 'TUTTO');
   }
 
   /* ── STEP 7: Fallback char-by-char per F24 semplificato / CAF ──────────
      Se la scansione riga-per-riga non ha trovato nulla (layout non standard).
+     Usa testoReale (senza boilerplate) per evitare falsi positivi.
   ────────────────────────────────────────────────────────────────────── */
   if (!righeRilevate.length) {
-    console.log('[F24] Fallback globale char-by-char...');
-    const allM = [...nt.matchAll(/\b(179[012]|PXX|DPPI|CF\d{2})\b/gi)];
+    console.log('[F24] Fallback globale char-by-char su testoReale...');
+    const allM = [...testoReale.matchAll(/\b(179[012]|PXX|DPPI|CF\d{2})\b/gi)];
     for (const m of allM) {
       const causale = m[1].toUpperCase();
       const tipo    = classificaCausale(causale);
       if (tipo === 'altro') continue;
       // Cerca il primo importo nei 300 char successivi
-      const fin  = nt.slice(m.index + causale.length, m.index + causale.length + 300);
+      const fin  = testoReale.slice(m.index + causale.length, m.index + causale.length + 300);
       const imps = estraiImporti(fin);
       if (!imps.length) continue;
       righeRilevate.push({
@@ -2459,7 +2483,18 @@ function parseSingleF24Segment(nt, annoTarget) {
   ────────────────────────────────────────────────────────────────────── */
   const righeFiltrate = righeRilevate.filter(r => {
     if (!targetAnno || !r.annoScad) return true;
-    if (r.annoScad === targetAnno) return true;
+    if (r.annoScad === targetAnno) {
+      // ── FIX C: Esclude crediti compensati INPS ──────────────────────────
+      // Nel F24 la riga PXX/DPPI con anno fiscale < anno di scadenza è un
+      // CREDITO compensato (es. PXX 01/2024 12/2024 nella scadenza 2025).
+      // Non è un versamento in uscita → non va sommato all'INPS versata.
+      if (r.tipo === 'inps' && r.annoFisc != null && r.annoFisc < r.annoScad) {
+        console.log('[F24] ESCLUSO credito compensato INPS: ' + r.causale +
+          ' annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' €' + r.importo);
+        return false;
+      }
+      return true;
+    }
     console.log('[F24] ESCLUSA cassa: ' + r.causale + ' scad ' + r.dataScad + ' (' + r.annoScad + ') target=' + targetAnno);
     return false;
   });
@@ -2470,10 +2505,12 @@ function parseSingleF24Segment(nt, annoTarget) {
   ────────────────────────────────────────────────────────────────────── */
   const visti = new Set();
   const righeDef = righeFiltrate.filter(r => {
-    // Chiave: causale + importo + anno (se noto) + sezione+riga (tiebreak se anno ignoto)
+    // FIX B2: nel fallback (annoFisc=null), la chiave NON include rigaIdx
+    // perché la stessa causale può apparire due volte nel testo (es. PXX\nPXX\n)
+    // con posizioni diverse ma stesso importo → sarebbe doppio conteggio.
     const k = r.annoFisc != null
       ? r.causale + '|' + r.importo.toFixed(2) + '|' + r.annoFisc
-      : r.causale + '|' + r.importo.toFixed(2) + '|' + r.sezione + '_' + r.rigaIdx;
+      : r.causale + '|' + r.importo.toFixed(2);  // No rigaIdx per fallback
     if (visti.has(k)) { console.log('[F24] Dedup skip: ' + k); return false; }
     visti.add(k);
     return true;
