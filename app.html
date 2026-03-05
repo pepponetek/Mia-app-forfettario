@@ -1990,11 +1990,26 @@ function normalizePdfText(text) {
   //   [ \t]*$     = fine riga (non spezzato da altro testo)
   t = t.replace(/\b(\d{1,3})\s+(\d{2})[ \t]*$/gm, '$1,$2');
 
+  /* 1c) PRE-PROTEZIONE date di periodo INPS/ERARIO (MM AAAA)
+     Nel testo F24, le colonne "periodo da" e "periodo a" appaiono come
+     "01 2025 12 2025". Il digit-collapse "(\d) (\d)" le trasforma in
+     "012025122025", rendendo \b(20\d{2})\b inutilizzabile → il filtro
+     crediti-compensati (annoFisc < annoScad) smette di funzionare.
+     Fix: sostituiamo temporaneamente lo spazio in "NN 20YY" con un
+     carattere non-cifra (§) prima del collapse, poi lo ripristiniamo.
+  ─────────────────────────────────────────────────────────────────── */
+  t = t.replace(/\b(\d{2})\s+(20\d{2})\b/g, '$1\u00A7$2'); // "01 2025" → "01§2025"
+
   // 2) Loop iterativo: collassa coppie (\d) (\d) → finché non cambia
   //    "3 4 . 8 2 7" → pass1:"34 . 82 7" → pass2:"34 . 827" → pass3:"34 . 827" (stop)
   //    poi il punto viene gestito sotto
   let prev; let n = 0;
   do { prev = t; t = t.replace(/(\d) (\d)/g, '$1$2'); n++; } while (t !== prev && n < 50);
+
+  // 2b) Ripristina i periodi INPS: "01§2025" → "01 2025"
+  //     Ora i digit attorno a § NON sono stati collassati → \b(20\d{2})\b
+  //     troverà "2025" come token isolato e il filtro crediti funzionerà.
+  t = t.replace(/(\d{2})\u00A7(20\d{2})/g, '$1 $2');
 
   // 3) Separa i separatori rimasti
   t = t
@@ -2381,20 +2396,50 @@ function parseSingleF24Segment(nt, annoTarget) {
   const inpsHaDati    = CAUSALI_CHECK.test(blocoInps);
   const sezioniTrovate = (erarioHaDati ? 1 : 0) + (inpsHaDati ? 1 : 0);
 
-  /* ── FIX NET-SALDO: estrai il SALDO (C-D) / (A-B) dalla riga dei totali ──
-     Nel F24 ADE ogni sezione termina con una riga tipo:
-       "4.915,04  2.144,00  2.771,04 +"  ← TOTALE-debito | TOTALE-credito | SALDO
-     L'ultimo valore prima di "+" è il netto effettivamente versato.
-     È più affidabile di sommare le singole righe perché include già la
-     compensazione dei crediti (es. PXX 2024 compensato con PXX 2025).
+  /* ── FIX NET-SALDO: estrai il SALDO (C-D) / (A-B) dalla sezione ─────────
+     PDF.js linearizza le celle della tabella: il netto e il segno "+"
+     possono trovarsi su righe consecutive, NON sulla stessa riga.
+     Struttura reale estratta da PDF.js per SEZIONE INPS:
+       riga N:   "4.915,04"   (TOTALE C = totale debiti)
+       riga N+1: "2.144,00"   (TOTALE D = totale crediti/compensazioni)
+       riga N+2: "2.771,04"   (SALDO C-D = netto versato)
+       riga N+3: "+"          (segno positivo)
+     Strategia: cerca il "+" isolato, poi prende il primo importo ≥10
+     nelle 4 righe precedenti che NON sia il totale debiti (il più grande).
   ────────────────────────────────────────────────────────────────────── */
   function estraiSaldoNetto(bloco) {
-    const righe = bloco.split('\n').reverse();
-    for (const r of righe) {
-      const m  = r.match(/(\d{1,3}(?:\.\d{3})*,\d{2})\s*\+\s*$/);
-      if (m)  { const v = parseImporto(m[1]);  if (v >= 10) return v;  }
-      const mn = r.match(/(\d{1,3}(?:\.\d{3})*,\d{2})\s*-\s*$/);
-      if (mn) { const v = parseImporto(mn[1]); if (v >= 10) return -v; }
+    const righe = bloco.split('\n').map(r => r.trim()).filter(r => r.length > 0);
+    for (let i = 1; i < righe.length; i++) {
+      const segno = righe[i];
+      // Riga con solo "+" o "-" (eventualmente con spazi)
+      if (!/^\s*[+\-]\s*$/.test(segno)) continue;
+      const isPositivo = segno.includes('+');
+      // Raccoglie tutti gli importi nelle ultime 5 righe prima del segno
+      const candidati = [];
+      for (let j = Math.max(0, i - 5); j < i; j++) {
+        const imp = parseImporto(righe[j]);
+        if (imp >= 10) candidati.push(imp);
+      }
+      if (!candidati.length) continue;
+      // Il saldo netto è il MINIMO tra i candidati (non il totale debiti che è il massimo)
+      // Esempio: [4915.04, 2144.00, 2771.04] → min delle ultime due posizioni
+      // Più robusto: esclude il massimo assoluto (= TOTALE C = somma debiti)
+      const maxVal = Math.max(...candidati);
+      const sansCMax = candidati.filter(v => v !== maxVal);
+      // Se dopo aver rimosso il max restano valori, il saldo è il minore tra quelli rimanenti
+      // Se c'era solo un candidato coincide con il massimo → lo usiamo direttamente
+      const saldo = sansCMax.length ? Math.min(...sansCMax) : maxVal;
+      console.log('[F24] estraiSaldoNetto candidati:', candidati, '→ saldo:', saldo, isPositivo ? '+' : '-');
+      return isPositivo ? saldo : -saldo;
+    }
+    // Fallback: cerca "SALDO (C-D)" o "SALDO C-D" come etichetta
+    for (let i = 0; i < righe.length; i++) {
+      if (/SALDO\s*\(?C-?D\)?/i.test(righe[i])) {
+        for (let j = i + 1; j <= i + 3 && j < righe.length; j++) {
+          const imp = parseImporto(righe[j]);
+          if (imp >= 10) return imp;
+        }
+      }
     }
     return null;
   }
@@ -2414,12 +2459,30 @@ function parseSingleF24Segment(nt, annoTarget) {
       const causaliRiga = [...riga.matchAll(CAUSALI_PAT)].map(m => m[1].toUpperCase());
       if (!causaliRiga.length) continue;
 
-      // FIX 3b: Anno fiscale = anno 20xx sulla riga stessa (non min del contesto)
-      // In ERARIO: "1791 0101 2024 1.380,00" → 2024 è l'anno di riferimento tributo
-      const anniRiga = (riga.match(/\b(20\d{2})\b/g) || []).map(Number)
+      /* FIX 3b (potenziato): Anno fiscale dalla riga + finestra ±2 righe
+         In ERARIO la riga è compatta: "1792 0101 2024 2.369,00"
+         In INPS PDF.js può spezzare la riga in più linee:
+           linea i:   "3100 PXX"
+           linea i+1: "01 2025 12 2025"   ← qui ci sono gli anni
+           linea i+2: "2.760,00"
+         Raccogliamo gli anni da riga corrente + 2 righe sotto (basta poco).
+         Poi: il minimo tra quelli trovati = anno fiscale di riferimento
+              (l'anno di scadenza è sempre il più grande = annoScadGlobale).
+      */
+      let contestoRiga = riga;
+      for (let k = 1; k <= 2 && i + k < linee.length; k++) {
+        // Non espandere se la riga successiva ha un'altra causale
+        if (/\b(179[012]|PXX|DPPI|CF\d{2})\b/i.test(linee[i + k])) break;
+        contestoRiga += ' ' + linee[i + k];
+      }
+      const anniRiga = (contestoRiga.match(/\b(20\d{2})\b/g) || []).map(Number)
                          .filter(a => a >= 2010 && a <= 2040);
-      // Se più anni sulla riga, il più piccolo è l'anno fiscale (non l'anno di scadenza)
-      const annoFiscRiga = anniRiga.length ? Math.min(...anniRiga) : null;
+      // Esclude l'anno di scadenza globale per isolare l'anno fiscale del tributo
+      const anniSenzaScad = annoScadGlobale
+        ? anniRiga.filter(a => a !== annoScadGlobale)
+        : anniRiga;
+      const annoFiscRiga = anniSenzaScad.length ? Math.min(...anniSenzaScad)
+                         : (anniRiga.length      ? Math.min(...anniRiga) : null);
 
       // Usa la scadenza globale estratta dall'intestazione (FIX 1)
       const dataScad = dataScadGlobale;
