@@ -1414,6 +1414,90 @@ const SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 const sb = supabase.createClient(SURL, SKEY);
 
 /* ============================================================
+   storageUploadRobust — upload diretto via fetch REST API
+   Bypassa il SDK Supabase per lo Storage, che usa fetch multipart
+   e su mobile fallisce con "Failed to fetch" anche con token valido.
+   L'API REST accetta il file come body diretto (non multipart),
+   è più stabile su connessioni mobili e consente timeout espliciti.
+
+   Logica:
+   1. Ottiene token fresco da refreshSession
+   2. Tenta l'upload via REST con AbortController (timeout 30s)
+   3. Ritenta fino a MAX_RETRY volte con backoff (2s, 4s, 8s)
+   4. Ritorna { path } in caso di successo, lancia Error in caso di fallimento
+   ============================================================ */
+async function storageUploadRobust(file, bucket, path) {
+  const MAX_RETRY   = 3;
+  const TIMEOUT_MS  = 30000; // 30s — sufficiente per PDF fino a ~5 MB su 4G
+
+  let token = null;
+  try {
+    const { data: rd } = await sb.auth.refreshSession();
+    token = rd?.session?.access_token || null;
+  } catch(_) {}
+  if (!token) {
+    const { data: { session: s2 } } = await sb.auth.getSession();
+    token = s2?.access_token || null;
+  }
+  if (!token) throw new Error('Sessione scaduta — effettua di nuovo il login.');
+
+  const url = `${SURL}/storage/v1/object/${bucket}/${path}`;
+
+  for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const resp = await fetch(url, {
+        method:  'POST',
+        signal:  ctrl.signal,
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'apikey':        SKEY,
+          'Content-Type':  file.type || 'application/pdf',
+          'x-upsert':      'false',
+          'Cache-Control': '3600'
+        },
+        body: file  // body diretto — nessun multipart
+      });
+      clearTimeout(tid);
+
+      if (resp.ok) {
+        console.log('[storageUpload] ✅ tentativo', attempt, path);
+        return { path };
+      }
+
+      // Errore HTTP (es. 400 bucket not found, 403 RLS, 409 duplicate)
+      let errMsg = 'HTTP ' + resp.status;
+      try { const j = await resp.json(); errMsg = j?.message || j?.error || errMsg; } catch(_) {}
+      console.warn('[storageUpload] ⚠️ attempt', attempt, errMsg);
+
+      // 409 = file già presente (path duplicato) — non è un errore reale
+      if (resp.status === 409) return { path };
+
+      // Errori non recuperabili (auth, bucket missing): non ritentare
+      if (resp.status === 400 || resp.status === 403 || resp.status === 404) {
+        throw new Error('Storage: ' + errMsg);
+      }
+
+    } catch(ex) {
+      clearTimeout(tid);
+      const isAbort   = ex.name === 'AbortError';
+      const isNetwork = ex.message?.includes('fetch') || ex.message?.includes('network') || isAbort;
+      console.warn('[storageUpload] attempt', attempt, isAbort ? 'TIMEOUT' : ex.message);
+
+      if (attempt === MAX_RETRY) throw new Error('Storage non raggiungibile dopo ' + MAX_RETRY + ' tentativi. Controlla la connessione e riprova.');
+      if (!isNetwork) throw ex; // errore non di rete — non ritentare
+    }
+
+    // Backoff esponenziale: 2s, 4s, 8s
+    await new Promise(r => setTimeout(r, 2000 * attempt));
+    // Refresh token prima del retry (potrebbe essere scaduto)
+    try { const { data: rd } = await sb.auth.refreshSession(); token = rd?.session?.access_token || token; } catch(_) {}
+  }
+  throw new Error('Upload fallito dopo ' + MAX_RETRY + ' tentativi.');
+}
+
+/* ============================================================
    EDGE FUNCTION URL — il parsing AI passa dal server Supabase.
    La chiave Gemini è un segreto server, mai visibile nel browser.
    ============================================================ */
@@ -3960,12 +4044,10 @@ async function downloadDoc(storagePath, nomeFile) {
 
 /* ============================================================
    RICARICA FILE MANCANTE
-   Permette di collegare un PDF fisico a un record DB esistente
-   che ha storage_path = null (upload fallito in precedenza).
-   Usa un <input type="file"> nascosto per aprire il file picker.
+   Collega un PDF fisico a un record DB con storage_path = null.
+   Usa storageUploadRobust (3 retry, timeout 30s, backoff).
    ============================================================ */
 async function ricaricaDocumento(docId, anno, nomeFileOriginale) {
-  // Crea un input file temporaneo e invisibile
   const inp = document.createElement('input');
   inp.type   = 'file';
   inp.accept = 'application/pdf';
@@ -3977,50 +4059,32 @@ async function ricaricaDocumento(docId, anno, nomeFileOriginale) {
     document.body.removeChild(inp);
     if (!file) return;
 
-    toast('⏳ Caricamento file in corso…', 'info', 5000);
+    toast('⏳ Caricamento in corso… (max 3 tentativi)', 'info', 10000);
 
     try {
-      // 1. Refresh token prima dello storage
-      try { await sb.auth.refreshSession(); } catch(_) {}
-
       const ts       = Date.now();
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const path     = _user.id + '/' + anno + '/' + ts + '_' + safeName;
 
-      // 2. Upload su Storage
-      let storagePath = null;
-      const { error: upErr } = await sb.storage
-        .from('documenti-fiscali')
-        .upload(path, file, { contentType: 'application/pdf', upsert: false });
+      // Upload robusto — 3 retry con backoff esponenziale
+      const res = await storageUploadRobust(file, 'documenti-fiscali', path);
 
-      if (upErr) {
-        // Retry dopo 1.5s
-        await new Promise(r => setTimeout(r, 1500));
-        try { await sb.auth.refreshSession(); } catch(_) {}
-        const { error: upErr2 } = await sb.storage
-          .from('documenti-fiscali')
-          .upload(path, file, { contentType: 'application/pdf', upsert: false });
-        if (upErr2) throw new Error('Storage non raggiungibile: ' + upErr2.message);
-      }
-      storagePath = path;
-
-      // 3. Aggiorna il record esistente con il nuovo storage_path
+      // Aggiorna il record DB esistente
       const { error: dbErr } = await sb
         .from('documenti_fiscali')
-        .update({ storage_path: storagePath, nome_file: file.name, dimensione: file.size })
+        .update({ storage_path: res.path, nome_file: file.name, dimensione: file.size })
         .eq('id', docId);
 
       if (dbErr) throw new Error('DB update fallito: ' + dbErr.message);
 
-      // 4. Aggiorna la cache e ri-renderizza
       await loadDocumenti();
       renderArchivio();
       renderDocumentiView();
-      toast(`✅ File "${file.name}" collegato correttamente al documento.`, 'ok', 5000);
+      toast(`✅ File "${file.name}" collegato correttamente.`, 'ok', 5000);
 
     } catch(ex) {
       console.error('[ricaricaDocumento]', ex);
-      toast('❌ ' + ex.message, 'err', 8000);
+      toast('❌ ' + ex.message, 'err', 10000);
     }
   };
 
@@ -4330,42 +4394,17 @@ async function uploadDocumentoFiscale(file, annoTarget, tipoDoc, snapshot) {
   if (!file) return;
   let storagePath = null;
 
-  // STEP 1: Tenta upload su Storage — refresh token prima per evitare errori di rete
+  // STEP 1: Upload su Storage via REST robusto (3 retry + timeout + backoff)
   try {
-    try { await sb.auth.refreshSession(); } catch(_) {}
-
     const ts       = Date.now();
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const path     = _user.id + '/' + annoTarget + '/' + ts + '_' + safeName;
 
-    let upErr = null;
-
-    // Primo tentativo
-    const r1 = await sb.storage
-      .from('documenti-fiscali')
-      .upload(path, file, { contentType: 'application/pdf', upsert: false });
-    upErr = r1.error;
-
-    // Retry unico dopo 1.5s se errore di rete (Failed to fetch)
-    if (upErr && upErr.message && upErr.message.includes('fetch')) {
-      console.warn('[uploadDoc] Retry dopo errore rete:', upErr.message);
-      await new Promise(r => setTimeout(r, 1500));
-      const r2 = await sb.storage
-        .from('documenti-fiscali')
-        .upload(path, file, { contentType: 'application/pdf', upsert: false });
-      upErr = r2.error;
-      if (!upErr) storagePath = path;
-    } else if (!upErr) {
-      storagePath = path;
-    }
-
-    if (upErr) {
-      // Log silenzioso — i dati fiscali sono già salvati nel DB
-      // Il toast "Documento tracciato senza file fisico" nel STEP 2 è sufficiente
-      console.warn('[uploadDoc] Storage non raggiungibile:', upErr.message);
-    }
+    const res = await storageUploadRobust(file, 'documenti-fiscali', path);
+    storagePath = res.path;
   } catch(ex) {
-    console.warn('[uploadDoc] Storage exception:', ex.message);
+    // Log silenzioso — i dati fiscali vengono salvati nel DB comunque
+    console.warn('[uploadDoc] Storage non raggiungibile:', ex.message);
   }
 
   // STEP 2: Salva SEMPRE in documenti_fiscali (anche senza file fisico)
