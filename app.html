@@ -1973,6 +1973,23 @@ function normalizePdfText(text) {
     .replace(/[\u00A0\u00AD\u2000-\u200B\u2009\u202F\u205F\u3000\t]/g, ' ')
     .replace(/\r\n?/g, '\n');
 
+  /* 1b) PRE-PROTEZIONE importi in formato spazio-decimale (F24 ADE)
+     DEVE avvenire PRIMA del collasso digit-space-digit, altrimenti
+     "3.904 00" → "3.90400" e "11 04" → "1104" (non più parsabili).
+
+     Pattern A: formato con separatore migliaia  "3.904 00" → "3.904,00"
+     Pattern B: importi piccoli a fine riga      "11 04"    → "11,04"
+                L'ancora $ evita di convertire "01 04" dentro "01 2025 12 2025"
+                (i mesi di periodo hanno l'anno a 4 cifre sulla stessa riga).
+  ─────────────────────────────────────────────────────────────────── */
+  // Pattern A — con punto-migliaia: "X.XXX 00" → "X.XXX,00"
+  t = t.replace(/\b(\d{1,3}(?:\.\d{3})+)\s+(\d{2})\b/g, '$1,$2');
+  // Pattern B — importo piccolo senza migliaia a fine riga: "11 04" → "11,04"
+  //   \b(\d{1,3}) = 1-3 cifre (importo centinaia o decine)
+  //   \s+(\d{2})  = esattamente 2 cifre (centesimi)
+  //   [ \t]*$     = fine riga (non spezzato da altro testo)
+  t = t.replace(/\b(\d{1,3})\s+(\d{2})[ \t]*$/gm, '$1,$2');
+
   // 2) Loop iterativo: collassa coppie (\d) (\d) → finché non cambia
   //    "3 4 . 8 2 7" → pass1:"34 . 82 7" → pass2:"34 . 827" → pass3:"34 . 827" (stop)
   //    poi il punto viene gestito sotto
@@ -2287,26 +2304,14 @@ function parseSingleF24Segment(nt, annoTarget) {
     }
   }
 
-  /* ── FIX A: Separa testo reale dal boilerplate del template ─────────────
-     Il PDF F24 contiene prima i DATI REALI (codici tributo, importi) e poi
-     il template precompilato (boilerplate) che ripete le stesse etichette
-     "SEZIONE ERARIO", "SEZIONE INPS" ma senza dati numerici.
-     Dichiarato qui (prima di STEP 5) per evitare Temporal Dead Zone.
-  ────────────────────────────────────────────────────────────────────── */
-  const nt_up = nt.toUpperCase();
-  const idxBoilerplate = nt_up.search(
-    /ITDELEGA\s{0,4}IRREVOCABILE|1\s*A\s*COPIA\s*PER\s*LA\s*BANCA|AGENZIA\s*PROV[\s\S]{0,10}CODICE\s*FISCALE\s*DATI\s*ANAGRAFI/
-  );
-  // testoReale = parte con dati numerici reali (prima del boilerplate)
-  const testoReale   = (idxBoilerplate > 200) ? nt.slice(0, idxBoilerplate) : nt;
-  const testoRealeUp = testoReale.toUpperCase();
-
   /* ── STEP 5: Cerca SALDO FINALE come ancora di verifica ─────────────────
      "SALDO (F)  2.771,04" oppure "SALDO FINALE  2.771,04"
-     Cerca nel testoReale (senza boilerplate) per evitare valori spurii.
+     Cerca nelle ultime 1500 char (bottom del F24) dove appare sempre.
   ────────────────────────────────────────────────────────────────────── */
   let saldoFinaleDoc = 0;
   {
+    // FIX D: cerca il saldo finale nel testoReale (prima del boilerplate)
+    // per evitare di catturare valori dalla seconda copia del modello.
     const tail = testoReale.slice(-1500);
     const mSF = tail.match(/SALDO\s*(?:FINALE|\(F\)|F\b)[^\d]*?([\d.,]+(?:\s+\d{2})?)/i)
              || testoReale.match(/SALDO\s*(?:FINALE|\(F\)|F\b)[^\d]*?([\d.,]+(?:\s+\d{2})?)/i)
@@ -2340,7 +2345,20 @@ function parseSingleF24Segment(nt, annoTarget) {
    *   NON il minimo del contesto allargato (che potrebbe includere anni errati).
   ────────────────────────────────────────────────────────────────────── */
 
-  // Separa SEZIONE ERARIO e SEZIONE INPS — cerca SOLO nel testoReale (FIX A)
+  // ── FIX A: Identifica il limite tra dati reali e boilerplate del template ──
+  // Nel PDF F24, il testo estratto ha prima i DATI REALI (codici tributo, importi)
+  // poi il template precompilato del modulo (boilerplate) che contiene anch'esso
+  // le etichette "SEZIONE ERARIO", "SEZIONE INPS" ma senza dati numerici.
+  // indexOf() trovava le etichette nel boilerplate → blocchi vuoti → fallback errato.
+  const nt_up = nt.toUpperCase();
+  const idxBoilerplate = nt_up.search(
+    /ITDELEGA\s{0,4}IRREVOCABILE|1\s*A\s*COPIA\s*PER\s*LA\s*BANCA|AGENZIA\s*PROV[\s\S]{0,10}CODICE\s*FISCALE\s*DATI\s*ANAGRAFI/
+  );
+  // testoReale = solo la parte con dati numerici (prima del boilerplate)
+  const testoReale    = (idxBoilerplate > 200) ? nt.slice(0, idxBoilerplate) : nt;
+  const testoRealeUp  = testoReale.toUpperCase();
+
+  // Separa SEZIONE ERARIO e SEZIONE INPS — cerca SOLO nel testo reale
   const idxErario = testoRealeUp.indexOf('SEZIONE ERARIO');
   const idxInps   = Math.max(testoRealeUp.indexOf('SEZIONE INPS'), testoRealeUp.indexOf('SEZIONE I.N.P.S'));
   const idxTerzi  = testoRealeUp.indexOf('SEZIONE ALTRI ENTI');
@@ -2352,11 +2370,34 @@ function parseSingleF24Segment(nt, annoTarget) {
     ? testoReale.slice(idxInps, idxTerzi > idxInps ? idxTerzi : testoReale.length)
     : '';
 
-  // FIX B: valida che i blocchi contengano causali reali (non solo etichette boilerplate)
-  const CAUSALI_CHECK  = /\b(179[012]|PXX|DPPI|CF\d{2})\b/i;
-  const erarioHaDati   = CAUSALI_CHECK.test(blocoErario);
-  const inpsHaDati     = CAUSALI_CHECK.test(blocoInps);
+  // ── FIX B: Valida che i blocchi contengano causali reali ────────────────
+  // Se le sezioni trovate non contengono causali (cioè sono nel boilerplate),
+  // forza sezioniTrovate=0 così da usare il fallback sul testoReale completo.
+  const CAUSALI_CHECK = /\b(179[012]|PXX|DPPI|CF\d{2})\b/i;
+  const erarioHaDati  = CAUSALI_CHECK.test(blocoErario);
+  const inpsHaDati    = CAUSALI_CHECK.test(blocoInps);
   const sezioniTrovate = (erarioHaDati ? 1 : 0) + (inpsHaDati ? 1 : 0);
+
+  /* ── FIX NET-SALDO: estrai il SALDO (C-D) / (A-B) dalla riga dei totali ──
+     Nel F24 ADE ogni sezione termina con una riga tipo:
+       "4.915,04  2.144,00  2.771,04 +"  ← TOTALE-debito | TOTALE-credito | SALDO
+     L'ultimo valore prima di "+" è il netto effettivamente versato.
+     È più affidabile di sommare le singole righe perché include già la
+     compensazione dei crediti (es. PXX 2024 compensato con PXX 2025).
+  ────────────────────────────────────────────────────────────────────── */
+  function estraiSaldoNetto(bloco) {
+    const righe = bloco.split('\n').reverse();
+    for (const r of righe) {
+      const m  = r.match(/(\d{1,3}(?:\.\d{3})*,\d{2})\s*\+\s*$/);
+      if (m)  { const v = parseImporto(m[1]);  if (v >= 10) return v;  }
+      const mn = r.match(/(\d{1,3}(?:\.\d{3})*,\d{2})\s*-\s*$/);
+      if (mn) { const v = parseImporto(mn[1]); if (v >= 10) return -v; }
+    }
+    return null;
+  }
+  const saldoNettoInps   = inpsHaDati   ? estraiSaldoNetto(blocoInps)   : null;
+  const saldoNettoErario = erarioHaDati ? estraiSaldoNetto(blocoErario) : null;
+  console.log('[F24] SALDO netto INPS:', saldoNettoInps, '| ERARIO:', saldoNettoErario);
 
   console.log('[F24] v4 sezioni: ERARIO=' + idxErario + '(dati:' + erarioHaDati + ') INPS=' + idxInps + '(dati:' + inpsHaDati + ') boilerplate@' + idxBoilerplate);
 
@@ -2440,13 +2481,14 @@ function parseSingleF24Segment(nt, annoTarget) {
     if (erarioHaDati) scanBloco(blocoErario, 'ERARIO');
     if (inpsHaDati)   scanBloco(blocoInps,   'INPS');
   } else {
-    // Fallback: sezioni non trovate o vuote → scansione su testoReale (senza boilerplate)
+    // Fallback: nessuna sezione con dati trovata → scansione su testoReale
+    // (evita di catturare valori spurii dal boilerplate del template)
     scanBloco(testoReale, 'TUTTO');
   }
 
   /* ── STEP 7: Fallback char-by-char per F24 semplificato / CAF ──────────
      Se la scansione riga-per-riga non ha trovato nulla (layout non standard).
-     Usa testoReale per evitare falsi positivi dal boilerplate.
+     Usa testoReale (senza boilerplate) per evitare falsi positivi.
   ────────────────────────────────────────────────────────────────────── */
   if (!righeRilevate.length) {
     console.log('[F24] Fallback globale char-by-char su testoReale...');
@@ -2455,6 +2497,7 @@ function parseSingleF24Segment(nt, annoTarget) {
       const causale = m[1].toUpperCase();
       const tipo    = classificaCausale(causale);
       if (tipo === 'altro') continue;
+      // Cerca il primo importo nei 300 char successivi
       const fin  = testoReale.slice(m.index + causale.length, m.index + causale.length + 300);
       const imps = estraiImporti(fin);
       if (!imps.length) continue;
@@ -2479,11 +2522,13 @@ function parseSingleF24Segment(nt, annoTarget) {
   const righeFiltrate = righeRilevate.filter(r => {
     if (!targetAnno || !r.annoScad) return true;
     if (r.annoScad === targetAnno) {
-      // FIX D: escludi crediti compensati INPS — riga con annoFisc < annoScad
-      // significa competenza anno precedente usata in compensazione, non versamento reale
+      // ── FIX C: Esclude crediti compensati INPS ──────────────────────────
+      // Nel F24 la riga PXX/DPPI con anno fiscale < anno di scadenza è un
+      // CREDITO compensato (es. PXX 01/2024 12/2024 nella scadenza 2025).
+      // Non è un versamento in uscita → non va sommato all'INPS versata.
       if (r.tipo === 'inps' && r.annoFisc != null && r.annoFisc < r.annoScad) {
         console.log('[F24] ESCLUSO credito compensato INPS: ' + r.causale +
-          ' annoFisc=' + r.annoFisc + ' < annoScad=' + r.annoScad + ' €' + r.importo);
+          ' annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' €' + r.importo);
         return false;
       }
       return true;
@@ -2493,15 +2538,17 @@ function parseSingleF24Segment(nt, annoTarget) {
   });
 
   /* ── STEP 9: Deduplicazione rafforzata ──────────────────────────────────
-     FIX E: nel fallback (annoFisc=null) la chiave non include rigaIdx
-     perché la stessa causale può apparire a posizioni diverse ma con lo
-     stesso importo (es. PXX\nPXX\n) → sarebbe doppio conteggio.
+     FIX 5: quando annoFisc è null, usa sezione+rigaIdx come tiebreak
+     per evitare di eliminare F24 diversi con importo casualmente uguale.
   ────────────────────────────────────────────────────────────────────── */
   const visti = new Set();
   const righeDef = righeFiltrate.filter(r => {
+    // FIX B2: nel fallback (annoFisc=null), la chiave NON include rigaIdx
+    // perché la stessa causale può apparire due volte nel testo (es. PXX\nPXX\n)
+    // con posizioni diverse ma stesso importo → sarebbe doppio conteggio.
     const k = r.annoFisc != null
       ? r.causale + '|' + r.importo.toFixed(2) + '|' + r.annoFisc
-      : r.causale + '|' + r.importo.toFixed(2);  // no rigaIdx: evita doppio conteggio PXX
+      : r.causale + '|' + r.importo.toFixed(2);  // No rigaIdx per fallback
     if (visti.has(k)) { console.log('[F24] Dedup skip: ' + k); return false; }
     visti.add(k);
     return true;
@@ -2515,8 +2562,22 @@ function parseSingleF24Segment(nt, annoTarget) {
   /* ── STEP 10: Aggregazione ──────────────────────────────────────────────
      INPS  (PXX/DPPI/CF**) = inps_versata_f24
      Imposta (1790/91/92)  = imposta_sostitutiva_f24
+
+     PRIORITÀ INPS: usa il SALDO (C-D) della sezione (netto crediti compensati)
+     se disponibile — è il dato più affidabile perché già calcolato da ADE.
+     La somma delle singole righe viene usata solo come fallback.
   ────────────────────────────────────────────────────────────────────── */
-  const totInps    = righeDef.filter(r => r.tipo === 'inps')   .reduce((s, r) => s + r.importo, 0);
+  const totInpsRighe = righeDef.filter(r => r.tipo === 'inps').reduce((s, r) => s + r.importo, 0);
+  // Se il saldo di sezione è disponibile e positivo (netto debito), usalo
+  // come valore definitivo dell'INPS versata.
+  const totInps = (saldoNettoInps !== null && saldoNettoInps > 0)
+    ? saldoNettoInps
+    : totInpsRighe;
+  if (saldoNettoInps !== null) {
+    console.log('[F24] INPS: saldo-sezione=' + saldoNettoInps.toFixed(2)
+      + ' | somma-righe=' + totInpsRighe.toFixed(2)
+      + (saldoNettoInps !== totInpsRighe ? ' ← SALDO vince (crediti compensati rimossi)' : ' ✔ coerenti'));
+  }
   const totImposta = righeDef.filter(r => r.tipo === 'imposta').reduce((s, r) => s + r.importo, 0);
   const totAll     = totInps + totImposta;
 
@@ -2577,7 +2638,8 @@ function parseSingleF24Segment(nt, annoTarget) {
 
   const nota = [
     '⚡ F24 v4 · anno solare ' + (targetAnno || annoFiscRif),
-    'INPS (PXX/DPPI): €' + totInps.toLocaleString('it-IT', {minimumFractionDigits:2}),
+    'INPS (PXX/DPPI): €' + totInps.toLocaleString('it-IT', {minimumFractionDigits:2})
+      + (saldoNettoInps !== null ? ' [saldo-sezione]' : ' [somma-righe]'),
     'Imposta sost. (179x): €' + totImpostaCorr.toLocaleString('it-IT', {minimumFractionDigits:2}),
     saldoFinaleDoc > 0 ? 'Saldo finale: €' + saldoFinaleDoc.toLocaleString('it-IT', {minimumFractionDigits:2}) : null,
     notaCorrezione || null,
