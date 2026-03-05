@@ -3898,6 +3898,8 @@ function renderDocumentiAnno(anno) {
           data-path="${safePath}"
           data-name="${sanitizeHTML(doc.nome_file)}"
           ${noFile ? 'title="File non disponibile — ricarica il PDF" style="opacity:.45;cursor:not-allowed"' : ''}>⬇️ Scarica</button>
+        ${noFile ? `<button class="btn btn-xs btn-ye" style="font-size:11px"
+          onclick="ricaricaDocumento('${doc.id}',${anno},'${sanitizeHTML(doc.nome_file)}')">📤 Ricarica</button>` : ''}
         <button class="btn btn-xs btn-ol doc-del-btn" style="color:var(--re)"
           data-id="${doc.id}"
           data-path="${safePath}"
@@ -3954,6 +3956,75 @@ async function downloadDoc(storagePath, nomeFile) {
   } catch(e) {
     toast('❌ Impossibile scaricare il file: ' + e.message, 'err', 5000);
   }
+}
+
+/* ============================================================
+   RICARICA FILE MANCANTE
+   Permette di collegare un PDF fisico a un record DB esistente
+   che ha storage_path = null (upload fallito in precedenza).
+   Usa un <input type="file"> nascosto per aprire il file picker.
+   ============================================================ */
+async function ricaricaDocumento(docId, anno, nomeFileOriginale) {
+  // Crea un input file temporaneo e invisibile
+  const inp = document.createElement('input');
+  inp.type   = 'file';
+  inp.accept = 'application/pdf';
+  inp.style.display = 'none';
+  document.body.appendChild(inp);
+
+  inp.onchange = async () => {
+    const file = inp.files?.[0];
+    document.body.removeChild(inp);
+    if (!file) return;
+
+    toast('⏳ Caricamento file in corso…', 'info', 5000);
+
+    try {
+      // 1. Refresh token prima dello storage
+      try { await sb.auth.refreshSession(); } catch(_) {}
+
+      const ts       = Date.now();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path     = _user.id + '/' + anno + '/' + ts + '_' + safeName;
+
+      // 2. Upload su Storage
+      let storagePath = null;
+      const { error: upErr } = await sb.storage
+        .from('documenti-fiscali')
+        .upload(path, file, { contentType: 'application/pdf', upsert: false });
+
+      if (upErr) {
+        // Retry dopo 1.5s
+        await new Promise(r => setTimeout(r, 1500));
+        try { await sb.auth.refreshSession(); } catch(_) {}
+        const { error: upErr2 } = await sb.storage
+          .from('documenti-fiscali')
+          .upload(path, file, { contentType: 'application/pdf', upsert: false });
+        if (upErr2) throw new Error('Storage non raggiungibile: ' + upErr2.message);
+      }
+      storagePath = path;
+
+      // 3. Aggiorna il record esistente con il nuovo storage_path
+      const { error: dbErr } = await sb
+        .from('documenti_fiscali')
+        .update({ storage_path: storagePath, nome_file: file.name, dimensione: file.size })
+        .eq('id', docId);
+
+      if (dbErr) throw new Error('DB update fallito: ' + dbErr.message);
+
+      // 4. Aggiorna la cache e ri-renderizza
+      await loadDocumenti();
+      renderArchivio();
+      renderDocumentiView();
+      toast(`✅ File "${file.name}" collegato correttamente al documento.`, 'ok', 5000);
+
+    } catch(ex) {
+      console.error('[ricaricaDocumento]', ex);
+      toast('❌ ' + ex.message, 'err', 8000);
+    }
+  };
+
+  inp.click();
 }
 
 // Apre il modal di conferma eliminazione documento
@@ -4840,6 +4911,8 @@ function renderDocumentiView(queryFilter) {
           <div class="doc-view-actions">
             <button class="btn btn-xs btn-ol" onclick="downloadDoc('${safePath}','${sanitizeHTML(doc.nome_file)}')"
               ${noFile ? 'style="opacity:.45;cursor:not-allowed" title="File non disponibile — ricarica il PDF"' : ''}>⬇️ Scarica</button>
+            ${noFile ? `<button class="btn btn-xs btn-ye" style="font-size:11px"
+              onclick="ricaricaDocumento('${doc.id}',${anno},'${sanitizeHTML(doc.nome_file)}')">📤 Ricarica</button>` : ''}
             <button class="btn btn-xs btn-ol" style="color:var(--re)" onclick="richiediDelDoc('${doc.id}','${safePath}',${anno},'${sanitizeHTML(doc.nome_file)}')">🗑️ Elimina</button>
           </div>
         </div>`;
