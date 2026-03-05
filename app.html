@@ -3950,8 +3950,9 @@ async function loadDocumenti() {
       if (!_documenti[doc.anno]) _documenti[doc.anno] = [];
       _documenti[doc.anno].push(doc);
     });
-    // Se la view documenti è attiva aggiornala subito
-    if (g('view-documenti')?.classList.contains('active')) renderDocumentiView();
+    // Nota: il re-render viene fatto dal chiamante per evitare render doppi/concorrenti.
+    // (in precedenza qui si chiamava renderDocumentiView() condizionatamente,
+    //  ma causava race condition con i render espliciti del chiamante)
   } catch(e) {
     console.warn('[loadDocumenti] Eccezione:', e.message);
   }
@@ -4054,9 +4055,17 @@ async function ricaricaDocumento(docId, anno, nomeFileOriginale) {
   inp.style.display = 'none';
   document.body.appendChild(inp);
 
+  // GUARD: su Android Chrome onchange scatta due volte (file scelto + dialog chiusa).
+  // Il flag impedisce che il secondo evento avvii un upload duplicato.
+  let fired = false;
+
   inp.onchange = async () => {
+    if (fired) return;  // ← blocca il secondo fire
+    fired = true;
+
     const file = inp.files?.[0];
-    document.body.removeChild(inp);
+    // Rimuove subito l'input dal DOM — non serve più
+    try { document.body.removeChild(inp); } catch(_) {}
     if (!file) return;
 
     toast('⏳ Caricamento in corso… (max 3 tentativi)', 'info', 10000);
@@ -4077,9 +4086,15 @@ async function ricaricaDocumento(docId, anno, nomeFileOriginale) {
 
       if (dbErr) throw new Error('DB update fallito: ' + dbErr.message);
 
+      // Aggiorna la cache — loadDocumenti richiede il DB e popola _documenti
       await loadDocumenti();
+
+      // Forza il re-render di entrambe le viste indipendentemente da quale è attiva.
+      // loadDocumenti() chiama renderDocumentiView() solo se la view è .active,
+      // ma al momento dell'await questo flag potrebbe non essere ancora impostato.
       renderArchivio();
       renderDocumentiView();
+
       toast(`✅ File "${file.name}" collegato correttamente.`, 'ok', 5000);
 
     } catch(ex) {
@@ -4087,6 +4102,12 @@ async function ricaricaDocumento(docId, anno, nomeFileOriginale) {
       toast('❌ ' + ex.message, 'err', 10000);
     }
   };
+
+  // Fallback: se l'utente chiude il picker senza scegliere un file,
+  // rimuoviamo comunque l'input dopo un secondo (evita memory leak).
+  inp.addEventListener('cancel', () => {
+    setTimeout(() => { try { document.body.removeChild(inp); } catch(_) {} }, 500);
+  });
 
   inp.click();
 }
@@ -4213,7 +4234,7 @@ async function confDelDoc() {
     await loadDocumenti();
     renderArchivio();
     renderSidebar();
-    if (g('view-documenti')?.classList.contains('active')) renderDocumentiView();
+    renderDocumentiView(); // sempre, non solo se view è .active
 
     _delDoc = null;
     closeModal('modal-del-doc');
@@ -4424,6 +4445,7 @@ async function uploadDocumentoFiscale(file, annoTarget, tipoDoc, snapshot) {
     if (!dbErr) {
       await loadDocumenti();
       renderArchivio();
+      renderDocumentiView();
       if (storagePath) {
         toast('PDF "' + file.name + '" archiviato (Anno ' + annoTarget + ')', 'ok', 4000);
       } else {
