@@ -2319,7 +2319,7 @@ function tryParseRPF(text) {
    Validatore.md §1:
    ─ Filtro temporale: conta solo F24 con scadenza nell'anno solare target
    ─ Classificazione: PXX/DPPI → contributi_inps_versati
-                      1790/1791/1792 → imposta_sostitutiva_pagata
+                      1790/1791/1792 → imposta_sostitutiva_f24 (campo reale)
    ─ Non inventare valori se PDF non leggibile
    ============================================================ */
 /* ============================================================
@@ -3932,6 +3932,11 @@ function openArch(anno) {
     const el = g('ayc-b-' + anno);
     if (el) { el.classList.add('open'); el.scrollIntoView({ behavior:'smooth', block:'start' }); }
   }, 80);
+  // Trigger 2: carica pagamenti per aggiornare badge ✅ PAGATO nello scadenzario
+  // Solo se non già in cache per questo anno
+  if (!_pagamenti[anno]) {
+    loadPagamenti(anno).catch(e => console.warn('[openArch] loadPagamenti:', e.message));
+  }
 }
 
 /* ============================================================
@@ -4552,10 +4557,12 @@ async function confermaApplicaDatiPDF() {
   const btn = g('pdfconf-btn-ok');
   btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
   closeModal('modal-pdf-confirm');
-  await applicaDatiPDFSilent(_aiAnno, _aiResult);
+  // FIX: salva _aiAnno PRIMA della chiamata — applicaDatiPDFSilent lo azzera a null alla fine
+  const annoConfermato = _aiAnno;
+  await applicaDatiPDFSilent(annoConfermato, _aiResult);
   btn.textContent = '✅ Conferma e salva'; btn.disabled = false;
   // Trigger 1: aggiorna scadenzario con badge ✅ PAGATO se _last è l'anno appena aggiornato
-  if (_last && _last.anno === _aiAnno) {
+  if (_last && _last.anno === annoConfermato) {
     await loadPagamenti(_last.anno);
     renderRisultati(_last);
   }
@@ -4770,7 +4777,7 @@ async function applicaDatiPDFSilent(anno, r) {
           anno_periodo:    riga.annoFisc   || (r.anno || annoTarget),
           anno_pagamento:  annoTarget,
           codice_tributo:  riga.causale,
-          tipo:            riga.tipo || (classificaCausale ? classificaCausale(riga.causale) : 'sconosciuto'),
+          tipo:            riga.tipo || 'sconosciuto', // tipo già impostato dal parser (classificaCausale è scope locale)
           importo:         riga.importo,
           data_scad:       riga.dataScad   || null,
           nome_file:       (_aiFile ? _aiFile.name : null)
