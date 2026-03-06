@@ -820,12 +820,13 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
           </div>
           <div class="fg" id="cassa-row" style="display:none"><label>Aliquota cassa professionale (%)</label>
             <div class="iw"><input type="number" id="f-cassa" value="14.5" min="0" max="50" step="0.1" style="padding-left:12px"><span class="isuf">%</span></div>
+            <div class="ib" style="margin-top:8px"><strong>💡 Quale contributo inserire:</strong> usa solo il <strong>Contributo Soggettivo</strong> (deducibile dal reddito). Il Contributo Integrativo (addebitato in fattura ai clienti) è neutro per il forfettario: non va dedotto qui.</div>
           </div>
         </div>
         <!-- STEP 2 -->
         <div class="card">
           <div class="card-t"><span class="step">2</span> Fatturato, mese e opzioni</div>
-          <div class="ib"><strong>⚠️ Inserisci l'imponibile:</strong> totale fatture senza IVA e senza la marca da bollo da €2 (neutra fiscalmente).</div>
+          <div class="ib"><strong>⚠️ Inserisci l'imponibile:</strong> totale fatture senza IVA. <strong>Attenzione alla marca da bollo:</strong> se la riaddebiti al cliente in fattura, l'AdE la considera <u>ricavo imponibile</u> — in quel caso sommala al fatturato.</div>
           <div class="g2">
             <div class="fg"><label>Fatturato imponibile anno (€)</label>
               <div class="iw"><span class="ipre">€</span>
@@ -2399,7 +2400,7 @@ function parseSingleF24Segment(nt, annoTarget) {
   function classificaCausale(c) {
     c = String(c).toUpperCase().trim();
     if (/^179[012]$/.test(c))            return 'imposta'; // 1790 saldo, 1791 I acc., 1792 II acc.
-    if (/^(PXX|DPPI|CF\d{2})$/.test(c)) return 'inps';    // contributi INPS previdenziali
+    if (/^(P10|PXX|DPPI|CF\d{2})$/.test(c)) return 'inps';  // contributi INPS (P10=GS, PXX=placeholder)
     return 'altro'; // causale non forfettaria: non aggregare
   }
 
@@ -3535,6 +3536,14 @@ function calcola() {
   }
 
   // Salva per il form di salvataggio (nomi = colonne DB)
+  // — Acconti INPS P10 (Gestione Separata) — 80% del saldo corrente, diviso in due rate uguali
+  let acc_inps_1 = 0, acc_inps_2 = 0, acc_inps_tot = 0;
+  if ((tipo === 'gs' || tipo === 'gs-pen') && c_inps > 0) {
+    acc_inps_tot = Math.round(c_inps * 0.80);
+    acc_inps_1   = Math.round(acc_inps_tot / 2); // 40% — giugno anno+2
+    acc_inps_2   = acc_inps_tot - acc_inps_1;     // 40% — novembre anno+2
+  }
+
   _last = {
     anno, ateco,
     gruppo_idx:      gi,
@@ -3558,6 +3567,9 @@ function calcola() {
     acconto_2:       acc2,
     acconto_tot:     acc_tot,
     acconto_note:    acc_note,
+    acconto_inps_1:  acc_inps_1,
+    acconto_inps_2:  acc_inps_2,
+    acconto_inps_tot:acc_inps_tot,
     // solo display (non in DB)
     _proiez:      proiez,
     _form:        inps_form,
@@ -3595,21 +3607,25 @@ function renderRisultati(c) {
   const pw = g('r-proj-wrap');
   if (c.mese_rif < 12) {
     pw.style.display = 'block';
-    const col = c._proiez > LIMITE ? 'var(--re)' : c._proiez > LIMITE*.85 ? 'var(--ye)' : 'var(--gr)';
-    const cls = c._proiez > LIMITE ? 'al-d'      : c._proiez > LIMITE*.85 ? 'al-w'      : 'al-o';
-    const msg = c._proiez > LIMITE
-      ? `🚨 <strong>Supereresti il limite di ${fmt(LIMITE)}.</strong> Dal prossimo periodo esci dal regime forfettario!`
-      : c._proiez > LIMITE*.85
-        ? '⚠️ Ti stai avvicinando al limite. Monitora attentamente il fatturato residuo.'
-        : '✅ Fatturato proiettato entro il limite del regime forfettario.';
+    const _p100k = 100000;
+    const projCol = c._proiez > _p100k ? '#ff4444' : c._proiez > LIMITE ? 'var(--re)' : c._proiez > LIMITE*.85 ? 'var(--ye)' : 'var(--gr)';
+    const projCls = c._proiez > _p100k ? 'al-d'    : c._proiez > LIMITE ? 'al-d'      : c._proiez > LIMITE*.85 ? 'al-w'      : 'al-o';
+    const projScCls = c._proiez > _p100k ? 'rc' : c._proiez > LIMITE ? 'rc' : c._proiez > LIMITE*.85 ? 'yc' : 'gc';
+    const projMsg = c._proiez > _p100k
+      ? `🔥 <strong>SFORAMENTO IMMEDIATO!</strong> La proiezione supera i 100.000€: se raggiungi questa cifra durante l'anno devi applicare l'IVA <u>da subito</u> su ogni fattura successiva.`
+      : c._proiez > LIMITE
+        ? `🚨 <strong>Supereresti il limite di ${fmt(LIMITE)}.</strong> Dal prossimo anno esci dal regime forfettario.`
+        : c._proiez > LIMITE*.85
+          ? '⚠️ Ti stai avvicinando al limite. Monitora attentamente il fatturato residuo.'
+          : '✅ Fatturato proiettato entro il limite del regime forfettario.';
     g('r-proj').innerHTML =
       `<div class="sg sg2">
         <div class="sc"><div class="sl">Fatturato attuale (${c.mese_rif} mesi)</div><div class="sv big">${fmt(fatt)}</div></div>
-        <div class="sc ${c._proiez>LIMITE?'rc':c._proiez>LIMITE*.85?'yc':'gc'}">
+        <div class="sc ${projScCls}">
           <div class="sl">Proiezione 12 mesi</div><div class="sv big">${fmt(c._proiez)}</div></div>
       </div>
-      <div class="al ${cls}"><span class="ai">📊</span><span>${msg}</span></div>
-      ${pbar(`Proiezione ${fmt(c._proiez)} su limite ${fmt(LIMITE)}`, c._proiez, LIMITE, col)}`;
+      <div class="al ${projCls}"><span class="ai">📊</span><span>${projMsg}</span></div>
+      ${pbar(`Proiezione ${fmt(c._proiez)} su limite ${fmt(LIMITE)}`, c._proiez, Math.max(LIMITE, _p100k), projCol)}`;
   } else { pw.style.display = 'none'; }
 
   // — Calcolo dettagliato —
@@ -3648,16 +3664,25 @@ function renderRisultati(c) {
       💵 Netto: <span style="color:var(--gr);font-family:monospace">${fmt(netto)}</span> — ${fmtP((netto/fatt)*100)} del fatturato
     </div>`;
 
-  // — Limite forfettario —
-  const limCol = fatt>LIMITE?'var(--re)':fatt>LIMITE*.85?'var(--ye)':'var(--gr)';
-  const limCls = fatt>LIMITE?'al-d':fatt>LIMITE*.85?'al-w':'al-o';
+  // — Limite forfettario (tripla soglia: 85% avviso, 85k uscita anno dopo, 100k uscita immediata) —
+  const _lim100k = 100000;
+  const limCol = fatt > _lim100k ? '#ff4444' : fatt > LIMITE ? 'var(--re)' : fatt > LIMITE*.85 ? 'var(--ye)' : 'var(--gr)';
+  const limCls = fatt > _lim100k ? 'al-d'    : fatt > LIMITE ? 'al-d'      : fatt > LIMITE*.85 ? 'al-w'      : 'al-o';
+  const limIcon = fatt > _lim100k ? '🔥' : fatt > LIMITE ? '🚨' : fatt > LIMITE*.85 ? '⚠️' : '✅';
+  const limMsg  = fatt > _lim100k
+    ? `<strong>SFORAMENTO IMMEDIATO!</strong> Superando i 100.000€ esci dal regime <strong>ORA</strong>. Ogni fattura successiva deve riportare l'IVA.`
+    : fatt > LIMITE
+      ? '<strong>Limite 85.000€ superato.</strong> Dal prossimo anno fiscale esci dal regime forfettario.'
+      : fatt > LIMITE*.85
+        ? 'Attenzione: sei molto vicino alla soglia limite di 85.000€. Monitora i prossimi incassi.'
+        : 'Entro il limite del regime forfettario.';
   g('r-lim').innerHTML =
     `<div class="card" style="margin-bottom:12px">
-      <div class="card-t">⚖️ Verifica limite forfettario ${fmt(LIMITE)} / anno</div>
-      ${pbar(`${fmt(fatt)} su ${fmt(LIMITE)}`, fatt, LIMITE, limCol)}
+      <div class="card-t">⚖️ Monitoraggio Limite Regime Forfettario</div>
+      ${pbar(`${fmt(fatt)} / ${fmt(LIMITE)}`, fatt, Math.max(LIMITE, _lim100k), limCol)}
       <div class="al ${limCls}" style="margin-top:9px">
-        <span class="ai">${fatt>LIMITE?'🚨':fatt>LIMITE*.85?'⚠️':'✅'}</span>
-        <span>${fatt>LIMITE?'<strong>Limite superato.</strong> Dal prossimo periodo esci dal regime.':fatt>LIMITE*.85?'Ti stai avvicinando al limite.':'Entro il limite del regime forfettario.'}</span>
+        <span class="ai">${limIcon}</span>
+        <span>${limMsg}</span>
       </div>
     </div>`;
 
@@ -3686,7 +3711,15 @@ function renderRisultati(c) {
 
   if (c.inps_tipo === 'gs' || c.inps_tipo === 'gs-pen') {
     sc += tline('active','€', `Saldo contestuale alla dichiarazione — giugno ${c.anno+1}`,
-      `Contributi INPS Gestione Separata ${c.anno}`, fmt(c.contributi_inps), 'Versamento F24 · Codice tributo GS', false);
+      `Contributi INPS Gestione Separata ${c.anno}`, fmt(c.contributi_inps), 'Versamento F24 · Codice tributo P10', false);
+    // — Opzione B: sezione separata acconti P10 anno successivo —
+    if (c.acconto_inps_tot > 0) {
+      sc += `<div style="margin:14px 0 6px;padding:8px 12px;background:var(--pu-d);border:1px solid var(--pu-b);border-radius:8px;font-size:12px;font-weight:700;color:var(--pu)">📅 Previsione acconti INPS anno successivo (${c.anno+2})</div>`;
+      sc += tline('active','1', `30 Giugno ${c.anno+2} — I rata (40%)`,
+        `I Acconto INPS Gestione Separata ${c.anno+1}`, fmt(c.acconto_inps_1), 'F24 · Codice tributo P10 · Base: 80% saldo corrente', true);
+      sc += tline('danger','2', `30 Novembre ${c.anno+2} — II rata (40%)`,
+        `II Acconto INPS Gestione Separata ${c.anno+1}`, fmt(c.acconto_inps_2), 'F24 · Codice tributo P10', false);
+    }
   } else if (c.inps_tipo === 'art' || c.inps_tipo === 'com') {
     sc += tline('active','€', '16 mag · 16 ago · 16 nov · 16 feb',
       `Contributi INPS ${c.inps_tipo==='art'?'Artigiani':'Commercianti'} ${c.anno}`,
@@ -3755,6 +3788,9 @@ async function salvaAnno() {
     acconto_2:       _last.acconto_2,
     acconto_tot:     _last.acconto_tot,
     acconto_note:    _last.acconto_note,
+    acconto_inps_1:  _last.acconto_inps_1  || 0,
+    acconto_inps_2:  _last.acconto_inps_2  || 0,
+    acconto_inps_tot:_last.acconto_inps_tot || 0,
     salvato_il:      new Date().toISOString(),
     updated_at:      new Date().toISOString()
   };
