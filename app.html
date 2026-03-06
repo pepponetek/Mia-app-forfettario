@@ -297,6 +297,10 @@ textarea{resize:vertical;min-height:68px;font-size:14px}
 .tld.warn{border-color:var(--ye);color:var(--ye);background:var(--ye-d)}
 .tld.danger{border-color:var(--re);color:var(--re);background:var(--re-d)}
 .tld.ok{border-color:var(--gr);color:var(--gr);background:var(--gr-d)}
+.tld.paid{border-color:var(--gr);color:var(--gr);background:var(--gr-d);font-size:14px}
+.tl-paid-badge{display:inline-block;font-size:10px;font-weight:700;color:var(--gr);
+  background:var(--gr-d);border:1px solid var(--gr-b);border-radius:5px;
+  padding:1px 6px;margin-left:6px;vertical-align:middle;letter-spacing:.03em}
 .tlline{width:2px;flex:1;background:var(--bd);margin:3px 0;min-height:12px}
 .tlc{flex:1;padding-bottom:5px}
 .tlc .tldate{font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
@@ -1574,6 +1578,7 @@ let _aiResult    = null; // risultato normalizzato dalla Edge Function / parser 
 let _lastPdfText = '';   // testo grezzo estratto dall'ultimo PDF (diagnostica)
 let _fullPdfText = '';   // testo completo PDF (detection tipo documento)
 let _taxMapping  = {};   // { anno: { rigo_fatturato, rigo_inps_deducibile, rigo_imposta_sostitutiva, rigo_eccedenza } }
+let _pagamenti   = {};   // { anno: [ {codice_tributo, importo, anno_periodo, anno_pagamento} ] } — cache pagamenti_effettuati
 
 // Fallback righi AdE 2024 — usato se tax_mapping_ade manca o anno non trovato
 const TAX_MAPPING_DEFAULT = {
@@ -1603,13 +1608,17 @@ function pbar(lbl, v, tot, col) {
   </div>`;
 }
 
-function tline(dc, ic, date, title, amount, desc, hasLine) {
+function tline(dc, ic, date, title, amount, desc, hasLine, isPaid) {
+  // isPaid: se true sovrascrive dc → 'paid' e aggiunge badge ✅ PAGATO
+  const dcFinal   = isPaid ? 'paid' : dc;
+  const icFinal   = isPaid ? '✓'   : ic;
+  const paidBadge = isPaid ? '<span class="tl-paid-badge">✅ PAGATO</span>' : '';
   return `<div class="tli">
-    <div class="tldw"><div class="tld ${dc}">${ic}</div>${hasLine?'<div class="tlline"></div>':''}</div>
+    <div class="tldw"><div class="tld ${dcFinal}">${icFinal}</div>${hasLine?'<div class="tlline"></div>':''}</div>
     <div class="tlc">
       <div class="tldate">${date}</div>
-      <div class="tltitle">${title}</div>
-      <div class="tlamount">${amount}</div>
+      <div class="tltitle">${title}${paidBadge}</div>
+      <div class="tlamount" style="${isPaid?'color:var(--gr)':''}">${amount}</div>
       <div class="tldesc">${desc}</div>
     </div>
   </div>`;
@@ -1828,7 +1837,7 @@ async function initAppData() {
 function resetApp() {
   // Reset completo dello stato applicazione (logout o token scaduto)
   _ready = false; _user = null; _profile = null;
-  _anni = {}; _last = null; _admData = []; _documenti = {}; _taxMapping = {};
+  _anni = {}; _last = null; _admData = []; _documenti = {}; _taxMapping = {}; _pagamenti = {};
   _aiFile = null; _aiAnno = null; _aiResult = null;
   _lastPdfText = ''; _fullPdfText = '';
   _delId = null; _delDoc = null; _bozzaRow = null;
@@ -1885,6 +1894,41 @@ async function loadTaxMapping() {
   } catch(e) {
     console.warn('[loadTaxMapping] Eccezione:', e.message);
   }
+}
+
+/* ============================================================
+   PAGAMENTI EFFETTUATI — cache locale per badge ✅ PAGATO nello scadenzario
+   Caricati da Supabase filtrando per user_id e anno richiesto.
+   Struttura cache: _pagamenti[anno] = [ { codice_tributo, importo, anno_periodo, anno_pagamento } ]
+   ============================================================ */
+async function loadPagamenti(anno) {
+  if (!_user || !anno) return;
+  try {
+    // Carica pagamenti il cui anno_pagamento O anno_periodo coincide con 'anno'
+    // → copre sia il saldo (pagato nell'anno+1 ma periodo anno)
+    //   sia gli acconti (pagamento E periodo coincidono all'anno+1)
+    const { data, error } = await sb
+      .from('pagamenti_effettuati')
+      .select('codice_tributo, importo, anno_periodo, anno_pagamento, tipo')
+      .eq('user_id', _user.id)
+      .or(`anno_periodo.eq.${anno},anno_pagamento.eq.${anno}`);
+    if (error) { console.warn('[loadPagamenti] Errore:', error.message); return; }
+    _pagamenti[anno] = data || [];
+    console.log('[loadPagamenti] Anno', anno, '— righe:', _pagamenti[anno].length);
+  } catch(e) {
+    console.warn('[loadPagamenti] Eccezione:', e.message);
+  }
+}
+
+// Helper: verifica se un codice tributo risulta pagato per un dato anno
+// annoRef = anno del debito (anno_periodo nell'F24)
+function isTributoPagato(codice, annoRef) {
+  // Cerca in tutti i pagamenti caricati (anno_pagamento E anno_periodo)
+  const allPagamenti = Object.values(_pagamenti).flat();
+  return allPagamenti.some(p =>
+    p.codice_tributo === codice &&
+    p.anno_periodo   === annoRef
+  );
 }
 
 /* ============================================================
@@ -3450,7 +3494,7 @@ async function parseTaxPDF(file) {
 /* ============================================================
    CALCOLO FISCALE
    ============================================================ */
-function calcola() {
+async function calcola() {
   const gi = parseInt(g('f-gruppo').value);
   if (isNaN(gi) || gi < 0 || gi > 8) { toast('⚠️ Seleziona il codice ATECO o il gruppo', 'err'); return; }
 
@@ -3579,6 +3623,8 @@ function calcola() {
     _anniSalvati: anniSalvati
   };
 
+  // Carica stato pagamenti da Supabase (popola _pagamenti[anno]) poi renderizza
+  await loadPagamenti(_last.anno);
   renderRisultati(_last);
 }
 
@@ -3694,24 +3740,33 @@ function renderRisultati(c) {
       <p>Hai <strong>${c._anniSalvati}/3 anni</strong> salvati. Per una previsione degli F24 futuri basata su dati storici reali, salva <strong>almeno 3 anni fiscali</strong>. Le cifre sono stime provvisorie.</p>
     </div>`;
   }
+  // ── Badge ✅ PAGATO — controlla _pagamenti per ogni codice tributo ────────────
+  // 1792 = saldo imposta (anno di riferimento = c.anno, pagato nell'anno+1)
+  // 1791 = acconti (anno di riferimento = c.anno+1, pagati nell'anno+1)
+  // P10/PXX = INPS (anno di riferimento = c.anno)
+  const paid1792  = isTributoPagato('1792', c.anno);
+  const paid1791a = isTributoPagato('1791', c.anno + 1); // I acconto
+  const paid1791b = paid1791a;                            // stesso codice, stesso anno rif.
+  const paidP10   = isTributoPagato('P10',  c.anno) || isTributoPagato('PXX', c.anno);
+
   sc += tline('warn','⇒', `30 giugno ${c.anno+1} (oppure luglio +0,40%)`,
-    `Saldo imposta sostitutiva ${c.anno}`, fmt(c.imposta_sost), 'Modello F24 · Codice tributo 1792', true);
+    `Saldo imposta sostitutiva ${c.anno}`, fmt(c.imposta_sost), 'Modello F24 · Codice tributo 1792', true, paid1792);
 
   if (c._doAcc && c.acconto_tot > S_DUE) {
     sc += tline('active','1', `30 giugno ${c.anno+1} — 1ª rata (40%)`,
-      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_1), `F24 · Cod. 1791 · ${c.acconto_note}`, true);
+      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_1), `F24 · Cod. 1791 · ${c.acconto_note}`, true, paid1791a);
     sc += tline('danger','2', `30 novembre ${c.anno+1} — 2ª rata (60%)`,
-      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_2), 'F24 · Codice tributo 1791', false);
+      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_2), 'F24 · Codice tributo 1791', false, paid1791b);
   } else if (c._doAcc) {
     sc += tline('danger','→', `30 novembre ${c.anno+1} — unica rata`,
-      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_2), `F24 · Cod. 1791 · ${c.acconto_note}`, false);
+      `Acconto imposta sostitutiva ${c.anno+1}`, fmt(c.acconto_2), `F24 · Cod. 1791 · ${c.acconto_note}`, false, paid1791b);
   } else {
     sc += tline('ok','✓', `Anno ${c.anno+1}`, 'Nessun acconto imposta sostitutiva', '€ 0,00', c.acconto_note, false);
   }
 
   if (c.inps_tipo === 'gs' || c.inps_tipo === 'gs-pen') {
     sc += tline('active','€', `Saldo contestuale alla dichiarazione — giugno ${c.anno+1}`,
-      `Contributi INPS Gestione Separata ${c.anno}`, fmt(c.contributi_inps), 'Versamento F24 · Codice tributo P10', false);
+      `Contributi INPS Gestione Separata ${c.anno}`, fmt(c.contributi_inps), 'Versamento F24 · Codice tributo P10', false, paidP10);
     // — Opzione B: sezione separata acconti P10 anno successivo —
     if (c.acconto_inps_tot > 0) {
       sc += `<div style="margin:14px 0 6px;padding:8px 12px;background:var(--pu-d);border:1px solid var(--pu-b);border-radius:8px;font-size:12px;font-weight:700;color:var(--pu)">📅 Previsione acconti INPS anno successivo (${c.anno+2})</div>`;
@@ -4499,6 +4554,11 @@ async function confermaApplicaDatiPDF() {
   closeModal('modal-pdf-confirm');
   await applicaDatiPDFSilent(_aiAnno, _aiResult);
   btn.textContent = '✅ Conferma e salva'; btn.disabled = false;
+  // Trigger 1: aggiorna scadenzario con badge ✅ PAGATO se _last è l'anno appena aggiornato
+  if (_last && _last.anno === _aiAnno) {
+    await loadPagamenti(_last.anno);
+    renderRisultati(_last);
+  }
 }
 
 function annullaApplicaDatiPDF() {
@@ -4696,6 +4756,52 @@ async function applicaDatiPDFSilent(anno, r) {
   setSync('ok', 'Sincronizzato');
   renderArchivio();
   renderSidebar();
+
+  // ── SALVATAGGIO GRANULARE F24 → pagamenti_effettuati ─────────────────
+  // Eseguito SOLO per documenti F24 che hanno il dettaglio righe (f24_righe)
+  if (r.tipo === 'f24' && r.f24_righe && r.f24_righe.length > 0) {
+    try {
+      // anno_periodo = anno del debito fiscale (da annoFisc nel rigo F24)
+      // anno_pagamento = annoTarget = anno in cui è stato effettivamente pagato (principio di cassa)
+      const righeDB = r.f24_righe
+        .filter(riga => riga.importo > 0)   // scarta righe a zero (non significative)
+        .map(riga => ({
+          user_id:         _user.id,
+          anno_periodo:    riga.annoFisc   || (r.anno || annoTarget),
+          anno_pagamento:  annoTarget,
+          codice_tributo:  riga.causale,
+          tipo:            riga.tipo || (classificaCausale ? classificaCausale(riga.causale) : 'sconosciuto'),
+          importo:         riga.importo,
+          data_scad:       riga.dataScad   || null,
+          nome_file:       (_aiFile ? _aiFile.name : null)
+        }));
+
+      if (righeDB.length > 0) {
+        // Prima elimina le righe esistenti per questo file/anno per evitare duplicati
+        await sb.from('pagamenti_effettuati')
+          .delete()
+          .eq('user_id', _user.id)
+          .eq('anno_pagamento', annoTarget)
+          .eq('nome_file', (_aiFile ? _aiFile.name : ''));
+
+        const { error: insErr } = await sb.from('pagamenti_effettuati').insert(righeDB);
+        if (insErr) {
+          console.warn('[applicaDatiPDF] Errore insert pagamenti_effettuati:', insErr.message);
+        } else {
+          console.log('[applicaDatiPDF] Salvate', righeDB.length, 'righe in pagamenti_effettuati');
+          // Aggiorna cache locale
+          await loadPagamenti(annoTarget);
+          // Aggiorna eventuali anni connessi (es. anno_periodo diverso da anno_pagamento)
+          const anniPeriodo = [...new Set(righeDB.map(r => r.anno_periodo).filter(Boolean))];
+          for (const ap of anniPeriodo) {
+            if (ap !== annoTarget) await loadPagamenti(ap);
+          }
+        }
+      }
+    } catch(ex) {
+      console.warn('[applicaDatiPDF] Eccezione pagamenti_effettuati:', ex.message);
+    }
+  }
 
   // Toast successo semplice (nessun confronto visivo)
   const tipoDoc = r.tipo === 'f24' ? 'F24' : 'Dichiarazione';
