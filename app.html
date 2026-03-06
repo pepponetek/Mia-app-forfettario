@@ -2281,13 +2281,52 @@ function tryParseRPF(text) {
    SPLIT MULTI-F24 — rileva più modelli F24 nello stesso PDF
    ============================================================ */
 function splitF24Segments(nt) {
-  const SPLIT_RE = /(?=[Ss]cadenza\s+del\s+\d{2}[-/.]\d{2}[-/.]\d{4}|[Ee]seguito\s+il\s+\d{2}[-/.]\d{2}[-/.]\d{4})/g;
-  const parti = nt.split(SPLIT_RE).filter(s => s.trim().length > 80);
-  if (parti.length <= 1) {
-    const parti2 = nt.split(/(?=MODELLO\s+DI\s+PAGAMENTO\s+UNIFICATO)/gi).filter(s => s.trim().length > 80);
-    if (parti2.length > 1) return parti2;
+  /* Strategia multi-livello per rilevare i confini tra moduli F24 nel testo estratto.
+     PDF.js varia il layout tra versioni: la stessa data può sopravvivere come
+     "30-07-2025" (separatori trattino) oppure diventare "30072025" (niente separatori).
+     Usiamo 4 strategie in ordine di affidabilità decrescente, fermandoci alla prima
+     che produce 2+ segmenti validi.
+  */
+
+  const MIN_LEN = 120; // caratteri minimi perché un segmento sia considerato valido
+
+  // ── Strategia 1: split su "Scadenza del / Eseguito il DD-MM-YYYY" ───────
+  const RE1 = /(?=[Ss]cadenza\s+del\s+\d{2}[-/.]\d{2}[-/.]\d{4}|[Ee]seguito\s+il\s+\d{2}[-/.]\d{2}[-/.]\d{4})/g;
+  const s1 = nt.split(RE1).filter(s => s.trim().length > MIN_LEN);
+  if (s1.length > 1) { console.log('[F24] split S1 (scadenza-data):', s1.length, 'segmenti'); return s1; }
+
+  // ── Strategia 2: split su "MODELLO DI PAGAMENTO UNIFICATO" o "MODELLO F24" ─
+  const RE2 = /(?=MODELLO\s+(?:DI\s+PAGAMENTO\s+UNIFICATO|F\s*24))/gi;
+  const s2 = nt.split(RE2).filter(s => s.trim().length > MIN_LEN);
+  if (s2.length > 1) { console.log('[F24] split S2 (modello-header):', s2.length, 'segmenti'); return s2; }
+
+  // ── Strategia 3: conta quante volte "SEZIONE ERARIO" appare nel testo ────
+  // Ogni F24 ha esattamente una SEZIONE ERARIO. Se ne troviamo N, ci sono N moduli.
+  const idxErariList = [];
+  const RE3 = /SEZIONE\s+ERARIO/gi;
+  let m3;
+  while ((m3 = RE3.exec(nt)) !== null) idxErariList.push(m3.index);
+
+  if (idxErariList.length > 1) {
+    // Taglia il testo ai punti di inizio di ogni SEZIONE ERARIO
+    // (retrocede di 500 char per includere l'intestazione del modulo prima della sezione)
+    const s3 = idxErariList.map((idx, i) => {
+      const start = Math.max(0, idx - 500);
+      const end   = i + 1 < idxErariList.length ? Math.max(0, idxErariList[i + 1] - 500) : nt.length;
+      return nt.slice(start, end);
+    }).filter(s => s.trim().length > MIN_LEN);
+    if (s3.length > 1) { console.log('[F24] split S3 (sezione-erario):', s3.length, 'segmenti'); return s3; }
   }
-  return parti.length > 0 ? parti : [nt];
+
+  // ── Strategia 4: split su "Scadenza" seguito da qualsiasi data compatta ──
+  // Copre i casi dove i separatori sono stati rimossi: "Scadenza30072025"
+  const RE4 = /(?=[Ss]cadenza\s*\d{8})/g;
+  const s4 = nt.split(RE4).filter(s => s.trim().length > MIN_LEN);
+  if (s4.length > 1) { console.log('[F24] split S4 (scadenza-compatta):', s4.length, 'segmenti'); return s4; }
+
+  // Nessuna strategia ha trovato più segmenti → documento singolo
+  console.log('[F24] split: 1 segmento (nessuna strategia multi riuscita)');
+  return nt.trim().length > MIN_LEN ? [nt] : [];
 }
 
 /* ============================================================
@@ -2480,43 +2519,58 @@ function parseSingleF24Segment(nt, annoTarget) {
   const inpsHaDati    = CAUSALI_CHECK.test(blocoInps);
   const sezioniTrovate = (erarioHaDati ? 1 : 0) + (inpsHaDati ? 1 : 0);
 
-  /* ── FIX NET-SALDO: estrai il SALDO (C-D) / (A-B) dalla sezione ─────────
-     PDF.js linearizza le celle della tabella: il netto e il segno "+"
-     possono trovarsi su righe consecutive, NON sulla stessa riga.
-     Struttura reale estratta da PDF.js per SEZIONE INPS:
-       riga N:   "4.915,04"   (TOTALE C = totale debiti)
-       riga N+1: "2.144,00"   (TOTALE D = totale crediti/compensazioni)
-       riga N+2: "2.771,04"   (SALDO C-D = netto versato)
-       riga N+3: "+"          (segno positivo)
-     Strategia: cerca il "+" isolato, poi prende il primo importo ≥10
-     nelle 4 righe precedenti che NON sia il totale debiti (il più grande).
+  /* ── FIX NET-SALDO: estrai il SALDO (C-D) dalla sezione INPS/ERARIO ────────
+     PDF.js linearizza le celle: ogni importo e il segno "+" stanno su righe separate.
+     Struttura REALE estratta da PDF.js per SEZIONE INPS:
+       riga N:   "4.915,04"   ← TOTALE C (somma debiti: 4.904 + 11,04)
+       riga N+1: "2.144,00"   ← TOTALE D (somma crediti compensati)
+       riga N+2: "2.771,04"   ← SALDO C-D (netto versato = C − D)
+       riga N+3: "+"          ← segno positivo
+     
+     ALGORITMO CORRETTO:
+     Quando troviamo il "+" isolato, raccogliamo tutti gli importi nelle righe precedenti.
+     Ordiniamo discendente: [4915.04, 2771.04, 2144.00]
+     Il SALDO è sempre il SECONDO valore (indice 1):
+       - Con 3 candidati: max=TotC, second=Saldo, min=TotD → prendiamo index 1
+       - Con 2 candidati: max=TotC, second=Saldo           → prendiamo index 1  
+       - Con 1 candidato: è il saldo diretto               → prendiamo index 0
+     
+     Verifica matematica: se C - D ≈ secondo valore, conferma la lettura.
   ────────────────────────────────────────────────────────────────────── */
   function estraiSaldoNetto(bloco) {
     const righe = bloco.split('\n').map(r => r.trim()).filter(r => r.length > 0);
+
     for (let i = 1; i < righe.length; i++) {
       const segno = righe[i];
-      // Riga con solo "+" o "-" (eventualmente con spazi)
       if (!/^\s*[+\-]\s*$/.test(segno)) continue;
       const isPositivo = segno.includes('+');
-      // Raccoglie tutti gli importi nelle ultime 5 righe prima del segno
+
+      // Raccoglie importi nelle 6 righe prima del segno
       const candidati = [];
-      for (let j = Math.max(0, i - 5); j < i; j++) {
+      for (let j = Math.max(0, i - 6); j < i; j++) {
         const imp = parseImporto(righe[j]);
         if (imp >= 10) candidati.push(imp);
       }
       if (!candidati.length) continue;
-      // Il saldo netto è il MINIMO tra i candidati (non il totale debiti che è il massimo)
-      // Esempio: [4915.04, 2144.00, 2771.04] → min delle ultime due posizioni
-      // Più robusto: esclude il massimo assoluto (= TOTALE C = somma debiti)
-      const maxVal = Math.max(...candidati);
-      const sansCMax = candidati.filter(v => v !== maxVal);
-      // Se dopo aver rimosso il max restano valori, il saldo è il minore tra quelli rimanenti
-      // Se c'era solo un candidato coincide con il massimo → lo usiamo direttamente
-      const saldo = sansCMax.length ? Math.min(...sansCMax) : maxVal;
-      console.log('[F24] estraiSaldoNetto candidati:', candidati, '→ saldo:', saldo, isPositivo ? '+' : '-');
+
+      // Ordina discendente: [TotC, Saldo, TotD] oppure [TotC, Saldo]
+      candidati.sort((a, b) => b - a);
+      // Il SALDO è sempre il secondo valore (indice 1). Se solo 1 candidato, è lui stesso.
+      const saldo = candidati[Math.min(1, candidati.length - 1)];
+
+      // Verifica opzionale: se 3 candidati, controlla che C - D ≈ saldo (tolleranza 1€)
+      if (candidati.length >= 3) {
+        const verificato = Math.abs((candidati[0] - candidati[candidati.length - 1]) - saldo) < 1.01;
+        console.log('[F24] estraiSaldoNetto candidati:', candidati,
+          '→ saldo:', saldo, isPositivo ? '+' : '-',
+          verificato ? '✔ verifica C-D' : '⚠️ verifica C-D non confermata');
+      } else {
+        console.log('[F24] estraiSaldoNetto candidati:', candidati, '→ saldo:', saldo, isPositivo ? '+' : '-');
+      }
       return isPositivo ? saldo : -saldo;
     }
-    // Fallback: cerca "SALDO (C-D)" o "SALDO C-D" come etichetta
+
+    // Fallback A: cerca etichetta esplicita "SALDO (C-D)" o "SALDO C-D"
     for (let i = 0; i < righe.length; i++) {
       if (/SALDO\s*\(?C-?D\)?/i.test(righe[i])) {
         for (let j = i + 1; j <= i + 3 && j < righe.length; j++) {
@@ -2525,6 +2579,18 @@ function parseSingleF24Segment(nt, annoTarget) {
         }
       }
     }
+
+    // Fallback B: matematico — cerca 3 importi consecutivi dove il terzo = primo - secondo
+    for (let i = 2; i < righe.length; i++) {
+      const a = parseImporto(righe[i - 2]);
+      const b = parseImporto(righe[i - 1]);
+      const c = parseImporto(righe[i]);
+      if (a >= 10 && b >= 10 && c >= 10 && a > b && a > c && Math.abs((a - b) - c) < 1.01) {
+        console.log('[F24] estraiSaldoNetto fallback-matematico: ' + a + ' - ' + b + ' = ' + c);
+        return c;
+      }
+    }
+
     return null;
   }
   const saldoNettoInps   = inpsHaDati   ? estraiSaldoNetto(blocoInps)   : null;
