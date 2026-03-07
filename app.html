@@ -658,6 +658,43 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
 #audit-banner strong{color:var(--ye)}
 #audit-banner.rosso strong{color:var(--re)}
 
+/* ── Badge stato form BOZZA / CHIUSO (CloudeV5 FASE 4) ──── */
+#stato-form-badge{
+  display:none;
+  align-items:center;
+  gap:8px;
+  padding:8px 14px;
+  border-radius:8px;
+  font-size:.85rem;
+  font-weight:600;
+  margin-bottom:12px;
+  border:1px solid transparent;
+}
+#stato-form-badge.bozza{
+  background:rgba(210,153,34,.13);
+  border-color:rgba(210,153,34,.35);
+  color:var(--ye);
+  display:flex;
+}
+#stato-form-badge.chiuso{
+  background:rgba(31,111,235,.13);
+  border-color:rgba(31,111,235,.35);
+  color:#7ab3ff;
+  display:flex;
+}
+/* Campi readonly dopo PDF (stato CHIUSO) */
+.campo-chiuso input[type=number],
+.campo-chiuso input[type=text]{
+  background:rgba(255,255,255,.04)!important;
+  color:var(--t2)!important;
+  cursor:not-allowed!important;
+  border-color:rgba(255,255,255,.08)!important;
+}
+/* Card risultati in stato CHIUSO */
+#ris-wrap.stato-chiuso .card{
+  border-color:rgba(31,111,235,.25);
+}
+
 </style>
 </head>
 <body>
@@ -772,6 +809,8 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
         <div class="ph"><div><h1>Nuovo calcolo anno fiscale</h1><p>Inserisci i dati · sincronizzato con il cloud</p></div></div>
         <div class="prev-banner" id="prev-banner"><span style="font-size:16px;flex-shrink:0">🔗</span><p id="prev-txt"></p></div>
         <div class="past-banner" id="past-banner">🗄️ <strong>Anno Completo e Archiviato:</strong> hai selezionato un anno fiscale già concluso. Il mese è fissato a Dicembre e lo stato sarà automaticamente "Archiviato". Spunta "1° Anno attività" se vuoi inserire un mese specifico.</div>
+        <!-- BADGE STATO FORM: BOZZA / DATI VERIFICATI (CloudeV5 FASE 4) -->
+        <div id="stato-form-badge"></div>
         <!-- BANNER RICONCILIAZIONE PDF (Motore2.md §3) -->
         <div id="audit-banner"></div>
         <!-- STEP 1 -->
@@ -832,7 +871,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
           <div class="card-t"><span class="step">2</span> Fatturato, mese e opzioni</div>
           <div class="ib"><strong>⚠️ Inserisci l'imponibile:</strong> totale fatture senza IVA. <strong>Attenzione alla marca da bollo:</strong> se la riaddebiti al cliente in fattura, l'AdE la considera <u>ricavo imponibile</u> — in quel caso sommala al fatturato.</div>
           <div class="g2">
-            <div class="fg"><label>Fatturato imponibile anno (€)</label>
+            <div class="fg" id="wrap-fatt"><label>Fatturato imponibile anno (€)</label>
               <div class="iw"><span class="ipre">€</span>
                 <input type="number" id="f-fatt" placeholder="0.00" min="0" max="999999" step="0.01" inputmode="decimal">
                 <span class="isuf">imp.</span>
@@ -851,7 +890,19 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
             <div class="fg"><label class="cbg"><input type="checkbox" id="f-deduci" checked><span>Deduci INPS dal reddito (art.1 c.64 L.190/2014)</span></label></div>
             <div class="fg"><label class="cbg"><input type="checkbox" id="f-noaoc" onchange="onAnnoChange()"><span>Primo anno attività — nessun acconto dovuto</span></label></div>
           </div>
-          <div class="fg">
+          <!-- ── METODO PREVISIONALE (Motore3.md §C) ── -->
+          <div class="g2" style="margin-top:6px">
+            <div class="fg"><label class="cbg"><input type="checkbox" id="f-usa-previsionale" onchange="togglePrevisionale()"><span>Usa Metodo Previsionale per acconti (art.17 TUIR)</span></label>
+              <div class="ib" id="wrap-previsionale" style="display:none;margin-top:6px">
+                <strong>📉 Metodo Previsionale:</strong> se prevedi di guadagnare meno nel prossimo anno, puoi ridurre gli acconti usando il fatturato stimato invece di quello storico. Attenzione: in caso di errore si applica la sanzione del 30% sulla differenza.
+                <div class="iw" style="margin-top:8px"><span class="ipre">€</span>
+                  <input type="number" id="f-fatt-stimato" placeholder="Stima fatturato anno successivo" min="0" step="0.01" inputmode="decimal">
+                  <span class="isuf">stima</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="fg" id="wrap-inps-versata">
             <label>INPS effettivamente versata nell'anno solare (F24 pagati) — opzionale</label>
             <div class="ib" style="margin-bottom:8px;margin-top:0"><strong>💡 Principio di cassa:</strong> se conosci il totale degli F24 INPS pagati in questo anno solare (causale DPPI/PXX), inseriscilo qui per una deduzione esatta. Lascia vuoto per usare l'INPS stimata.</div>
             <div class="iw"><span class="ipre">€</span>
@@ -1577,15 +1628,16 @@ let _aiFile      = null; // file PDF originale (upload Storage dopo conferma)
 let _aiResult    = null; // risultato normalizzato dalla Edge Function / parser locale
 let _lastPdfText = '';   // testo grezzo estratto dall'ultimo PDF (diagnostica)
 let _fullPdfText = '';   // testo completo PDF (detection tipo documento)
-let _taxMapping  = {};   // { anno: { rigo_fatturato, rigo_inps_deducibile, rigo_imposta_sostitutiva, rigo_eccedenza } }
-let _pagamenti   = {};   // { anno: [ {codice_tributo, importo, anno_periodo, anno_pagamento} ] } — cache pagamenti_effettuati
+let _taxMapping  = {};   // { anno: { rigo_fatturato, rigo_contributi, rigo_imposta_sostitutiva, rigo_eccedenza_precedente } }
+let _pagamenti   = {};   // { anno: [ {codice_tributo, importo_debito, anno_periodo, anno_pagamento} ] } — cache pagamenti_effettuati
 
 // Fallback righi AdE 2024 — usato se tax_mapping_ade manca o anno non trovato
+// Nomi colonne allineati a CloudeV5.md FASE 1
 const TAX_MAPPING_DEFAULT = {
-  rigo_fatturato:           'LM22',
-  rigo_inps_deducibile:     'LM35',
-  rigo_imposta_sostitutiva: 'LM39',
-  rigo_eccedenza:           'LM43'
+  rigo_fatturato:            'LM22',
+  rigo_contributi:           'LM35',  // CloudeV5: rigo_contributi (ex rigo_inps_deducibile)
+  rigo_imposta_sostitutiva:  'LM39',
+  rigo_eccedenza_precedente: 'LM43'   // CloudeV5: rigo_eccedenza_precedente (ex rigo_eccedenza)
 };
 /** Restituisce il mapping righi per anno (fallback ai valori 2024) */
 function getTaxMapping(anno) {
@@ -1878,16 +1930,16 @@ async function loadTaxMapping() {
   try {
     const { data, error } = await sb
       .from('tax_mapping_ade')
-      .select('anno, rigo_fatturato, rigo_inps_deducibile, rigo_imposta_sostitutiva, rigo_eccedenza')
+      .select('anno, rigo_fatturato, rigo_contributi, rigo_imposta_sostitutiva, rigo_eccedenza_precedente')
       .order('anno', { ascending: false });
     if (error) { console.warn('[loadTaxMapping] Errore:', error.message); return; }
     _taxMapping = {};
     (data || []).forEach(row => {
       _taxMapping[row.anno] = {
-        rigo_fatturato:           row.rigo_fatturato           || 'LM22',
-        rigo_inps_deducibile:     row.rigo_inps_deducibile     || 'LM35',
-        rigo_imposta_sostitutiva: row.rigo_imposta_sostitutiva || 'LM39',
-        rigo_eccedenza:           row.rigo_eccedenza           || 'LM43'
+        rigo_fatturato:            row.rigo_fatturato            || 'LM22',
+        rigo_contributi:           row.rigo_contributi           || 'LM35',
+        rigo_imposta_sostitutiva:  row.rigo_imposta_sostitutiva  || 'LM39',
+        rigo_eccedenza_precedente: row.rigo_eccedenza_precedente || 'LM43'
       };
     });
     console.log('[loadTaxMapping] Anni caricati:', Object.keys(_taxMapping).length);
@@ -1899,7 +1951,7 @@ async function loadTaxMapping() {
 /* ============================================================
    PAGAMENTI EFFETTUATI — cache locale per badge ✅ PAGATO nello scadenzario
    Caricati da Supabase filtrando per user_id e anno richiesto.
-   Struttura cache: _pagamenti[anno] = [ { codice_tributo, importo, anno_periodo, anno_pagamento } ]
+   Struttura cache: _pagamenti[anno] = [ { codice_tributo, importo_debito, anno_periodo, anno_pagamento } ]
    ============================================================ */
 async function loadPagamenti(anno) {
   if (!_user || !anno) return;
@@ -1909,7 +1961,7 @@ async function loadPagamenti(anno) {
     //   sia gli acconti (pagamento E periodo coincidono all'anno+1)
     const { data, error } = await sb
       .from('pagamenti_effettuati')
-      .select('codice_tributo, importo, anno_periodo, anno_pagamento, tipo')
+      .select('codice_tributo, importo_debito, anno_periodo, anno_pagamento, tipo')
       .eq('user_id', _user.id)
       .or(`anno_periodo.eq.${anno},anno_pagamento.eq.${anno}`);
     if (error) { console.warn('[loadPagamenti] Errore:', error.message); return; }
@@ -2038,6 +2090,66 @@ function onAnnoChange() {
     } else {
       banner.classList.remove('show');
     }
+  }
+
+  // ── Aggiorna badge BOZZA/CHIUSO e readonly campi (CloudeV5 FASE 4) ──
+  aggiornaStatoForm(anno);
+}
+
+/* ── STATO FORM BOZZA / CHIUSO (CloudeV5 FASE 4) ──────────────────────────
+   Mostra badge "Simulazione" o "Dati Verificati da PDF" e blocca i campi
+   chiave quando l'anno ha già dati validati da documento (stato='definitivo').
+   Chiamata da onAnnoChange() e da calcola() dopo ogni ricalcolo.
+──────────────────────────────────────────────────────────────────────────── */
+function aggiornaStatoForm(anno) {
+  const badge = g('stato-form-badge');
+  if (!badge) return;
+
+  const rec = _anni && _anni[anno];
+  const statoRec = rec ? (rec.stato || 'bozza') : 'bozza';
+  const isChiuso = statoRec === 'definitivo';
+
+  // ── Badge visivo ────────────────────────────────────────
+  badge.className = isChiuso ? 'chiuso' : 'bozza';
+  badge.innerHTML = isChiuso
+    ? '🔵 <span>Dati Verificati da PDF — i campi chiave sono in sola lettura. Per modificare, cambia lo stato in "Bozza".</span>'
+    : '📝 <span>Simulazione — i dati sono modificabili. Carica un documento PDF per bloccare i valori reali.</span>';
+
+  // ── ReadOnly su campi chiave ────────────────────────────
+  const campiChiave = ['f-fatt', 'f-inps-versata'];
+  const wrapperIds  = ['wrap-fatt', 'wrap-inps-versata'];
+
+  campiChiave.forEach(id => {
+    const el = g(id);
+    if (el) el.readOnly = isChiuso;
+  });
+  wrapperIds.forEach(id => {
+    const el = g(id);
+    if (el) {
+      if (isChiuso) el.classList.add('campo-chiuso');
+      else          el.classList.remove('campo-chiuso');
+    }
+  });
+
+  // ── Card risultati: classe per bordo blu ────────────────
+  const risWrap = g('ris-wrap');
+  if (risWrap) {
+    if (isChiuso) risWrap.classList.add('stato-chiuso');
+    else          risWrap.classList.remove('stato-chiuso');
+  }
+}
+
+/* ── METODO PREVISIONALE (Motore3.md §C) ──────────────────────────────────
+   Mostra/nasconde il campo stima fatturato anno successivo.
+   Resetta il campo quando il toggle viene disattivato.
+──────────────────────────────────────────────────────────────────────── */
+function togglePrevisionale() {
+  const checked = g('f-usa-previsionale')?.checked;
+  const wrap    = g('wrap-previsionale');
+  if (wrap) wrap.style.display = checked ? 'block' : 'none';
+  if (!checked) {
+    const inp = g('f-fatt-stimato');
+    if (inp) inp.value = '';
   }
 }
 
@@ -2253,19 +2365,53 @@ function tryParseRPF(text) {
   /* ══════════════════════════════════════════════════════════════
      METODO 2: Regex esplicite sui righi dinamici (fallback)
      Usa i righi da _taxMapping[anno] invece di LM22/LM35/LM39 fissi.
+     FIX v2: finestra LM39 ridotta a 200 char (era 800) per evitare
+     che catturi il valore di LM35 (INPS) quando PDF.js linearizza
+     le celle fuori ordine. Aggiunta verifica matematica: se il
+     candidato LM39 coincide con l'INPS già estratta, viene scartato
+     e si tenta la verifica algebrica (reddNetto × aliquota).
   ══════════════════════════════════════════════════════════════ */
   if (fatturato === 0) {
     const mapping = getTaxMapping(anno);
-    const rF = mapping.rigo_fatturato           || 'LM22';
-    const rI = mapping.rigo_inps_deducibile     || 'LM35';
-    const rM = mapping.rigo_imposta_sostitutiva || 'LM39';
+    const rF = mapping.rigo_fatturato            || 'LM22';
+    const rI = mapping.rigo_contributi           || 'LM35';   // CloudeV5: rigo_contributi
+    const rM = mapping.rigo_imposta_sostitutiva  || 'LM39';
     const IMO = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2}|\\d{1,3}(?:\\.\\d{3})+)';
     const mF = t.match(new RegExp(rF + '[\\s\\S]{0,800}?' + IMO, 'i'));
     const mI = t.match(new RegExp(rI + '[\\s\\S]{0,800}?' + IMO, 'i'));
-    const mM = t.match(new RegExp(rM + '[\\s\\S]{0,800}?' + IMO, 'i'));
+    // LM39: finestra ridotta a 200 char per isolare il rigo corretto
+    const mM = t.match(new RegExp(rM + '[\\s\\S]{0,200}?' + IMO, 'i'));
     if (mF) fatturato = parseIT(mF[1]);
     if (mI) inps      = parseIT(mI[1]);
-    if (mM) imposta   = parseIT(mM[1]);
+    if (mM) {
+      const candidato = parseIT(mM[1]);
+      // Verifica matematica: il candidato non deve coincidere con l'INPS già estratta
+      // (se coincidono, la regex ha catturato LM35 invece di LM39 — scarta)
+      const coincideConInps = inps > 0 && Math.abs(candidato - inps) < 1;
+      if (coincideConInps) {
+        console.warn('[RPF] M2 LM39 scartato: candidato €' + candidato + ' coincide con INPS €' + inps + ' (falso positivo)');
+        // Tentativo algebrico: reddNetto × aliquota nota
+        if (fatturato > 0 && coeff && inps > 0) {
+          const reddNetto = (fatturato * coeff) - inps;
+          for (const aliq of [0.15, 0.05]) {
+            const attesa = reddNetto * aliq;
+            // Cerca nel testo un numero vicino all'attesa (tolleranza 5%)
+            const reAll = [...t.matchAll(/\b(\d{1,3}(?:\.\d{3})*,\d{2}|\d{2,},\d{2})\b/g)];
+            for (const re of reAll) {
+              const v = parseIT(re[1]);
+              if (v > 0 && Math.abs(v - attesa) / Math.max(attesa, 1) < 0.05) {
+                imposta = v;
+                console.log('[RPF] M2 LM39 algebrico: aliq=' + (aliq*100) + '% → €' + imposta);
+                break;
+              }
+            }
+            if (imposta > 0) break;
+          }
+        }
+      } else {
+        imposta = candidato;
+      }
+    }
     console.log('[RPF] M2 fallback (' + rF + '/' + rI + '/' + rM + ') — fatturato:', fatturato, '| inps:', inps, '| imposta:', imposta);
   }
 
@@ -2273,7 +2419,7 @@ function tryParseRPF(text) {
   let eccedenza = 0;
   {
     const mapping = getTaxMapping(anno);
-    const rE  = mapping.rigo_eccedenza || 'LM43';
+    const rE  = mapping.rigo_eccedenza_precedente || 'LM43';  // CloudeV5: rigo_eccedenza_precedente
     const IMO = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2}|\\d{1,3}(?:\\.\\d{3})+)';
     const mE  = t.match(new RegExp(rE + '[\\s\\S]{0,800}?' + IMO, 'i'));
     if (mE) { eccedenza = parseIT(mE[1]); console.log('[RPF] Eccedenza ' + rE + ':', eccedenza); }
@@ -2319,7 +2465,7 @@ function tryParseRPF(text) {
    Validatore.md §1:
    ─ Filtro temporale: conta solo F24 con scadenza nell'anno solare target
    ─ Classificazione: PXX/DPPI → contributi_inps_versati
-                      1790/1791/1792 → imposta_sostitutiva_f24 (campo reale)
+                      1790/1791/1792 → imposta_sostitutiva_pagata
    ─ Non inventare valori se PDF non leggibile
    ============================================================ */
 /* ============================================================
@@ -2783,13 +2929,29 @@ function parseSingleF24Segment(nt, annoTarget) {
   const righeFiltrate = righeRilevate.filter(r => {
     if (!targetAnno || !r.annoScad) return true;
     if (r.annoScad === targetAnno) {
-      // ── FIX C: Esclude crediti compensati INPS ──────────────────────────
-      // Nel F24 la riga PXX/DPPI con anno fiscale < anno di scadenza è un
-      // CREDITO compensato (es. PXX 01/2024 12/2024 nella scadenza 2025).
-      // Non è un versamento in uscita → non va sommato all'INPS versata.
-      if (r.tipo === 'inps' && r.annoFisc != null && r.annoFisc < r.annoScad) {
-        console.log('[F24] ESCLUSO credito compensato INPS: ' + r.causale +
-          ' annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' €' + r.importo);
+      // ── FIX C (v2): Esclude versamenti di anni precedenti compensati ────
+      // Regola: se annoFisc < annoScad il versamento riguarda un debito già
+      // liquidato in un anno solare precedente → non va aggregato all'anno target.
+      // Esempi reali:
+      //   PXX  annoFisc=2024, annoScad=2025 → credito INPS compensato (non uscita)
+      //   1792 annoFisc=2024, annoScad=2025 → saldo imp.sost. 2024, pagato nel 2025
+      //      ma compensato a credito → l'unico versamento reale è 1790 annoFisc=2025
+      // La condizione si applica a TUTTI i tipi (inps, imposta) per simmetria.
+      if (r.annoFisc != null && r.annoFisc < r.annoScad) {
+        console.log('[F24] ESCLUSO versamento anno precedente: ' + r.causale +
+          ' (' + r.tipo + ') annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' €' + r.importo);
+        return false;
+      }
+      // ── FIX C V5: Esclude acconti 179x/PXX/INPS dove anno_periodo === anno_pagamento ──
+      // Regola (CloudeV5.md §FASE 3): se annoFisc === annoScad per codici di acconto,
+      // si tratta di acconti per l'anno corrente — non costituiscono saldo definitivo
+      // e non devono ridurre il debito residuo dello stesso anno.
+      // Esempio: 1791 annoFisc=2025, annoScad=2025 → II acconto 2025 pagato in 2025
+      //          NON va conteggiato come imposta sost. "saldata" per il 2025
+      const ACCONTI_V5 = /^(179[012]|PXX|P\d{2}|DPPI|CF\d{2})$/;
+      if (r.annoFisc != null && r.annoFisc === r.annoScad && ACCONTI_V5.test(r.causale)) {
+        console.log('[F24] FIX C V5: Escluso acconto anno corrente: ' + r.causale +
+          ' (' + r.tipo + ') annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' €' + r.importo);
         return false;
       }
       return true;
@@ -2987,10 +3149,10 @@ function tryParseF24(text, annoTarget) {
    ============================================================ */
 function buildExpertPrompt(anno, mapping) {
   const m   = mapping || getTaxMapping(anno);
-  const rF  = m.rigo_fatturato           || 'LM22';
-  const rI  = m.rigo_inps_deducibile     || 'LM35';
-  const rIM = m.rigo_imposta_sostitutiva || 'LM39';
-  const rE  = m.rigo_eccedenza           || 'LM43';
+  const rF  = m.rigo_fatturato            || 'LM22';
+  const rI  = m.rigo_contributi           || 'LM35';   // CloudeV5: rigo_contributi
+  const rIM = m.rigo_imposta_sostitutiva  || 'LM39';
+  const rE  = m.rigo_eccedenza_precedente || 'LM43';   // CloudeV5: rigo_eccedenza_precedente
   return `# LOGICA DI LOCALIZZAZIONE QUADRO LM — REGIME FORFETTARIO ITALIANO
 # Anno analizzato: ${anno || 'N/D'} — Righi AdE attesi: Fatturato→${rF} INPS→${rI} Imposta→${rIM} Eccedenza→${rE}
 
@@ -3132,7 +3294,7 @@ function aggiornaAuditBanner(convalida) {
   banner.classList.toggle('rosso', isRosso);
   const icona  = isRosso ? '🔴' : '⚠️';
   const titolo = isRosso ? `Errore di congruenza — rigo <strong>${mapping.rigo_imposta_sostitutiva}</strong>` : `Attenzione — verifica consigliata`;
-  banner.innerHTML = `<strong>${icona} ${titolo}:</strong> ${convalida.messaggio}<br><small style="opacity:.75">Motore2 §3 — Righi: fatturato=${mapping.rigo_fatturato} · INPS=${mapping.rigo_inps_deducibile} · imposta=${mapping.rigo_imposta_sostitutiva} · eccedenza=${mapping.rigo_eccedenza}</small>`;
+  banner.innerHTML = `<strong>${icona} ${titolo}:</strong> ${convalida.messaggio}<br><small style="opacity:.75">Motore2 §3 — Righi: fatturato=${mapping.rigo_fatturato} · INPS=${mapping.rigo_contributi} · imposta=${mapping.rigo_imposta_sostitutiva} · eccedenza=${mapping.rigo_eccedenza_precedente}</small>`;
   banner.style.display = 'block';
   setTimeout(() => banner.scrollIntoView({ behavior:'smooth', block:'nearest' }), 200);
 }
@@ -3514,6 +3676,10 @@ async function calcola() {
   const ateco    = g('f-ateco').value.trim();
   const prevAnno = _anni[anno - 1];
 
+  // PRINCIPIO DI CASSA (anticipato) — carica i pagamenti PRIMA del calcolo
+  // così inpsPerDeduzione può usare i dati reali dal DB
+  await loadPagamenti(anno);
+
   const proiez   = mese < 12 ? (fatt / mese) * 12 : fatt;
   const r_forf   = fatt * coeff;
 
@@ -3544,10 +3710,23 @@ async function calcola() {
     inps_desc = 'Nessun contributo'; inps_form = '—';
   }
 
-  // PRINCIPIO DI CASSA — usa INPS effettivamente versata se fornita (LM7 / F24 pagati)
-  // Altrimenti fallback all'INPS stimata per la deduzione
+  // PRINCIPIO DI CASSA — priorità deduzioni:
+  // 1) Input manuale utente (campo f-inps-versata)
+  // 2) Auto da DB: somma pagamenti_effettuati con anno_pagamento == anno e tipo == 'inps'
+  // 3) Fallback: INPS stimata (c_inps)
   const inpsVersataInput = parseFloat(g('f-inps-versata')?.value) || 0;
-  const inpsPerDeduzione = (deduci && inpsVersataInput > 0) ? inpsVersataInput : c_inps;
+  const inpsAutoCassa = (_pagamenti[anno] || [])
+    .filter(p => p.anno_pagamento === anno && p.tipo === 'inps')
+    .reduce((s, p) => s + (p.importo_debito || 0), 0);
+  const inpsPerDeduzione = deduci
+    ? (inpsVersataInput > 0 ? inpsVersataInput
+        : inpsAutoCassa  > 0 ? inpsAutoCassa
+        : c_inps)
+    : c_inps;
+  // Log per debug trasparente
+  if (inpsAutoCassa > 0 && inpsVersataInput === 0) {
+    console.log('[calcola] Principio di cassa AUTO: INPS DB anno_pagamento=' + anno + ' → €' + inpsAutoCassa.toFixed(2));
+  }
 
   const r_imp          = deduci ? Math.max(0, r_forf - inpsPerDeduzione) : r_forf;
   // §5 Motore.md — Eccedenza LM43: riduce il debito d'imposta sostitutiva dell'anno
@@ -3564,13 +3743,33 @@ async function calcola() {
   // Base acconti = imposta dovuta anno precedente (LM11 prev) se disponibile
   // altrimenti usa imposta corrente (stima)
   let acc1 = 0, acc2 = 0, acc_tot = 0, acc_note = '';
-  const baseAcconti = prevAnno ? prevAnno.imposta_sost : imp_sost;
-  const doAcc = !noAoc && baseAcconti > S_ACC;
-  if (doAcc) {
-    acc_tot  = baseAcconti;
+  const usaPrevisionale = g('f-usa-previsionale')?.checked || false;
+  const fattStimato     = parseFloat(g('f-fatt-stimato')?.value) || 0;
+  let baseAcconti = prevAnno ? prevAnno.imposta_sost : imp_sost;
+
+  if (usaPrevisionale && fattStimato > 0) {
+    // Metodo Previsionale (art.17 TUIR): ricalcola l'imposta attesa sul fatturato stimato
+    // Usa INPS stimata corrente come approssimazione (LM35 non ancora noto per anno successivo)
+    const r_forf_stim = fattStimato * coeff;
+    const c_inps_stim = c_inps; // approssimazione: stessa struttura INPS anno corrente
+    const r_imp_stim  = deduci ? Math.max(0, r_forf_stim - c_inps_stim) : r_forf_stim;
+    baseAcconti = Math.max(0, r_imp_stim * aliq);
+    acc_note = `📉 Metodo Previsionale · stima ${fmt(fattStimato)} · imp.attesa ${fmt(baseAcconti)}`;
+  } else {
     acc_note = prevAnno
       ? `Base storica LM11 anno ${anno-1}: ${fmt(prevAnno.imposta_sost)}`
       : `Base: stima anno ${anno} (nessun storico)`;
+  }
+
+  const doAcc = !noAoc && baseAcconti > S_ACC;
+  if (doAcc) {
+    acc_tot  = baseAcconti;
+    // Preserva la nota previsionale se attiva, altrimenti usa nota storica
+    if (!usaPrevisionale) {
+      acc_note = prevAnno
+        ? `Base storica LM11 anno ${anno-1}: ${fmt(prevAnno.imposta_sost)}`
+        : `Base: stima anno ${anno} (nessun storico)`;
+    }
     if (acc_tot > S_DUE) { acc1 = acc_tot * .40; acc2 = acc_tot * .60; }
     else { acc2 = acc_tot; }
   } else {
@@ -3580,12 +3779,16 @@ async function calcola() {
   }
 
   // Salva per il form di salvataggio (nomi = colonne DB)
-  // — Acconti INPS P10 (Gestione Separata) — 80% del saldo corrente, diviso in due rate uguali
+  // — Acconti INPS P10 (Gestione Separata) — 80% del saldo anno precedente
+  // FIX v2: la normativa calcola l'acconto sul DEBITO INPS DELL'ANNO PRECEDENTE
+  // (non su quello corrente). Se prevAnno.contributi_inps è disponibile, usarlo.
+  // Se non c'è storico (primo anno), si usa c_inps corrente come stima.
   let acc_inps_1 = 0, acc_inps_2 = 0, acc_inps_tot = 0;
   if ((tipo === 'gs' || tipo === 'gs-pen') && c_inps > 0) {
-    acc_inps_tot = Math.round(c_inps * 0.80);
-    acc_inps_1   = Math.round(acc_inps_tot / 2); // 40% — giugno anno+2
-    acc_inps_2   = acc_inps_tot - acc_inps_1;     // 40% — novembre anno+2
+    const baseInps   = (prevAnno && prevAnno.contributi_inps > 0) ? prevAnno.contributi_inps : c_inps;
+    acc_inps_tot = Math.round(baseInps * 0.80);
+    acc_inps_1   = Math.round(acc_inps_tot / 2); // 40% — giugno anno+1
+    acc_inps_2   = acc_inps_tot - acc_inps_1;     // 40% — novembre anno+1
   }
 
   _last = {
@@ -3614,6 +3817,9 @@ async function calcola() {
     acconto_inps_1:  acc_inps_1,
     acconto_inps_2:  acc_inps_2,
     acconto_inps_tot:acc_inps_tot,
+    // Metodo Previsionale (Motore3.md §C)
+    usa_metodo_previsionale: usaPrevisionale && fattStimato > 0,
+    fatturato_stimato_succ:  usaPrevisionale ? fattStimato : 0,
     // solo display (non in DB)
     _proiez:      proiez,
     _form:        inps_form,
@@ -3623,8 +3829,38 @@ async function calcola() {
     _anniSalvati: anniSalvati
   };
 
-  // Carica stato pagamenti da Supabase (popola _pagamenti[anno]) poi renderizza
-  await loadPagamenti(_last.anno);
+  // _pagamenti[anno] già caricato all'inizio di calcola()
+
+  // ── GAP #3 CloudeV5 FASE 3 — Audit Banner da calcola() ──────────────────
+  // Se esiste un dato storico validato da PDF per l'anno, confronta
+  // l'imposta sostitutiva teorica con quella registrata (soglia 1%).
+  // Il banner si aggiorna anche visivamente con il badge stato form.
+  aggiornaStatoForm(anno);
+  const recAnno = _anni[anno];
+  if (recAnno && recAnno.imposta_sost > 0 && recAnno.stato === 'definitivo') {
+    const impTeor  = imp_sost;
+    const impPDF   = recAnno.imposta_sost;
+    const diffPct  = Math.abs(impTeor - impPDF) / impPDF * 100;
+    const mapping  = getTaxMapping(anno);
+    const rigImp   = (mapping && mapping.rigo_imposta_sostitutiva) || 'LM39';
+    if (diffPct > 1) {
+      const fmt2 = v => v.toLocaleString('it-IT', { minimumFractionDigits:2, maximumFractionDigits:2 });
+      aggiornaAuditBanner({
+        stato: diffPct > 20 ? 'rosso' : 'giallo',
+        messaggio: `⚠️ Incongruenza rilevata: il rigo ${rigImp} da PDF (€${fmt2(impPDF)}) ` +
+          `differisce dal calcolo teorico attuale (€${fmt2(impTeor)}) — scarto ${diffPct.toFixed(1)}%. ` +
+          `Possibili cause: eccedenze, deduzioni extra, contributi modificati. ` +
+          `Verifica con il tuo commercialista.`
+      });
+    } else {
+      // Nessuna incongruenza: nascondi banner residuo
+      aggiornaAuditBanner({ stato: 'verde', messaggio: '' });
+    }
+  } else {
+    // Nessun PDF registrato: nascondi banner
+    aggiornaAuditBanner({ stato: 'verde', messaggio: '' });
+  }
+
   renderRisultati(_last);
 }
 
@@ -3846,6 +4082,9 @@ async function salvaAnno() {
     acconto_inps_1:  _last.acconto_inps_1  || 0,
     acconto_inps_2:  _last.acconto_inps_2  || 0,
     acconto_inps_tot:_last.acconto_inps_tot || 0,
+    // Metodo Previsionale (Motore3.md §C)
+    usa_metodo_previsionale: _last.usa_metodo_previsionale || false,
+    fatturato_stimato_succ:  _last.fatturato_stimato_succ  || 0,
     salvato_il:      new Date().toISOString(),
     updated_at:      new Date().toISOString()
   };
@@ -3932,11 +4171,6 @@ function openArch(anno) {
     const el = g('ayc-b-' + anno);
     if (el) { el.classList.add('open'); el.scrollIntoView({ behavior:'smooth', block:'start' }); }
   }, 80);
-  // Trigger 2: carica pagamenti per aggiornare badge ✅ PAGATO nello scadenzario
-  // Solo se non già in cache per questo anno
-  if (!_pagamenti[anno]) {
-    loadPagamenti(anno).catch(e => console.warn('[openArch] loadPagamenti:', e.message));
-  }
 }
 
 /* ============================================================
@@ -4557,12 +4791,10 @@ async function confermaApplicaDatiPDF() {
   const btn = g('pdfconf-btn-ok');
   btn.textContent = '⏳ Salvataggio...'; btn.disabled = true;
   closeModal('modal-pdf-confirm');
-  // FIX: salva _aiAnno PRIMA della chiamata — applicaDatiPDFSilent lo azzera a null alla fine
-  const annoConfermato = _aiAnno;
-  await applicaDatiPDFSilent(annoConfermato, _aiResult);
+  await applicaDatiPDFSilent(_aiAnno, _aiResult);
   btn.textContent = '✅ Conferma e salva'; btn.disabled = false;
   // Trigger 1: aggiorna scadenzario con badge ✅ PAGATO se _last è l'anno appena aggiornato
-  if (_last && _last.anno === annoConfermato) {
+  if (_last && _last.anno === _aiAnno) {
     await loadPagamenti(_last.anno);
     renderRisultati(_last);
   }
@@ -4773,14 +5005,19 @@ async function applicaDatiPDFSilent(anno, r) {
       const righeDB = r.f24_righe
         .filter(riga => riga.importo > 0)   // scarta righe a zero (non significative)
         .map(riga => ({
-          user_id:         _user.id,
-          anno_periodo:    riga.annoFisc   || (r.anno || annoTarget),
-          anno_pagamento:  annoTarget,
-          codice_tributo:  riga.causale,
-          tipo:            riga.tipo || 'sconosciuto', // tipo già impostato dal parser (classificaCausale è scope locale)
-          importo:         riga.importo,
-          data_scad:       riga.dataScad   || null,
-          nome_file:       (_aiFile ? _aiFile.name : null)
+          user_id:          _user.id,
+          anno_periodo:     riga.annoFisc   || (r.anno || annoTarget),
+          anno_pagamento:   annoTarget,
+          codice_tributo:   riga.causale,
+          tipo:             riga.tipo || (classificaCausale ? classificaCausale(riga.causale) : 'sconosciuto'),
+          importo_debito:   riga.importo,                                          // CloudeV5 FASE 1
+          data_versamento:  (() => {                                               // CloudeV5 FASE 1: date ISO
+            const s = riga.dataScad;
+            if (!s) return null;
+            const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+          })(),
+          id_documento_f24: (_aiFile ? _aiFile.name : null)                       // CloudeV5 FASE 1
         }));
 
       if (righeDB.length > 0) {
@@ -4789,7 +5026,7 @@ async function applicaDatiPDFSilent(anno, r) {
           .delete()
           .eq('user_id', _user.id)
           .eq('anno_pagamento', annoTarget)
-          .eq('nome_file', (_aiFile ? _aiFile.name : ''));
+          .eq('id_documento_f24', (_aiFile ? _aiFile.name : ''));
 
         const { error: insErr } = await sb.from('pagamenti_effettuati').insert(righeDB);
         if (insErr) {
@@ -6286,9 +6523,9 @@ async function renderTaxMappingTable() {
           return `<tr style="border-bottom:1px solid var(--s2)">
             <td style="padding:6px 8px;font-weight:700;color:var(--ac)">${a}</td>
             <td style="padding:6px 8px;text-align:center">${m.rigo_fatturato}</td>
-            <td style="padding:6px 8px;text-align:center">${m.rigo_inps_deducibile}</td>
+            <td style="padding:6px 8px;text-align:center">${m.rigo_contributi}</td>
             <td style="padding:6px 8px;text-align:center">${m.rigo_imposta_sostitutiva}</td>
-            <td style="padding:6px 8px;text-align:center">${m.rigo_eccedenza}</td>
+            <td style="padding:6px 8px;text-align:center">${m.rigo_eccedenza_precedente}</td>
             <td style="padding:6px 8px;text-align:center">
               <button class="btn btn-sm btn-ol" onclick="editMappingAdE(${a})" style="font-size:11px;padding:3px 8px">✏️</button>
             </td>
@@ -6304,9 +6541,9 @@ function openModalMappingAdE(anno) {
   g('map-anno').value       = anno || '';
   g('map-anno').readOnly    = !!anno;
   g('map-fatturato').value  = m.rigo_fatturato           || 'LM22';
-  g('map-inps').value       = m.rigo_inps_deducibile     || 'LM35';
-  g('map-imposta').value    = m.rigo_imposta_sostitutiva || 'LM39';
-  g('map-eccedenza').value  = m.rigo_eccedenza           || 'LM43';
+  g('map-inps').value       = m.rigo_contributi           || 'LM35';  // CloudeV5: rigo_contributi
+  g('map-imposta').value    = m.rigo_imposta_sostitutiva  || 'LM39';
+  g('map-eccedenza').value  = m.rigo_eccedenza_precedente || 'LM43';  // CloudeV5: rigo_eccedenza_precedente
   g('modal-mapping-ade').style.display = 'flex';
 }
 
@@ -6321,19 +6558,19 @@ async function saveMappingAdE() {
   if (!anno || anno < 2010 || anno > 2040) { toast('⚠️ Anno non valido (2010-2040)', 'err'); return; }
   const row = {
     anno,
-    rigo_fatturato:           (g('map-fatturato').value.trim().toUpperCase() || 'LM22'),
-    rigo_inps_deducibile:     (g('map-inps').value.trim().toUpperCase()      || 'LM35'),
-    rigo_imposta_sostitutiva: (g('map-imposta').value.trim().toUpperCase()   || 'LM39'),
-    rigo_eccedenza:           (g('map-eccedenza').value.trim().toUpperCase() || 'LM43')
+    rigo_fatturato:            (g('map-fatturato').value.trim().toUpperCase() || 'LM22'),
+    rigo_contributi:           (g('map-inps').value.trim().toUpperCase()      || 'LM35'),  // CloudeV5
+    rigo_imposta_sostitutiva:  (g('map-imposta').value.trim().toUpperCase()   || 'LM39'),
+    rigo_eccedenza_precedente: (g('map-eccedenza').value.trim().toUpperCase() || 'LM43')   // CloudeV5
   };
   const { error } = await sb.from('tax_mapping_ade').upsert(row, { onConflict: 'anno' });
   if (error) { toast('❌ Errore salvataggio: ' + error.message, 'err'); return; }
   // Aggiorna cache locale
   _taxMapping[anno] = {
-    rigo_fatturato:           row.rigo_fatturato,
-    rigo_inps_deducibile:     row.rigo_inps_deducibile,
-    rigo_imposta_sostitutiva: row.rigo_imposta_sostitutiva,
-    rigo_eccedenza:           row.rigo_eccedenza
+    rigo_fatturato:            row.rigo_fatturato,
+    rigo_contributi:           row.rigo_contributi,
+    rigo_imposta_sostitutiva:  row.rigo_imposta_sostitutiva,
+    rigo_eccedenza_precedente: row.rigo_eccedenza_precedente
   };
   closeModalMappingAdE();
   renderTaxMappingTable();
