@@ -910,6 +910,15 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
               <span class="isuf">F24</span>
             </div>
           </div>
+          <!-- ── CREDITI ANNO PRECEDENTE (LM43) ── -->
+          <div class="fg" id="wrap-crediti-prec">
+            <label>Crediti anno precedente — rigo LM43 (€) — opzionale</label>
+            <div class="ib" style="margin-bottom:8px;margin-top:0"><strong>♻️ Credito d'imposta:</strong> se nell'anno precedente l'imposta sostitutiva risultava a credito (eccedenza rigo LM43), inserisci l'importo qui: verrà sottratto direttamente dall'imposta sostitutiva dell'anno in corso. Se hai caricato il PDF RPF, il valore viene popolato automaticamente.</div>
+            <div class="iw"><span class="ipre">€</span>
+              <input type="number" id="f-crediti-prec" placeholder="0.00 (opzionale)" min="0" step="0.01" inputmode="decimal">
+              <span class="isuf">LM43</span>
+            </div>
+          </div>
           <div class="fg"><label>Note per il fascicolo (visibili in archivio e in stampa)</label>
             <textarea id="f-note" placeholder="Note, accordi con il commercialista, osservazioni..."></textarea>
           </div>
@@ -935,6 +944,13 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
                 <option value="definitivo">✅ Definitivo</option>
                 <option value="archiviato">🗄️ Archiviato — anno chiuso</option>
               </select>
+            </div>
+            <!-- ── SCADENZA LUGLIO +0,40% (AdE: art.17 c.2 DPR 435/2001) ── -->
+            <div class="fg" style="margin-bottom:6px">
+              <label class="cbg">
+                <input type="checkbox" id="f-scad-luglio">
+                <span>Pagamento con scadenza <strong>Luglio</strong> (+0,40% interessi su Saldo 1790 e I Acconto 1791 — art.17 c.2 DPR 435/2001)</span>
+              </label>
             </div>
             <div class="btn-row">
               <button class="btn btn-gr" id="btn-salva" onclick="salvaAnno()">☁️ Salva nel cloud</button>
@@ -1466,6 +1482,14 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
    SUPABASE
    ============================================================ */
 const SURL = 'https://kychcfbiyrcpoelfvaql.supabase.co';
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MIGRATION SUPABASE — Audit di Conformità Fiscale (eseguire 1 volta)
+   ═══════════════════════════════════════════════════════════════════════
+   ALTER TABLE public.anni_fiscali
+     ADD COLUMN IF NOT EXISTS credito_precedente           numeric    DEFAULT 0,
+     ADD COLUMN IF NOT EXISTS applica_maggiorazione_luglio boolean    DEFAULT false;
+   ═══════════════════════════════════════════════════════════════════════ */
 const SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5Y2hjZmJpeXJjcG9lbGZ2YXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjQyOTgsImV4cCI6MjA4NzAwMDI5OH0.t7tZUbhYayk1kJxRb03zJMkE5VOUS4iuRWqttVbOfOA';
 const sb = supabase.createClient(SURL, SKEY);
 
@@ -1966,6 +1990,15 @@ async function loadPagamenti(anno) {
       .or(`anno_periodo.eq.${anno},anno_pagamento.eq.${anno}`);
     if (error) { console.warn('[loadPagamenti] Errore:', error.message); return; }
     _pagamenti[anno] = data || [];
+    // FIX BUG5: se la colonna 'tipo' non esiste nel DB, tutte le righe avranno
+    // tipo=undefined e il filtro .tipo==='inps' in calcola() non troverà mai nulla.
+    // DDL per aggiungere la colonna se mancante:
+    //   ALTER TABLE public.pagamenti_effettuati ADD COLUMN IF NOT EXISTS tipo text;
+    // Poi aggiorna le righe esistenti:
+    //   UPDATE public.pagamenti_effettuati SET tipo='inps' WHERE codice_tributo IN ('PXX','DPPI');
+    //   UPDATE public.pagamenti_effettuati SET tipo='imposta' WHERE codice_tributo IN ('1790','1791','1792');
+    const senzaTipo = (_pagamenti[anno] || []).filter(p => !p.tipo).length;
+    if (senzaTipo > 0) console.warn('[loadPagamenti] ⚠️ ' + senzaTipo + ' righe senza campo tipo — esegui DDL su Supabase (vedi commento in loadPagamenti)');
     console.log('[loadPagamenti] Anno', anno, '— righe:', _pagamenti[anno].length);
   } catch(e) {
     console.warn('[loadPagamenti] Eccezione:', e.message);
@@ -2094,6 +2127,17 @@ function onAnnoChange() {
 
   // ── Aggiorna badge BOZZA/CHIUSO e readonly campi (CloudeV5 FASE 4) ──
   aggiornaStatoForm(anno);
+
+  // ── Popola campi nuovi da record salvato (Audit Conformità) ──
+  const recCorrente = _anni[anno];
+  if (recCorrente) {
+    const fcp = g('f-crediti-prec');
+    if (fcp && !fcp.value && recCorrente.credito_precedente > 0) {
+      fcp.value = recCorrente.credito_precedente.toFixed(2);
+    }
+    const fsl = g('f-scad-luglio');
+    if (fsl) fsl.checked = recCorrente.applica_maggiorazione_luglio || false;
+  }
 }
 
 /* ── STATO FORM BOZZA / CHIUSO (CloudeV5 FASE 4) ──────────────────────────
@@ -2305,7 +2349,14 @@ function tryParseRPF(text) {
   const mBlock = t.match(patBlock);
 
   if (mBlock) {
-    ateco = mBlock[2];                        // ATECO ufficiale (2a occorrenza)
+    // FIX BUG2: ATECO ufficiale = quello il cui coefficiente applicato al
+    // fatturato produce LM34. Alcuni PDF riportano sia il codice ATECO 2025
+    // (es. 683201, Sezione I regime vantaggio) sia quello 2007 (683200, Sezione III
+    // regime forfetario) e i due possono avere coefficienti diversi.
+    // Strategia: verifica che LM34 ≈ fatturato × coeff PRIMA di assegnare ateco.
+    // Se la 2a occorrenza non è coerente ma la 1a lo è, usa la 1a.
+    const ateco1 = mBlock[1];
+    const ateco2 = mBlock[2];
     coeff = parseInt(mBlock[3]) / 100;
     const lm22_raw = mBlock[4];
     const lm34_raw = mBlock[5];
@@ -2315,7 +2366,15 @@ function tryParseRPF(text) {
     // Verifica matematica: LM34 ≈ LM22 × coeff (tolleranza 2%)
     const lm34_atteso = fatturato * coeff;
     const ok = lm34 > 0 && Math.abs(lm34 - lm34_atteso) / lm34_atteso < 0.02;
-    console.log('[RPF] M1 — fatturato:', fatturato, '| coeff:', coeff, '| LM34:', lm34, '| atteso:', lm34_atteso.toFixed(0), '| ok:', ok);
+
+    // Assegna ATECO: preferisce il 2° codice (convenzione AdE), ma se la
+    // verifica LM34 fallisce prova il 1° (es. 683201 Sez.I vs 683200 Sez.III).
+    ateco = ateco2;
+    if (!ok && ateco1 !== ateco2) {
+      console.warn('[RPF] M1 — ATECO2 (' + ateco2 + ') non coerente con LM34; provo ATECO1 (' + ateco1 + ')');
+      ateco = ateco1;
+    }
+    console.log('[RPF] M1 — fatturato:', fatturato, '| coeff:', coeff, '| LM34:', lm34, '| atteso:', lm34_atteso.toFixed(0), '| ok:', ok, '| ATECO:', ateco);
 
     if (ok) {
       // Estrai valori dopo LM34
@@ -2326,9 +2385,13 @@ function tryParseRPF(text) {
 
       console.log('[RPF] M1 — numeri dopo LM34:', nums.slice(0, 10));
 
-      // LM35 = primo numero < LM34 e < fatturato nella lista
+      // LM35 = primo numero < LM34, > 1000 e distinto da LM34 stesso
+      // FIX BUG1: Math.abs(n - lm34) > 1 evita di catturare LM34 duplicato
+      // che PDF.js ripete quando separa colonne "reddito lordo" e "base calcolo".
+      // Caso reale: sequenza numeri dopo ATECO/coeff = [29.951, 29.951, 16.475, ...]
+      // Senza il fix il primo n < lm34 è lm34 stesso → inps = 29.951, reddito = 0.
       for (const n of nums) {
-        if (n < lm34 && n > 1000) { inps = n; break; }
+        if (n < lm34 && n > 1000 && Math.abs(n - lm34) > 1) { inps = n; break; }
       }
 
       // LM39 = ≈ (LM34 - LM35) × aliquota (15% o 5%)
@@ -2399,12 +2462,17 @@ function tryParseRPF(text) {
   }
 
   /* ── Eccedenza (rigo dinamico, es. LM43) — §5 Motore.md ── */
+  // FIX BUG3: finestra ridotta da 800 a 80 char.
+  // LM43 e LM45 (acconti versati €4.390) sono righi adiacenti nel PDF:
+  // con 800 char se LM43=0 il parser saltava al primo numero successivo
+  // trovando LM45=4.390 come eccedenza → imposta veniva erroneamente azzerata.
+  // 80 char sono sufficienti per catturare il valore immediato del rigo.
   let eccedenza = 0;
   {
     const mapping = getTaxMapping(anno);
     const rE  = mapping.rigo_eccedenza_precedente || 'LM43';
     const IMO = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2}|\\d{1,3}(?:\\.\\d{3})+)';
-    const mE  = t.match(new RegExp(rE + '[\\s\\S]{0,800}?' + IMO, 'i'));
+    const mE  = t.match(new RegExp(rE + '[\\s\\S]{0,80}?' + IMO, 'i'));
     if (mE) { eccedenza = parseIT(mE[1]); console.log('[RPF] Eccedenza ' + rE + ':', eccedenza); }
   }
 
@@ -2947,6 +3015,10 @@ function parseSingleF24Segment(nt, annoTarget) {
      FIX 5: quando annoFisc è null, usa sezione+rigaIdx come tiebreak
      per evitare di eliminare F24 diversi con importo casualmente uguale.
   ────────────────────────────────────────────────────────────────────── */
+  // FIX BUG4: salva una copia di tutte le righe PRIMA del filtro FIX C V5
+  // per permettere ad applicaDatiPDF di salvare anche gli acconti anno corrente
+  // (es. 1790/2025 compensato) che sono pagamenti reali ma esclusi dal calcolo.
+  const righePreFiltro = righeRilevate.slice(); // copia superficiale pre-deduplica
   const visti = new Set();
   const righeDef = righeFiltrate.filter(r => {
     // FIX B2: nel fallback (annoFisc=null), la chiave NON include rigaIdx
@@ -3068,7 +3140,8 @@ function parseSingleF24Segment(nt, annoTarget) {
     imposta_sostitutiva_f24: totImpostaFinale, // 179x → imposta già versata
     saldo_finale_f24:        saldoFinaleDoc,   // SALDO (F) verifica
     note:                    nota,
-    f24_righe:               righeDef
+    f24_righe:               righeDef,
+    _f24_righe_all:          righePreFiltro    // FIX BUG4: righe pre-filtro per salvataggio DB
   };
 }
 
@@ -3095,7 +3168,8 @@ function tryParseF24(text, annoTarget) {
   const totInps    = risultati.reduce((s,r) => s + (r.inps_versata_f24        || 0), 0);
   const totImposta = risultati.reduce((s,r) => s + (r.imposta_sostitutiva_f24 || 0), 0);
   const totSaldo   = risultati.reduce((s,r) => s + (r.saldo_finale_f24         || 0), 0);
-  const tutteRighe = risultati.flatMap(r => r.f24_righe || []);
+  const tutteRighe    = risultati.flatMap(r => r.f24_righe       || []);
+  const tutteRigheAll = risultati.flatMap(r => r._f24_righe_all  || r.f24_righe || []); // FIX BUG4
   const anniValidi = risultati.map(r => r.anno).filter(Boolean);
   const annoFiscRif = anniValidi.length ? Math.min(...anniValidi) : (annoTarget || null);
 
@@ -3113,7 +3187,8 @@ function tryParseF24(text, annoTarget) {
     inps_versata_f24:        Math.round(totInps    * 100) / 100,
     imposta_sostitutiva_f24: Math.round(totImposta * 100) / 100,
     saldo_finale_f24:        Math.round(totSaldo   * 100) / 100,
-    note: nota, f24_righe: tutteRighe, f24_moduli: risultati.length
+    note: nota, f24_righe: tutteRighe, f24_moduli: risultati.length,
+    _f24_righe_all: tutteRigheAll  // FIX BUG4: righe pre-filtro per salvataggio DB granulare
   };
 }
 
@@ -3191,8 +3266,10 @@ function normalizzaRisultato(raw, annoFallback) {
   const _pf = v => Math.max(0, parseFloat(v) || 0);
 
   const fatt  = _pf(raw.fatturato)       || _pf(raw.fatturato_lm2)       || 0;
-  const inps  = _pf(raw.inps_versata)    || _pf(raw.inps_dedotta_lm7)    ||
-                _pf(raw.inps_versata_f24) || 0;
+  // BUG 6 FIX: rimosso _pf(raw.inps_versata_f24) dalla catena INPS dichiarazione.
+  // inps_versata_f24 contiene i PXX del modello F24 (contributi versati nell'anno solare),
+  // non va mai usato come INPS dedotta (LM35) nella dichiarazione RPF.
+  const inps  = _pf(raw.inps_versata) || _pf(raw.inps_dedotta_lm7) || 0;
   const imp   = _pf(raw.imposta_dovuta)  || _pf(raw.imposta_dovuta_lm11) || 0;
 
   // Normalizza tipo — copre tutte le varianti che Gemini può restituire
@@ -3715,27 +3792,40 @@ async function calcola() {
     inps_desc = 'Nessun contributo'; inps_form = '—';
   }
 
-  // PRINCIPIO DI CASSA — priorità deduzioni:
-  // 1) Input manuale utente (campo f-inps-versata)
-  // 2) Auto da DB: somma pagamenti_effettuati con anno_pagamento == anno e tipo == 'inps'
-  // 3) Fallback: INPS stimata (c_inps)
-  const inpsVersataInput = parseFloat(g('f-inps-versata')?.value) || 0;
-  const inpsAutoCassa = (_pagamenti[anno] || [])
+  // PRINCIPIO DI CASSA — sorgenti deduzione INPS in ordine di priorità (§ LM35):
+  // 1) Input manuale utente (f-inps-versata)
+  // 2) Auto da DB: pagamenti_effettuati tipo='inps' con anno_pagamento == anno
+  // 3) Record anno corrente già salvato con inps_versata_anno_solare (da F24 caricato)
+  // 4) Contributi reali anno precedente da RPF caricato (pagati nell'anno solare corrente)
+  // 5) Fallback: INPS stimata teorica
+  const inpsVersataInput    = parseFloat(g('f-inps-versata')?.value) || 0;
+  const inpsAutoCassa       = (_pagamenti[anno] || [])
     .filter(p => p.anno_pagamento === anno && p.tipo === 'inps')
     .reduce((s, p) => s + (p.importo_debito || 0), 0);
+  const inpsDaRecordSalvato = (_anni[anno]   && _anni[anno].inps_versata_anno_solare)   || 0;
+  const inpsDaRPFPrecedente = (_anni[anno-1] && _anni[anno-1].contributi_inps)          || 0;
   const inpsPerDeduzione = deduci
-    ? (inpsVersataInput > 0 ? inpsVersataInput
-        : inpsAutoCassa  > 0 ? inpsAutoCassa
-        : c_inps)
+    ? (inpsVersataInput    > 0 ? inpsVersataInput
+     : inpsAutoCassa       > 0 ? inpsAutoCassa
+     : inpsDaRecordSalvato > 0 ? inpsDaRecordSalvato
+     : inpsDaRPFPrecedente > 0 ? inpsDaRPFPrecedente
+     : c_inps)
     : c_inps;
-  // Log per debug trasparente
-  if (inpsAutoCassa > 0 && inpsVersataInput === 0) {
-    console.log('[calcola] Principio di cassa AUTO: INPS DB anno_pagamento=' + anno + ' → €' + inpsAutoCassa.toFixed(2));
-  }
+  // Log sorgente usata per debug trasparente
+  if      (inpsVersataInput    > 0) { /* input manuale — già evidente in UI */ }
+  else if (inpsAutoCassa       > 0) { console.log('[calcola] INPS cassa AUTO pagamenti DB anno=' + anno + ' → €' + inpsAutoCassa.toFixed(2)); }
+  else if (inpsDaRecordSalvato > 0) { console.log('[calcola] INPS cassa da record salvato anno=' + anno + ' → €' + inpsDaRecordSalvato.toFixed(2)); }
+  else if (inpsDaRPFPrecedente > 0) { console.log('[calcola] INPS cassa da RPF anno prec.' + (anno-1) + ' → €' + inpsDaRPFPrecedente.toFixed(2)); }
 
   const r_imp          = deduci ? Math.max(0, r_forf - inpsPerDeduzione) : r_forf;
-  // §5 Motore.md — Eccedenza LM43: riduce il debito d'imposta sostitutiva dell'anno
-  const eccedenzaPrec  = (_anni[anno] && _anni[anno].eccedenza_precedente) || 0;
+  // LM43 – Crediti anno precedente: priorità a input manuale, poi dato DB estratto da PDF
+  const creditiManuali = parseFloat(g('f-crediti-prec')?.value) || 0;
+  const eccedenzaDB    = (_anni[anno] && _anni[anno].eccedenza_precedente) || 0;
+  const eccedenzaPrec  = creditiManuali > 0 ? creditiManuali : eccedenzaDB;
+  // Popola campo manuale se vuoto e DB ha un valore (da PDF caricato)
+  if (eccedenzaDB > 0 && creditiManuali === 0 && g('f-crediti-prec')) {
+    g('f-crediti-prec').placeholder = `${eccedenzaDB.toFixed(2)} (da PDF — clicca per sovrascrivere)`;
+  }
   const imp_sost_lordo = r_imp * aliq;
   const imp_sost       = Math.max(0, imp_sost_lordo - eccedenzaPrec);
   const tot_oneri      = imp_sost + c_inps;
@@ -3825,6 +3915,9 @@ async function calcola() {
     // Metodo Previsionale (Motore3.md §C)
     usa_metodo_previsionale: usaPrevisionale && fattStimato > 0,
     fatturato_stimato_succ:  usaPrevisionale ? fattStimato : 0,
+    // Audit di Conformità Fiscale
+    credito_precedente:           eccedenzaPrec,
+    applica_maggiorazione_luglio: g('f-scad-luglio')?.checked || false,
     // solo display (non in DB)
     _proiez:      proiez,
     _form:        inps_form,
@@ -4090,6 +4183,9 @@ async function salvaAnno() {
     // Metodo Previsionale (Motore3.md §C)
     usa_metodo_previsionale: _last.usa_metodo_previsionale || false,
     fatturato_stimato_succ:  _last.fatturato_stimato_succ  || 0,
+    // Audit di Conformità Fiscale (nuovi campi)
+    credito_precedente:           _last.credito_precedente           || 0,
+    applica_maggiorazione_luglio: _last.applica_maggiorazione_luglio || false,
     salvato_il:      new Date().toISOString(),
     updated_at:      new Date().toISOString()
   };
@@ -5009,9 +5105,20 @@ async function applicaDatiPDFSilent(anno, r) {
   // Eseguito SOLO per documenti F24 che hanno il dettaglio righe (f24_righe)
   if (r.tipo === 'f24' && r.f24_righe && r.f24_righe.length > 0) {
     try {
+      // FIX BUG4: f24_righe contiene solo le righe che hanno SUPERATO il filtro
+      // FIX C V5 (acconti anno_corrente esclusi dal calcolo). Tuttavia quelle
+      // righe rappresentano pagamenti REALI (es. 1790/2025 compensato con credito
+      // 1792/2024) e devono essere tracciate in pagamenti_effettuati con
+      // anno_periodo = annoFisc corretto, perché servono per il check ✅ scadenzario
+      // dell'anno successivo. Usiamo _lastF24RigheAll (tutte le righe pre-filtro)
+      // se disponibile, altrimenti fallback a r.f24_righe (post-filtro).
+      const righePerDB = (r._f24_righe_all && r._f24_righe_all.length > 0)
+        ? r._f24_righe_all
+        : r.f24_righe;
+
       // anno_periodo = anno del debito fiscale (da annoFisc nel rigo F24)
       // anno_pagamento = annoTarget = anno in cui è stato effettivamente pagato (principio di cassa)
-      const righeDB = r.f24_righe
+      const righeDB = righePerDB
         .filter(riga => riga.importo > 0)   // scarta righe a zero (non significative)
         .map(riga => ({
           user_id:          _user.id,
@@ -5914,10 +6021,17 @@ function generaF24Facsimile(annoArg) {
   }
 
   const anno      = d.anno || new Date().getFullYear();
-  const saldo     = Math.round(Number(d.imposta_sost)  || 0);
-  const acc1      = Math.round(Number(d.acconto_1)     || 0);
-  const acc2      = Math.round(Number(d.acconto_2)     || 0);
-  const totale    = saldo + acc1 + acc2;
+  const saldoBase  = Math.round(Number(d.imposta_sost)  || 0);
+  const acc1Base   = Math.round(Number(d.acconto_1)     || 0);
+  const acc2       = Math.round(Number(d.acconto_2)     || 0);
+  // ── Maggiorazione 0,40% per pagamento a Luglio (solo imposte erariali, NON INPS)
+  // Fonte: art.17 c.2 DPR 435/2001 — non si applica ai contributi previdenziali
+  const usaLuglio  = (annoArg !== null && annoArg !== undefined)
+    ? (d.applica_maggiorazione_luglio || false)
+    : (g('f-scad-luglio')?.checked || false);
+  const saldo  = usaLuglio ? Math.round(saldoBase * 1.004) : saldoBase;
+  const acc1   = usaLuglio ? Math.round(acc1Base  * 1.004) : acc1Base;
+  const totale = saldo + acc1 + acc2;
   const cognome   = (_profile?.cognome || '').toUpperCase();
   const nome      = (_profile?.nome    || '').toUpperCase();
   const cf        = (_profile?.codice_fiscale || '').toUpperCase();
@@ -5930,11 +6044,12 @@ function generaF24Facsimile(annoArg) {
     return ip.replace(/\B(?=(\d{3})+(?!\d))/g,'.') + ',' + dp;
   };
 
+  const scadSaldoAcc1 = usaLuglio ? `31/07/${anno+1}` : `30/06/${anno+1}`;
   // Righi da versare (filtrati se importo > 0)
   const righi = [
-    { codice:'1790', desc:'Saldo imposta sostitutiva',         annoRif: anno,    importo: saldo, scad:`30/06/${anno+1}` },
-    { codice:'1791', desc:'I Acconto (40%) imp. sostitutiva',  annoRif: anno+1,  importo: acc1,  scad:`30/06/${anno+1}` },
-    { codice:'1792', desc:'II Acconto (60%) imp. sostitutiva', annoRif: anno+1,  importo: acc2,  scad:`30/11/${anno+1}` },
+    { codice:'1790', desc:'Saldo imposta sostitutiva',         annoRif: anno,   importo: saldo, scad: scadSaldoAcc1 },
+    { codice:'1791', desc:'I Acconto (40%) imp. sostitutiva',  annoRif: anno+1, importo: acc1,  scad: scadSaldoAcc1 },
+    { codice:'1792', desc:'II Acconto (60%) imp. sostitutiva', annoRif: anno+1, importo: acc2,  scad:`30/11/${anno+1}` },
   ].filter(r => r.importo > 0);
 
   // ── 2. Base64 immagine F24 ufficiale ─────────────────────
@@ -6119,6 +6234,7 @@ function generaF24Facsimile(annoArg) {
   <p style="margin-top:10px;font-size:10px;color:#888">
     ⚠️ Facsimile generato da <strong>ForfettarioApp · Peppone Tek</strong> — non sostituisce il Modello F24 ufficiale.<br>
     Per il pagamento usa i servizi telematici: <strong>home.agenziaentrate.gov.it</strong> oppure il tuo software di contabilità.
+    ${usaLuglio ? '<br><strong style="color:#cc6600">📅 Importi maggiorati dello 0,40% per pagamento a Luglio (art.17 c.2 DPR 435/2001). La maggiorazione si applica solo a cod. 1790 e 1791, NON ai contributi INPS.</strong>' : ''}
   </p>
 </div>
 
