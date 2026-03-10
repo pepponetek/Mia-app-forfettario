@@ -1026,6 +1026,13 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
             style="flex:1;border-radius:6px;background:var(--s1);border:1px solid var(--bd)">👥 Clienti</button>
           <button class="btn btn-sm" id="adm-tab-fiscal" onclick="switchAdmTab('fiscal')"
             style="flex:1;border-radius:6px;background:transparent;border:none;color:var(--t2)">⚙️ Parametri Fiscali</button>
+          <button class="btn btn-sm" id="adm-tab-radar" onclick="switchAdmTab('radar')"
+            style="flex:1;border-radius:6px;background:transparent;border:none;color:var(--t2);position:relative">
+            🎯 Radar AI
+            <span id="radar-badge" style="display:none;position:absolute;top:2px;right:4px;
+              background:#ef4444;color:#fff;font-size:9px;font-weight:700;
+              padding:1px 5px;border-radius:20px;line-height:14px">0</span>
+          </button>
         </div>
 
         <!-- PANEL CLIENTI -->
@@ -1086,12 +1093,111 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
               <button class="btn btn-sm btn-gr" onclick="openModalMappingAdE()">➕ Aggiungi / Aggiorna Anno</button>
             </div>
             <p style="color:var(--t3);font-size:12px;margin:6px 0 12px">
-              Righi ufficiali per anno fiscale — usati da parser locale e Gemini. Fallback ai valori 2024 (LM22/LM35/LM39/LM43) se l'anno non è presente.
+              Righi ufficiali per anno fiscale — usati da parser locale e Gemini. Fallback ai valori 2024 (LM22/LM34/LM39/LM43) se l'anno non è presente.
             </p>
             <div id="tax-mapping-tbl">
               <div class="loading"><div class="spinner"></div><span>Caricamento mappature…</span></div>
             </div>
           </div>
+
+        </div><!-- fine adm-panel-fiscal -->
+
+        <!-- PANEL RADAR AI -->
+        <div id="adm-panel-radar" style="display:none">
+
+          <!-- §1 LINK RAPIDI AdE -->
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-t">🏛️ Portale AdE — Accesso Rapido</div>
+            <p style="color:var(--t3);font-size:12px;margin:6px 0 12px">
+              Sezioni ufficiali dell'Agenzia delle Entrate aggiornate in tempo reale. Usa questi link per verificare circolari, provvedimenti e modelli prima di confermare una modifica al Motore Fiscale.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <a href="https://www.agenziaentrate.gov.it/portale/web/guest/normativa-e-prassi" target="_blank" rel="noopener"
+                style="display:flex;align-items:center;gap:10px;padding:10px 14px;
+                  background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+                  text-decoration:none;color:var(--t1);transition:border-color .2s"
+                onmouseover="this.style.borderColor='var(--ac)'" onmouseout="this.style.borderColor='var(--bd)'">
+                <span style="font-size:20px">📋</span>
+                <div>
+                  <div style="font-size:13px;font-weight:600">Normativa &amp; Prassi</div>
+                  <div style="font-size:11px;color:var(--t3)">Leggi, decreti, circolari</div>
+                </div>
+                <span style="margin-left:auto;font-size:11px;color:var(--ac)">↗</span>
+              </a>
+              <a href="https://www.agenziaentrate.gov.it/portale/web/guest/schede/istanze/regime-forfetario-agevolazioni-contribuenti-minimi/regime-forfetario" target="_blank" rel="noopener"
+                style="display:flex;align-items:center;gap:10px;padding:10px 14px;
+                  background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+                  text-decoration:none;color:var(--t1);transition:border-color .2s"
+                onmouseover="this.style.borderColor='var(--ac)'" onmouseout="this.style.borderColor='var(--bd)'">
+                <span style="font-size:20px">🟡</span>
+                <div>
+                  <div style="font-size:13px;font-weight:600">Regime Forfettario</div>
+                  <div style="font-size:11px;color:var(--t3)">Scheda ufficiale AdE</div>
+                </div>
+                <span style="margin-left:auto;font-size:11px;color:var(--ac)">↗</span>
+              </a>
+              <a href="https://www.agenziaentrate.gov.it/portale/web/guest/provvedimenti" target="_blank" rel="noopener"
+                style="display:flex;align-items:center;gap:10px;padding:10px 14px;
+                  background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+                  text-decoration:none;color:var(--t1);transition:border-color .2s"
+                onmouseover="this.style.borderColor='var(--ac)'" onmouseout="this.style.borderColor='var(--bd)'">
+                <span style="font-size:20px">📢</span>
+                <div>
+                  <div style="font-size:13px;font-weight:600">Provvedimenti Recenti</div>
+                  <div style="font-size:11px;color:var(--t3)">Aggiornamenti ufficiali</div>
+                </div>
+                <span style="margin-left:auto;font-size:11px;color:var(--ac)">↗</span>
+              </a>
+              <a href="https://www.agenziaentrate.gov.it/portale/web/guest/modelli" target="_blank" rel="noopener"
+                style="display:flex;align-items:center;gap:10px;padding:10px 14px;
+                  background:var(--s2);border:1px solid var(--bd);border-radius:8px;
+                  text-decoration:none;color:var(--t1);transition:border-color .2s"
+                onmouseover="this.style.borderColor='var(--ac)'" onmouseout="this.style.borderColor='var(--bd)'">
+                <span style="font-size:20px">📑</span>
+                <div>
+                  <div style="font-size:13px;font-weight:600">Modelli Dichiarativi</div>
+                  <div style="font-size:11px;color:var(--t3)">Redditi PF, F24, istruzioni</div>
+                </div>
+                <span style="margin-left:auto;font-size:11px;color:var(--ac)">↗</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- §2 DISCREPANZE PARSER -->
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+              <span>⚠️ Discrepanze rilevate dal Parser</span>
+              <button class="btn btn-sm" onclick="loadRadarAlerts()" style="font-size:11px">🔄 Aggiorna</button>
+            </div>
+            <p style="color:var(--t3);font-size:12px;margin:6px 0 12px">
+              Il parser segnala qui ogni volta che estrae un valore tramite ricerca semantica (M3) o non trova un rigo atteso. Verifica e segna come risolto.
+            </p>
+            <div id="radar-alerts-tbl">
+              <div class="loading"><div class="spinner"></div><span>Caricamento…</span></div>
+            </div>
+          </div>
+
+          <!-- §3 ANALISI CIRCOLARE AdE -->
+          <div class="card">
+            <div class="card-t">🤖 Analisi Circolare AdE con Gemini</div>
+            <p style="color:var(--t3);font-size:12px;margin:6px 0 12px">
+              Incolla il testo di una circolare o provvedimento AdE. Gemini analizza se ci sono modifiche ai righi del Quadro LM e propone un aggiornamento alla mappatura.
+            </p>
+            <textarea id="radar-circolare-txt" rows="6"
+              placeholder="Incolla qui il testo della circolare AdE (es. Circolare n. 9/E del 2025 — Regime forfetario: modifiche al Quadro LM...)"
+              style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;
+                background:var(--s2);border:1px solid var(--bd);border-radius:6px;
+                color:var(--t1);padding:10px;resize:vertical"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn btn-gr" style="flex:1" onclick="radarAnalizzaCircolare()">
+                🔍 Analizza con Gemini
+              </button>
+              <button class="btn btn-sm" onclick="g('radar-circolare-txt').value=''">✕ Pulisci</button>
+            </div>
+            <div id="radar-proposta" style="margin-top:12px"></div>
+          </div>
+
+        </div><!-- fine adm-panel-radar -->
 
           <!-- MODAL Aggiungi/Aggiorna Anno AdE -->
           <div id="modal-mapping-ade" class="modal" style="display:none">
@@ -1108,7 +1214,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
                   <input type="text" id="map-fatturato" placeholder="LM22" value="LM22" maxlength="8">
                 </div>
                 <div class="fg"><label>Rigo INPS deducibile</label>
-                  <input type="text" id="map-inps" placeholder="LM35" value="LM35" maxlength="8">
+                  <input type="text" id="map-inps" placeholder="LM34" value="LM34" maxlength="8">
                 </div>
                 <div class="fg"><label>Rigo Imposta sostitutiva</label>
                   <input type="text" id="map-imposta" placeholder="LM39" value="LM39" maxlength="8">
@@ -1659,7 +1765,7 @@ let _pagamenti   = {};   // { anno: [ {codice_tributo, importo_debito, anno_peri
 // Nomi colonne allineati a CloudeV5.md FASE 1
 const TAX_MAPPING_DEFAULT = {
   rigo_fatturato:            'LM22',
-  rigo_contributi:           'LM35',
+  rigo_contributi:           'LM34',
   rigo_imposta_sostitutiva:  'LM39',
   rigo_eccedenza_precedente: 'LM43'
 };
@@ -1961,7 +2067,7 @@ async function loadTaxMapping() {
     (data || []).forEach(row => {
       _taxMapping[row.anno] = {
         rigo_fatturato:            row.rigo_fatturato            || 'LM22',
-        rigo_contributi:           row.rigo_contributi           || 'LM35',
+        rigo_contributi:           row.rigo_contributi           || 'LM34',
         rigo_imposta_sostitutiva:  row.rigo_imposta_sostitutiva  || 'LM39',
         rigo_eccedenza_precedente: row.rigo_eccedenza_precedente || 'LM43'
       };
@@ -2410,7 +2516,7 @@ function tryParseRPF(text) {
 
   /* ══════════════════════════════════════════════════════════════
      METODO 2: Regex esplicite sui righi dinamici (fallback)
-     Usa i righi da _taxMapping[anno] invece di LM22/LM35/LM39 fissi.
+     Usa i righi da _taxMapping[anno] invece di LM22/LM34/LM39 fissi.
      FIX v2: finestra LM39 ridotta a 200 char (era 800) per evitare
      che catturi il valore di LM35 (INPS) quando PDF.js linearizza
      le celle fuori ordine. Aggiunta verifica matematica: se il
@@ -2420,7 +2526,7 @@ function tryParseRPF(text) {
   if (fatturato === 0) {
     const mapping = getTaxMapping(anno);
     const rF = mapping.rigo_fatturato            || 'LM22';
-    const rI = mapping.rigo_contributi           || 'LM35';
+    const rI = mapping.rigo_contributi           || 'LM34';
     const rM = mapping.rigo_imposta_sostitutiva  || 'LM39';
     const IMO = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{2,},\\d{2}|\\d{1,3}(?:\\.\\d{3})+)';
     const mF = t.match(new RegExp(rF + '[\\s\\S]{0,800}?' + IMO, 'i'));
@@ -3196,8 +3302,8 @@ function tryParseF24(text, annoTarget) {
    PROMPT ESPERTO COMMERCIALISTA — inviato alla Edge Function
    Gemini lo usa come system instruction. Aggiornato per
    gestire correttamente i righi variabili tra anni di modello:
-   • Modello 2025 (redditi 2024): contributi = LM35, imposta = LM39
-   • Modello 2024 (redditi 2023): contributi = LM35, imposta = LM39
+   • Modello 2025 (redditi 2024): contributi = LM34, imposta = LM39
+   • Modello 2024 (redditi 2023): contributi = LM34, imposta = LM39
    ============================================================ */
 /* ============================================================
    EXPERT PROMPT DINAMICO — §3 Motore.md
@@ -3207,7 +3313,7 @@ function tryParseF24(text, annoTarget) {
 function buildExpertPrompt(anno, mapping) {
   const m   = mapping || getTaxMapping(anno);
   const rF  = m.rigo_fatturato            || 'LM22';
-  const rI  = m.rigo_contributi           || 'LM35';
+  const rI  = m.rigo_contributi           || 'LM34';
   const rIM = m.rigo_imposta_sostitutiva  || 'LM39';
   const rE  = m.rigo_eccedenza_precedente || 'LM43';
   return `# LOGICA DI LOCALIZZAZIONE QUADRO LM — REGIME FORFETTARIO ITALIANO
@@ -3333,7 +3439,18 @@ function normalizzaRisultato(raw, annoFallback) {
         messaggio: `⚠️ Anno ${r.anno}: modello non ancora mappato. Verifica i dati con cura prima di applicare.`
       };
       r.congruente = false;
+      // ── SENTINEL: anno futuro rilevato da Gemini → avvisa Admin ──
+      if (_profile?.ruolo === 'admin') {
+        showSentinelBadge(`Anno ${r.anno} rilevato nel PDF — righi AdE non mappati. Aggiornare tax_mapping_ade?`);
+      }
       return r;
+    }
+  }
+
+  // ── SENTINEL: anno valido ma non in _taxMapping → potrebbe servire mappatura ──
+  if (r.anno && r.anno >= 2012 && r.anno <= 2025 && !_taxMapping[r.anno]) {
+    if (_profile?.ruolo === 'admin') {
+      showSentinelBadge(`Anno ${r.anno} non presente in tax_mapping_ade — verrà usato il fallback LM34. Aggiungere mappatura?`);
     }
   }
 
@@ -6506,19 +6623,25 @@ async function loadAdmin() {
     <div class="sc"><div class="sl">Peppone Tek</div><div class="sv" style="font-size:11px;color:var(--ac)">ForfettarioApp</div></div>`;
 
   renderAdminUsers(_admData);
+  refreshRadarBadge();
 }
 
 // ── TAB SWITCHING ADMIN ─────────────────────────────────────────
 function switchAdmTab(tab) {
   g('adm-panel-clienti').style.display = tab === 'clienti' ? '' : 'none';
   g('adm-panel-fiscal').style.display  = tab === 'fiscal'  ? '' : 'none';
-  g('adm-tab-clienti').style.background = tab === 'clienti' ? 'var(--s1)' : 'transparent';
-  g('adm-tab-clienti').style.border     = tab === 'clienti' ? '1px solid var(--bd)' : 'none';
-  g('adm-tab-clienti').style.color      = tab === 'clienti' ? 'var(--t1)' : 'var(--t2)';
-  g('adm-tab-fiscal').style.background  = tab === 'fiscal'  ? 'var(--s1)' : 'transparent';
-  g('adm-tab-fiscal').style.border      = tab === 'fiscal'  ? '1px solid var(--bd)' : 'none';
-  g('adm-tab-fiscal').style.color       = tab === 'fiscal'  ? 'var(--t1)' : 'var(--t2)';
+  g('adm-panel-radar').style.display   = tab === 'radar'   ? '' : 'none';
+
+  ['clienti','fiscal','radar'].forEach(t => {
+    const btn = g('adm-tab-' + t);
+    if (!btn) return;
+    btn.style.background = tab === t ? 'var(--s1)' : 'transparent';
+    btn.style.border     = tab === t ? '1px solid var(--bd)' : 'none';
+    btn.style.color      = tab === t ? 'var(--t1)' : 'var(--t2)';
+  });
+
   if (tab === 'fiscal') { loadTaxRules(); renderTaxMappingTable(); }
+  if (tab === 'radar')  { loadRadarAlerts(); }
 }
 
 // ── TAX RULES CRUD ──────────────────────────────────────────────
@@ -6622,7 +6745,7 @@ async function renderTaxMappingTable() {
   if (!el) return;
   const anni = Object.keys(_taxMapping).sort((a,b) => b - a);
   if (!anni.length) {
-    el.innerHTML = '<p style="color:var(--t3);font-size:13px;padding:8px 0">Nessuna mappatura presente — si usa il fallback LM22/LM35/LM39/LM43.</p>';
+    el.innerHTML = '<p style="color:var(--t3);font-size:13px;padding:8px 0">Nessuna mappatura presente — si usa il fallback LM22/LM34/LM39/LM43.</p>';
     return;
   }
   el.innerHTML = `
@@ -6659,7 +6782,7 @@ function openModalMappingAdE(anno) {
   g('map-anno').value       = anno || '';
   g('map-anno').readOnly    = !!anno;
   g('map-fatturato').value  = m.rigo_fatturato           || 'LM22';
-  g('map-inps').value       = m.rigo_contributi           || 'LM35';
+  g('map-inps').value       = m.rigo_contributi           || 'LM34';
   g('map-imposta').value    = m.rigo_imposta_sostitutiva  || 'LM39';
   g('map-eccedenza').value  = m.rigo_eccedenza_precedente || 'LM43';
   g('modal-mapping-ade').style.display = 'flex';
@@ -6677,7 +6800,7 @@ async function saveMappingAdE() {
   const row = {
     anno,
     rigo_fatturato:            (g('map-fatturato').value.trim().toUpperCase() || 'LM22'),
-    rigo_contributi:           (g('map-inps').value.trim().toUpperCase()      || 'LM35'),
+    rigo_contributi:           (g('map-inps').value.trim().toUpperCase()      || 'LM34'),
     rigo_imposta_sostitutiva:  (g('map-imposta').value.trim().toUpperCase()   || 'LM39'),
     rigo_eccedenza_precedente: (g('map-eccedenza').value.trim().toUpperCase() || 'LM43')
   };
@@ -7504,6 +7627,210 @@ async function wizComplete() {
     showAuthScreen();
   }
 })();
+
+// ══════════════════════════════════════════════════════════════════
+// RADAR AI — Gestione discrepanze parser e analisi circolari AdE
+// ══════════════════════════════════════════════════════════════════
+
+async function refreshRadarBadge() {
+  if (_profile?.ruolo !== 'admin') return;
+  try {
+    const { count, error } = await sb
+      .from('admin_ai_alerts')
+      .select('id', { count: 'exact', head: true })
+      .eq('risolto', false);
+    if (error) return;
+    const badge = g('radar-badge');
+    if (!badge) return;
+    if (count > 0) {
+      badge.textContent = count;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch(e) { /* silente */ }
+}
+
+async function loadRadarAlerts() {
+  if (_profile?.ruolo !== 'admin') return;
+  const tbl = g('radar-alerts-tbl');
+  if (!tbl) return;
+  tbl.innerHTML = '<div class="loading"><div class="spinner"></div><span>Caricamento…</span></div>';
+
+  const { data, error } = await sb
+    .from('admin_ai_alerts')
+    .select('*')
+    .order('creato_il', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    tbl.innerHTML = `<div class="al al-d"><span>Errore DB: ${sanitizeHTML(error.message)}</span></div>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    tbl.innerHTML = '<div class="al al-g" style="text-align:center;padding:20px"><span>✅ Nessuna discrepanza rilevata</span></div>';
+    return;
+  }
+
+  const rows = data.map(a => `
+    <tr style="opacity:${a.risolto ? '0.45' : '1'}">
+      <td style="font-size:11px;color:var(--t3)">${new Date(a.creato_il).toLocaleDateString('it-IT')}</td>
+      <td><span style="font-size:11px;background:var(--s2);padding:2px 6px;border-radius:4px">${sanitizeHTML(a.anno_rilevato || '—')}</span></td>
+      <td style="font-size:12px;color:var(--t2)">${sanitizeHTML(a.tipo_modifica || '—')}</td>
+      <td style="font-size:12px;font-family:monospace">${sanitizeHTML(a.rigo_cercato || '—')}</td>
+      <td style="font-size:11px;color:var(--t3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${sanitizeHTML(a.valore_precedente || '')}">${sanitizeHTML(a.valore_precedente || '—')}</td>
+      <td style="font-size:12px;font-weight:600;color:var(--ac)">${sanitizeHTML(a.valore_proposto || '—')}</td>
+      <td>
+        ${a.risolto
+          ? '<span style="font-size:11px;color:#22c55e">✓ Risolto</span>'
+          : `<button class="btn btn-sm" style="font-size:10px;padding:2px 8px"
+               onclick="radarRisolviAlert('${a.id}', this)">✔ Segna risolto</button>`
+        }
+      </td>
+    </tr>`).join('');
+
+  tbl.innerHTML = `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="border-bottom:1px solid var(--bd);color:var(--t3);font-size:11px">
+            <th style="text-align:left;padding:6px 8px">Data</th>
+            <th style="text-align:left;padding:6px 8px">Anno</th>
+            <th style="text-align:left;padding:6px 8px">Tipo</th>
+            <th style="text-align:left;padding:6px 8px">Rigo</th>
+            <th style="text-align:left;padding:6px 8px">Label trovata</th>
+            <th style="text-align:left;padding:6px 8px">Valore</th>
+            <th style="text-align:left;padding:6px 8px">Stato</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  refreshRadarBadge();
+}
+
+async function radarRisolviAlert(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const { error } = await sb
+    .from('admin_ai_alerts')
+    .update({ risolto: true })
+    .eq('id', id);
+  if (error) { toast('Errore aggiornamento: ' + error.message, 'd'); if (btn) { btn.disabled = false; btn.textContent = '✔ Segna risolto'; } return; }
+  loadRadarAlerts();
+}
+
+async function radarAnalizzaCircolare() {
+  const txt = (g('radar-circolare-txt')?.value || '').trim();
+  if (!txt) { toast('Incolla prima il testo della circolare', 'w'); return; }
+
+  const propDiv = g('radar-proposta');
+  propDiv.innerHTML = '<div class="loading"><div class="spinner"></div><span>Gemini sta analizzando la circolare…</span></div>';
+
+  try {
+    const resp = await fetch(EDGE_PDF_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SKEY, 'Authorization': 'Bearer ' + ((await sb.auth.getSession()).data.session?.access_token || '') },
+      body: JSON.stringify({ radar_mode: true, testo_circolare: txt })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      propDiv.innerHTML = `<div class="al al-d"><span>Errore Gemini (${resp.status}): ${sanitizeHTML(err.slice(0,200))}</span></div>`;
+      return;
+    }
+
+    const json = await resp.json();
+    const proposta = json.proposta || json;
+    renderRadarProposta(proposta);
+  } catch(e) {
+    propDiv.innerHTML = `<div class="al al-d"><span>Errore di rete: ${sanitizeHTML(e.message)}</span></div>`;
+  }
+}
+
+function renderRadarProposta(proposta) {
+  const propDiv = g('radar-proposta');
+  if (!proposta || proposta.nessuna_modifica) {
+    propDiv.innerHTML = `<div class="al al-g" style="text-align:center;padding:16px">
+      <span>✅ Gemini non ha rilevato modifiche ai righi del Quadro LM in questo documento.</span>
+      ${proposta?.sintesi ? `<p style="margin-top:8px;font-size:12px;color:var(--t3)">${sanitizeHTML(proposta.sintesi)}</p>` : ''}
+    </div>`;
+    return;
+  }
+
+  const modifiche = proposta.modifiche || [];
+  if (!modifiche.length) { renderRadarProposta({ nessuna_modifica: true }); return; }
+
+  const rows = modifiche.map(m => `
+    <tr>
+      <td style="padding:8px;font-family:monospace;font-size:13px">${sanitizeHTML(m.campo || '—')}</td>
+      <td style="padding:8px;font-family:monospace;color:var(--t3)">${sanitizeHTML(m.rigo_precedente || '—')}</td>
+      <td style="padding:8px;font-family:monospace;font-weight:700;color:#22c55e">→ ${sanitizeHTML(m.rigo_proposto || '—')}</td>
+      <td style="padding:8px;font-size:11px;color:var(--t3)">${sanitizeHTML(m.motivazione || '')}</td>
+    </tr>`).join('');
+
+  propDiv.innerHTML = `
+    <div style="border:1px solid #f59e0b;border-radius:8px;overflow:hidden">
+      <div style="background:#f59e0b22;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:600;font-size:13px">⚠️ Gemini propone ${modifiche.length} modifica/modifiche — Anno ${sanitizeHTML(String(proposta.anno_fiscale || '?'))}</span>
+      </div>
+      ${proposta.sintesi ? `<p style="padding:8px 14px 0;font-size:12px;color:var(--t3)">${sanitizeHTML(proposta.sintesi)}</p>` : ''}
+      <div style="overflow-x:auto;padding:4px 14px 10px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--bd);color:var(--t3);font-size:11px">
+              <th style="text-align:left;padding:6px 8px">Campo</th>
+              <th style="text-align:left;padding:6px 8px">Attuale</th>
+              <th style="text-align:left;padding:6px 8px">Proposto</th>
+              <th style="text-align:left;padding:6px 8px">Motivazione</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="padding:10px 14px;display:flex;gap:8px;border-top:1px solid var(--bd)">
+        <button class="btn btn-gr" style="flex:1" onclick="radarConfermaModifiche(${JSON.stringify(proposta).replace(/"/g,'&quot;')})">✅ Conferma e aggiorna mappatura</button>
+        <button class="btn btn-sm" onclick="g('radar-proposta').innerHTML=''">✕ Rifiuta</button>
+      </div>
+    </div>`;
+}
+
+async function radarConfermaModifiche(proposta) {
+  if (!proposta?.anno_fiscale || !proposta?.modifiche?.length) return;
+
+  // Costruisce l'oggetto aggiornamento per tax_mapping_ade
+  const campiMap = { fatturato: 'rigo_fatturato', inps: 'rigo_contributi', imposta: 'rigo_imposta', eccedenza: 'rigo_eccedenza' };
+  const update = { anno_fiscale: proposta.anno_fiscale };
+  proposta.modifiche.forEach(m => {
+    const col = campiMap[m.campo];
+    if (col && m.rigo_proposto) update[col] = m.rigo_proposto;
+  });
+
+  const { error } = await sb.from('tax_mapping_ade').upsert(update, { onConflict: 'anno_fiscale' });
+  if (error) { toast('Errore salvataggio: ' + error.message, 'd'); return; }
+
+  // Audit log su admin_ai_alerts
+  const logs = proposta.modifiche.map(m => ({
+    anno_rilevato: proposta.anno_fiscale,
+    tipo_modifica: 'rigo_cambiato',
+    rigo_cercato: m.campo,
+    valore_precedente: m.rigo_precedente,
+    valore_proposto: m.rigo_proposto,
+    fonte_documento: 'circolare_ade',
+    user_id: _profile?.id,
+    risolto: true
+  }));
+  await sb.from('admin_ai_alerts').insert(logs);
+
+  // Aggiorna cache locale
+  if (typeof loadTaxMapping === 'function') await loadTaxMapping();
+
+  toast('✅ Mappatura aggiornata per anno ' + proposta.anno_fiscale, 'g');
+  g('radar-proposta').innerHTML = '';
+  g('radar-circolare-txt').value = '';
+}
 
 </script>
 </body>
