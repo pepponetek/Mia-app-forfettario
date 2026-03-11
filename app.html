@@ -326,6 +326,29 @@ textarea{resize:vertical;min-height:68px;font-size:14px}
 .mini-stat .ml{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;font-weight:700}
 .mini-stat .mv{font-family:monospace;font-size:13px;font-weight:700}
 
+/* SCADENZARIO F24 */
+.f24-sch{margin:14px 0 4px;border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.f24-sch-h{background:var(--s2);padding:7px 12px;font-size:10px;font-weight:700;color:var(--t3);
+  text-transform:uppercase;letter-spacing:.07em;display:flex;align-items:center;gap:6px}
+.f24-sch-row{display:grid;grid-template-columns:54px 1fr auto auto;gap:6px 10px;
+  padding:9px 12px;border-top:1px solid var(--bd);align-items:center}
+@media(max-width:480px){.f24-sch-row{grid-template-columns:54px 1fr;}.f24-sch-amt,.f24-sch-badge{grid-column:2}}
+.f24-sch-code{font-family:monospace;font-size:10px;font-weight:800;color:var(--t3);
+  background:var(--s2);border:1px solid var(--bd);border-radius:4px;padding:2px 5px;text-align:center}
+.f24-sch-desc{font-size:12px;color:var(--t2);line-height:1.3}
+.f24-sch-desc small{display:block;font-size:10px;color:var(--t3);margin-top:1px}
+.f24-sch-amt{font-family:monospace;font-size:13px;font-weight:700;text-align:right;white-space:nowrap}
+.f24-sch-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;text-align:center}
+.f24-sb-ok{background:var(--gr-d);color:var(--gr);border:1px solid var(--gr-b)}
+.f24-sb-no{background:var(--ye-d);color:var(--ye);border:1px solid var(--ye-b)}
+.f24-sb-cr{background:rgba(31,111,235,.1);color:var(--ac);border:1px solid var(--ac2)}
+.f24-sb-ld{background:var(--s2);color:var(--t3);border:1px solid var(--bd)}
+.f24-note-box{font-size:11px;background:rgba(63,185,80,.07);color:var(--gr);
+  border:1px solid var(--gr-b);border-radius:7px;padding:8px 10px;margin:6px 0 0;
+  display:flex;align-items:flex-start;gap:6px;line-height:1.5}
+.f24-note-box.info{background:rgba(31,111,235,.07);color:var(--ac);border-color:var(--ac2)}
+.f24-note-box.warn{background:var(--ye-d);color:var(--ye);border-color:var(--ye-b)}
+
 /* DIFF BADGE */
 .diff{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-family:monospace;
   padding:2px 6px;border-radius:8px;border:1px solid;font-weight:700}
@@ -4694,6 +4717,10 @@ function renderArchivio() {
     }
     const sal = new Date(d.salvato_il || d.created_at).toLocaleDateString('it-IT');
     const s   = d.stato || 'bozza';
+    // Saldo F24 netto (imposta sostitutiva u2212 credito anno precedente LM43)
+    const _saldoNetto    = Math.max(0, (d.imposta_sost||0) - (d.credito_precedente||0));
+    const _isCreditoLM43 = ((d.imposta_sost||0) - (d.credito_precedente||0)) < -0.5;
+    const _creditoLM43   = _isCreditoLM43 ? Math.abs((d.imposta_sost||0) - (d.credito_precedente||0)) : 0;
     return `<div class="ayc">
       <div class="ayc-h" onclick="togAyc(${d.anno})">
         <div class="ayc-left">
@@ -4718,8 +4745,14 @@ function renderArchivio() {
           <div class="mini-stat"><div class="ml">INPS</div><div class="mv">${fmt(d.contributi_inps)}</div></div>
           <div class="mini-stat" style="border-color:var(--re-b)"><div class="ml">Totale oneri</div><div class="mv" style="color:var(--re)">${fmt(d.totale_oneri)}</div></div>
           <div class="mini-stat" style="border-color:var(--gr-b)"><div class="ml">Netto disp.</div><div class="mv" style="color:var(--gr)">${fmt(d.fatturato-d.totale_oneri)}</div></div>
-          <div class="mini-stat" style="border-color:var(--ac2)"><div class="ml">Acconto ${d.anno+1}</div><div class="mv">${fmt(d.acconto_tot)}</div></div>
-          <div class="mini-stat"><div class="ml">Rate 1ª / 2ª</div><div class="mv">${d.acconto_1>0?fmt(d.acconto_1):'—'} / ${fmt(d.acconto_2)}</div></div>
+          <div class="mini-stat" style="border-color:${_isCreditoLM43?'var(--ac2)':_saldoNetto<1?'var(--gr-b)':'var(--re-b)'}">
+            <div class="ml">Saldo da versare (cod. 1792)</div>
+            <div class="mv" style="color:${_isCreditoLM43?'var(--ac)':_saldoNetto<1?'var(--gr)':'var(--re)'}">${_isCreditoLM43?('&#x1F4D7;&nbsp;'+fmt(_creditoLM43)+' credito'):fmt(_saldoNetto)}</div>
+          </div>
+          <div class="mini-stat" style="border-color:var(--ac2)">
+            <div class="ml">Acconti ${d.anno+1} (1790+1791)</div>
+            <div class="mv">${fmt(d.acconto_tot)}</div>
+          </div>
         </div>
         ${archBars}
         <div class="bdt">
@@ -4741,6 +4774,7 @@ function renderArchivio() {
                      background:transparent;color:var(--ye);cursor:pointer;flex-shrink:0"
               title="Rimuovi valore INPS versata">✕ Rimuovi</button>
           </div>` : ''}
+        <div id="f24-sch-wrap-${d.anno}"></div>
         <div style="font-size:11px;color:var(--t3);margin-top:8px">☁️ Salvato il ${sal} · Stato: <strong>${s}</strong> · ${d.acconto_note}</div>
         ${renderDocumentiAnno(d.anno)}
         <div class="pdf-progress" id="pdf-prog-${d.anno}">
@@ -4759,9 +4793,137 @@ function renderArchivio() {
   }).join('');
 }
 
-function togAyc(anno) {
+/* ============================================================
+   SCADENZARIO F24 — rendering lazily all'apertura card
+   Usa _pagamenti[anno] (caricato da togAyc) per i badge pagato/da versare
+   ============================================================ */
+function renderScadenzarioF24(d) {
+  if (!d) return '';
+  const anno        = d.anno;
+  const credito     = d.credito_precedente || 0;
+  const imposta     = d.imposta_sost || 0;
+  const differenza  = imposta - credito;
+  const saldoImporto = Math.max(0, differenza);
+  const isCreditoResiduo = differenza < -0.5;
+  const creditoResiduo   = isCreditoResiduo ? Math.abs(differenza) : 0;
+  const acc1 = d.acconto_1 || 0;
+  const acc2 = d.acconto_2 || 0;
+  const inps = d.contributi_inps || 0;
+  const annoSaldo = anno + 1;
+
+  // Badge stato pagamento
+  const badge = (codice, annoRef) => {
+    if (!_pagamenti[anno] && !_pagamenti[annoRef]) return '<span class="f24-sch-badge f24-sb-ld">⟳</span>';
+    return isTributoPagato(codice, annoRef)
+      ? '<span class="f24-sch-badge f24-sb-ok">✅ Pagato</span>'
+      : '<span class="f24-sch-badge f24-sb-no">⏳ Da versare</span>';
+  };
+
+  // Scadenze
+  const maggiorazione = d.applica_maggiorazione_luglio;
+  const scadSaldo = `Entro 30 giu ${annoSaldo} (con Mod. Redditi)`;
+  const scadAcc1  = maggiorazione
+    ? `Entro 21 lug ${annoSaldo} · maggiorazione +0,40%`
+    : `Entro 30 giu ${annoSaldo}`;
+  const scadAcc2  = `Entro 30 nov ${annoSaldo} · non rateizzabile`;
+
+  // Riga saldo 1792
+  let rigaSaldo = '';
+  if (isCreditoResiduo) {
+    rigaSaldo = `
+      <div class="f24-sch-row">
+        <span class="f24-sch-code">1792</span>
+        <div class="f24-sch-desc">Saldo tasse anno ${anno}
+          <small>Eccedenza anno prec. copre l'imposta → credito portato avanti</small></div>
+        <span class="f24-sch-amt" style="color:var(--ac)">+${fmt(creditoResiduo)}</span>
+        <span class="f24-sch-badge f24-sb-cr">✅ A credito</span>
+      </div>`;
+  } else if (saldoImporto < 1) {
+    rigaSaldo = `
+      <div class="f24-sch-row">
+        <span class="f24-sch-code">1792</span>
+        <div class="f24-sch-desc">Saldo tasse anno ${anno}
+          <small>Coperto interamente dal credito anno precedente</small></div>
+        <span class="f24-sch-amt" style="color:var(--gr)">€ 0</span>
+        <span class="f24-sch-badge f24-sb-ok">✅ Azzerato</span>
+      </div>`;
+  } else {
+    rigaSaldo = `
+      <div class="f24-sch-row">
+        <span class="f24-sch-code">1792</span>
+        <div class="f24-sch-desc">Saldo tasse anno ${anno}
+          <small>${scadSaldo}</small></div>
+        <span class="f24-sch-amt" style="color:var(--re)">${fmt(saldoImporto)}</span>
+        ${badge('1792', anno)}
+      </div>`;
+  }
+
+  // Riga I acconto 1790
+  const rigaAcc1 = acc1 > 0 ? `
+      <div class="f24-sch-row">
+        <span class="f24-sch-code">1790</span>
+        <div class="f24-sch-desc">1° anticipo tasse ${annoSaldo} — 40%
+          <small>${scadAcc1}</small></div>
+        <span class="f24-sch-amt">${fmt(acc1)}</span>
+        ${badge('1790', annoSaldo)}
+      </div>` : '';
+
+  // Riga II acconto 1791
+  const rigaAcc2 = acc2 > 0 ? `
+      <div class="f24-sch-row">
+        <span class="f24-sch-code">1791</span>
+        <div class="f24-sch-desc">2° anticipo tasse ${annoSaldo} — 60%
+          <small>${scadAcc2}</small></div>
+        <span class="f24-sch-amt">${fmt(acc2)}</span>
+        ${badge('1791', annoSaldo)}
+      </div>` : '';
+
+  // Riga INPS PXX
+  const rigaInps = inps > 0 ? `
+      <div class="f24-sch-row">
+        <span class="f24-sch-code">PXX</span>
+        <div class="f24-sch-desc">Contributi previdenziali INPS
+          <small>Gestione Separata — saldo + acconti nell'anno</small></div>
+        <span class="f24-sch-amt" style="color:var(--pu)">${fmt(inps)}</span>
+        ${badge('PXX', anno)}
+      </div>` : '';
+
+  // Note contestuali
+  const note = [];
+  if (credito > 0 && !isCreditoResiduo)
+    note.push(`✅ Credito anno prec. (LM43) <strong>${fmt(credito)}</strong> già sottratto dal saldo`);
+  if (maggiorazione)
+    note.push(`⚠️ Versamento in luglio: +0,40% su cod. 1790/1791 (art. 17 c.2 DPR 435/2001) — escluso INPS`);
+  note.push(`📌 Il 2° anticipo di novembre (cod. 1791) non può essere rateizzato`);
+
+  // Accantonamento mensile consigliato
+  const accantonamento = d.fatturato > 0 ? Math.round(d.fatturato * 0.25 / 12) : 0;
+
+  return `
+    <div class="f24-sch">
+      <div class="f24-sch-h">📅 Scadenzario F24 — anno d'imposta ${anno}</div>
+      ${rigaSaldo}${rigaAcc1}${rigaAcc2}${rigaInps}
+    </div>
+    <div class="f24-note-box warn" style="margin-top:6px">
+      <span>ℹ️</span>
+      <span>${note.join('<br>')}</span>
+    </div>
+    ${accantonamento > 0 ? `<div class="f24-note-box info" style="margin-top:5px">
+      <span>💰</span>
+      <span>Accantonamento consigliato: circa <strong>${fmt(accantonamento)}/mese</strong> (25% del fatturato) per non farti trovare impreparato a giugno</span>
+    </div>` : ''}`;
+}
+
+async function togAyc(anno) {
   const el = g('ayc-b-' + anno);
-  if (el) el.classList.toggle('open');
+  if (!el) return;
+  const opening = !el.classList.contains('open');
+  el.classList.toggle('open');
+  if (opening) {
+    if (!_pagamenti[anno]) await loadPagamenti(anno);
+    const wrap = g('f24-sch-wrap-' + anno);
+    if (wrap && _anni[anno]) wrap.innerHTML = renderScadenzarioF24(_anni[anno]);
+  }
 }
 
 /* Reset manuale INPS versata anno solare (FIX-BANNER)
