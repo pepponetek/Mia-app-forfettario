@@ -4427,12 +4427,13 @@ function renderRisultati(c) {
     </div>`;
   }
   // ── Badge ✅ PAGATO — controlla _pagamenti per ogni codice tributo ────────────
-  // 1792 = saldo imposta (anno di riferimento = c.anno, pagato nell'anno+1)
-  // 1791 = acconti (anno di riferimento = c.anno+1, pagati nell'anno+1)
+  // 1792 = saldo imposta anno c.anno (pagato giugno/luglio anno+1)
+  // 1790 = I acconto (40%) anno c.anno+1 (pagato giugno anno+1)
+  // 1791 = II acconto (60%) anno c.anno+1 (pagato novembre anno+1)
   // P10/PXX = INPS (anno di riferimento = c.anno)
   const paid1792  = isTributoPagato('1792', c.anno);
-  const paid1791a = isTributoPagato('1791', c.anno + 1); // I acconto
-  const paid1791b = paid1791a;                            // stesso codice, stesso anno rif.
+  const paid1791a = isTributoPagato('1790', c.anno + 1); // I acconto — codice 1790
+  const paid1791b = isTributoPagato('1791', c.anno + 1); // II acconto — codice 1791
   const paidP10   = isTributoPagato('P10',  c.anno) || isTributoPagato('PXX', c.anno);
 
   sc += tline('warn','⇒', `30 giugno ${c.anno+1} (oppure luglio +0,40%)`,
