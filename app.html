@@ -3217,17 +3217,21 @@ function parseSingleF24Segment(nt, annoTarget) {
   }
 
   /* ── FIX 6: Validazione matematica acconti ──────────────────────────────
-     1790 = saldo, 1791 = I acconto (40%), 1792 = II acconto (60%).
-     Se tutti e tre presenti, verifica i rapporti attesi.
+     Mapping ufficiale AdE (Risoluzione 38/E 2022):
+       1790 = I acconto (40%)  — scadenza giugno/luglio
+       1791 = II acconto (60%) — scadenza novembre (non rateizzabile)
+       1792 = Saldo            — scadenza giugno anno successivo
+     Se 1790 e 1791 entrambi presenti, verifica rapporto atteso 40%/60%.
   ────────────────────────────────────────────────────────────────────── */
   let notaAcConti = '';
   {
+    const imp1790 = righeDef.filter(r => r.causale === '1790').reduce((s, r) => s + r.importo, 0);
     const imp1791 = righeDef.filter(r => r.causale === '1791').reduce((s, r) => s + r.importo, 0);
-    const imp1792 = righeDef.filter(r => r.causale === '1792').reduce((s, r) => s + r.importo, 0);
-    if (imp1791 > 0 && imp1792 > 0) {
-      const ratioAtt = imp1792 / (imp1791 + imp1792);
-      if (Math.abs(ratioAtt - 0.6) > 0.15) {
-        notaAcConti = ' ⚠️ Ratio acconti anomalo: I acc=' + imp1791.toFixed(0) + ' II acc=' + imp1792.toFixed(0) + ' (atteso 40%/60%)';
+    if (imp1790 > 0 && imp1791 > 0) {
+      const totAcc  = imp1790 + imp1791;
+      const ratioII = imp1791 / totAcc; // II acconto (1791) deve essere ~60%
+      if (Math.abs(ratioII - 0.6) > 0.15) {
+        notaAcConti = ' ⚠️ Ratio acconti anomalo: I acc(1790)=' + imp1790.toFixed(0) + ' II acc(1791)=' + imp1791.toFixed(0) + ' (atteso 40%/60%)';
         console.warn('[F24] ' + notaAcConti);
       }
     }
@@ -3473,6 +3477,7 @@ function normalizzaRisultato(raw, annoFallback) {
     note:                    raw.note || null,
     convalida:               null,
     f24_righe:               raw.f24_righe || raw.f24_pagine || null,
+    _f24_righe_all:          raw._f24_righe_all || null,   // FIX BUG-B: propaga righe pre-filtro Fix C per salvataggio DB
     saldo_finale_f24:        parseFloat(raw.saldo_finale_f24) || 0,
     sezione_rilevata:        raw.sezione_rilevata || null,
     // affidabilita: per parse locale F24 → 'medium' se INPS o imposta trovati, 'low' altrimenti
@@ -3802,23 +3807,31 @@ async function parseTaxPDF(file) {
   // _fullPdfText contiene sempre tutto il PDF.
   const rawText = (_fullPdfText || pdf_text).toUpperCase();
 
-  const isDefinitelyRPF = rawText.includes('PERSONE FISICHE') ||
+  // ── DETECTION PRIORITÀ: F24 prima di RPF ──────────────────────────
+  // I marcatori F24 (CODICE TRIBUTO, SEZIONE ERARIO, 179x, PXX) sono univoci.
+  // L'F24 AdE contiene "PERIODO DI RIFERIMENTO" in ogni riga → non usare
+  // PERIODO D'IMPOSTA come discriminante RPF quando F24 è già confermato.
+  const isDefinitelyF24 = rawText.includes('SEZIONE ERARIO') ||
+                          rawText.includes('CODICE TRIBUTO') ||
+                          rawText.includes('MODELLO F24') ||
+                          rawText.includes('F24 ORDINARIO') ||
+                          rawText.includes('F24 SEMPLIFICATO') ||
+                          /\b179[012]\b/.test(rawText) ||
+                          rawText.includes('\nPXX\n') ||
+                          rawText.includes(' PXX ') ||
+                          rawText.includes('DPPI') ||
+                          rawText.includes('SALDO FINALE');
+
+  const isDefinitelyRPF = !isDefinitelyF24 && (
+                          rawText.includes('PERSONE FISICHE') ||
                           rawText.includes('\nRPF\n') ||
                           rawText.includes(' RPF\n') ||
                           rawText.includes('\nRPF ') ||
                           rawText.includes('MODELLO REDDITI') ||
                           rawText.includes('MODELLO RPF') ||
                           rawText.includes('QUADRO LM') ||
-                          rawText.includes('PERIODO D\'IMPOSTA') ||
-                          rawText.includes("PERIODO D\u2019IMPOSTA"); // apostrofo curvo
-
-  const isDefinitelyF24 = !isDefinitelyRPF && (
-                          rawText.includes('MODELLO F24') ||
-                          rawText.includes('F24 ORDINARIO') ||
-                          rawText.includes('F24 SEMPLIFICATO') ||
-                          rawText.includes('CODICE TRIBUTO') ||
-                          rawText.includes('SALDO FINALE') ||
-                          rawText.includes('SEZIONE ERARIO'));
+                          rawText.includes("PERIODO D\'IMPOSTA") ||
+                          rawText.includes("PERIODO D\u2019IMPOSTA")); // apostrofo curvo
 
   // Toast visibile: mostra all'utente quale tipo è stato rilevato
   if (isDefinitelyRPF) {
