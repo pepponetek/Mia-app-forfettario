@@ -3099,15 +3099,17 @@ function parseSingleF24Segment(nt, annoTarget) {
           ' (' + r.tipo + ') annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' €' + r.importo);
         return false;
       }
-      // ── FIX C V5: Esclude acconti 179x/PXX/INPS dove anno_periodo === anno_pagamento ──
-      // Regola (CloudeV5.md §FASE 3): se annoFisc === annoScad per codici di acconto,
-      // si tratta di acconti per l'anno corrente — non costituiscono saldo definitivo
-      // e non devono ridurre il debito residuo dello stesso anno.
-      // Esempio: 1791 annoFisc=2025, annoScad=2025 → II acconto 2025 pagato in 2025
-      //          NON va conteggiato come imposta sost. "saldata" per il 2025
-      const ACCONTI_V5 = /^(179[012]|PXX|P\d{2}|DPPI|CF\d{2})$/;
+      // ── FIX C V5 (rev.2): Esclude SOLO acconti imposta sostitutiva (179x) ──────
+      // Regola: 179x con annoFisc === annoScad = acconto anno corrente non ancora
+      // saldato → non va conteggiato come imposta "pagata" per quell'anno.
+      // Esempio: 1791 annoFisc=2025, annoScad=2025 → II acconto pagato nel 2025
+      //
+      // PXX / DPPI / CFxx NON sono inclusi: i contributi INPS hanno SEMPRE
+      // annoFisc === annoScad (paghi il 2025 nel 2025) — escluderli era il BUG
+      // che causava inps_versata_f24=0 e il fallback Gemini con prompt sbagliato.
+      const ACCONTI_V5 = /^(179[012])$/;
       if (r.annoFisc != null && r.annoFisc === r.annoScad && ACCONTI_V5.test(r.causale)) {
-        console.log('[F24] FIX C V5: Escluso acconto anno corrente: ' + r.causale +
+        console.log('[F24] FIX C V5: Escluso acconto imposta anno corrente: ' + r.causale +
           ' (' + r.tipo + ') annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' €' + r.importo);
         return false;
       }
@@ -3357,6 +3359,52 @@ Se ${rIM} non trovato, cerca LM38 e applica 5% o 15%. Segnala come "calcolato".
 
 ## REGOLA ASSOLUTA
 Non inventare cifre assenti. Dati parziali → congruente=false, giallo. Quadro LM assente → {"errore":"Quadro LM non rilevato.","affidabilita":"low"}`;
+}
+
+/* ============================================================
+   PROMPT GEMINI — MODELLO F24
+   Usato come fallback quando il parser locale non riesce a estrarre i valori
+   (es. PDF scansionato, formattazione non standard).
+   Chiede SOLO i dati presenti in un F24: INPS (PXX/DPPI) e imposta (179x).
+   ============================================================ */
+function buildF24Prompt(anno) {
+  return `# ESTRAZIONE DATI DA MODELLO F24 — REGIME FORFETTARIO ITALIANO
+# Anno target: ${anno || 'N/D'}
+
+## 1. IDENTIFICAZIONE SEZIONI
+Cerca "SEZIONE ERARIO" e "SEZIONE INPS". Analizza SOLO queste due sezioni.
+
+## 2. CONTRIBUTI INPS (SEZIONE INPS)
+Causali da cercare: PXX, DPPI, CF seguiti da 2 cifre, P10.
+- Somma gli importi a DEBITO di queste causali.
+- Sottrai eventuali importi a CREDITO (compensazioni) per ottenere il versamento netto.
+- Se è presente il campo "SALDO (C-D)" della sezione INPS, usa quel valore come inps_versata_f24.
+- Ignora righe dove l'anno di riferimento della causale è inferiore all'anno di scadenza (compensazioni anni precedenti).
+
+## 3. IMPOSTA SOSTITUTIVA (SEZIONE ERARIO)
+Causali da cercare: 1790 (saldo anno precedente / I acconto), 1791 (II acconto), 1792 (saldo anno corrente).
+- Somma gli importi a DEBITO di queste causali.
+- Sottrai eventuali importi a CREDITO per ottenere il netto.
+- Se è presente il campo "SALDO (A-B)" della sezione ERARIO, usalo come imposta_sostitutiva_f24.
+
+## 4. ANNO DI RIFERIMENTO
+- Cerca "Scadenza del GG-MM-AAAA" → anno fiscale = anno nella scadenza.
+- Cerca anno di riferimento accanto al codice tributo (es. "1790 2025" → anno 2025).
+- Usa l'anno più frequente tra le righe trovate.
+
+## 5. SALDO FINALE
+Cerca "SALDO FINALE" o il totale del documento. Riporta il valore come saldo_finale_f24.
+
+## 6. REGOLE LETTURA NUMERI
+- Formato italiano: punto=migliaia, virgola=decimali (es. 4.904,00 → 4904.00).
+- Importi separati da spazio: "2 369 00" → normalizza a "2.369,00" → 2369.00.
+
+## 7. OUTPUT — SOLO JSON PURO, ZERO TESTO, ZERO MARKDOWN
+{"anno":integer,"inps_versata_f24":float,"imposta_sostitutiva_f24":float,"saldo_finale_f24":float,"tipo":"f24","sezione_rilevata":"SEZIONE ERARIO/INPS","affidabilita":"high"|"medium"|"low","convalida":{"status":"verde"|"giallo"|"rosso","messaggio":"..."}}
+
+## REGOLA ASSOLUTA
+Non inventare cifre. Se una sezione è assente restituisci 0 per quel campo, non null.
+Dati parziali → affidabilita="medium", status="giallo".`;
 }
 
 /* ============================================================
@@ -3820,7 +3868,9 @@ async function parseTaxPDF(file) {
         pdf_text:      pdf_text_norm,
         is_f24:        isLikelyF24,
         page_count:    _numPages || 1,
-        expert_prompt: buildExpertPrompt(_aiAnno, getTaxMapping(_aiAnno))
+        expert_prompt: isLikelyF24
+                         ? buildF24Prompt(_aiAnno)
+                         : buildExpertPrompt(_aiAnno, getTaxMapping(_aiAnno))
       })
     });
   } catch(netErr) {
@@ -5153,8 +5203,10 @@ function apriModalConfermaAiResult(anno, r) {
       righe.push(['💰 Imposta sostitutiva (1790-1792)',   r.imposta_sostitutiva_f24]);
     if ((r.saldo_finale_f24 || 0) > 0)
       righe.push(['📋 Saldo finale F24 (verifica)',       r.saldo_finale_f24]);
-    if ((r.inps_dedotta_lm7 || 0) > 0)
-      righe.push(['🏛️ INPS deducibile (LM35)',            r.inps_dedotta_lm7]);
+    // inps_dedotta_lm7 mostrato SOLO se inps_versata_f24 è assente (Gemini ha
+    // usato il prompt RPF per fallback — mostra il valore comunque ma con label corretta)
+    if ((r.inps_dedotta_lm7 || 0) > 0 && !(r.inps_versata_f24 > 0))
+      righe.push(['🏛️ INPS versata (estratta da AI)',     r.inps_dedotta_lm7]);
   }
 
   g('pdfconf-rows').innerHTML = righe.map(([lbl, val]) =>
