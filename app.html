@@ -1457,21 +1457,21 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
     </p>
 
     <div class="ai-result-field" id="ai-f-fatturato" style="display:none">
-      <div class="arf-lbl">📊 FATTURATO IMPONIBILE — RIGO LM22 COL.3 (€)</div>
+      <div class="arf-lbl" id="ai-lbl-fatturato">📊 FATTURATO IMPONIBILE — RIGO LM22 COL.3 (€)</div>
       <div class="arf-val" id="ai-v-fatturato">—</div>
       <input type="number" class="arf-edit" id="ai-e-fatturato" min="0" step="0.01"
              placeholder="Inserisci manualmente">
     </div>
 
     <div class="ai-result-field" id="ai-f-inps-versata" style="display:none">
-      <div class="arf-lbl">🏛️ Contributi previdenziali — LM34/LM35 (€)</div>
+      <div class="arf-lbl" id="ai-lbl-inps-versata">🏛️ Contributi previdenziali — LM34/LM35 (€)</div>
       <div class="arf-val" id="ai-v-inps-versata">—</div>
       <input type="number" class="arf-edit" id="ai-e-inps-versata" min="0" step="0.01"
              placeholder="Inserisci manualmente">
     </div>
 
     <div class="ai-result-field" id="ai-f-imposta" style="display:none">
-      <div class="arf-lbl">💰 Imposta sostitutiva — LM38/LM39 (€)</div>
+      <div class="arf-lbl" id="ai-lbl-imposta">💰 Imposta sostitutiva — LM38/LM39 (€)</div>
       <div class="arf-val" id="ai-v-imposta">—</div>
       <input type="number" class="arf-edit" id="ai-e-imposta" min="0" step="0.01"
              placeholder="Inserisci manualmente">
@@ -5716,11 +5716,38 @@ function apriModalFallback(anno, r) {
   const tipoLabel = r.tipo === 'f24' ? '📋 F24' : r.tipo === 'dichiarazione' ? '📑 Dichiarazione' : '📄 Documento';
   g('ai-doc-tipo').textContent = `${tipoLabel} · Anno ${r.anno || anno} — estrazione incompleta`;
 
-  // Mostra tutti i campi vuoti per input manuale
-  ['ai-f-fatturato','ai-f-inps-versata','ai-f-imposta'].forEach(id => {
-    const el = g(id);
-    if (el) el.style.display = 'block';
-  });
+  const isF24 = r.tipo === 'f24';
+
+  // ── Adatta label al tipo documento ──────────────────────────────────
+  // F24: mostra solo INPS versata (PXX/DPPI) e Imposta versata (179x)
+  // RPF/Dichiarazione: mostra Fatturato (LM22), INPS dedotta (LM34), Imposta (LM39)
+  if (isF24) {
+    // F24 — nascondi fatturato (non presente nell'F24)
+    const fEl = g('ai-f-fatturato'); if (fEl) fEl.style.display = 'none';
+    // Aggiorna label INPS
+    const lblInps = g('ai-lbl-inps-versata');
+    if (lblInps) lblInps.textContent = '🏛️ INPS VERSATA — Contributi Gestione Separata (cod. PXX/DPPI) (€)';
+    // Aggiorna label Imposta
+    const lblImp = g('ai-lbl-imposta');
+    if (lblImp) lblImp.textContent = '💰 IMPOSTA SOSTITUTIVA VERSATA — Saldo + Acconti (cod. 1792 / 1790 / 1791) (€)';
+    // Mostra solo i 2 campi F24
+    ['ai-f-inps-versata','ai-f-imposta'].forEach(id => {
+      const el = g(id); if (el) el.style.display = 'block';
+    });
+  } else {
+    // RPF/Dichiarazione — ripristina label originali e mostra tutti i campi
+    const lblFatt = g('ai-lbl-fatturato');
+    if (lblFatt) lblFatt.textContent = '📊 FATTURATO IMPONIBILE — RIGO LM22 COL.3 (€)';
+    const lblInps = g('ai-lbl-inps-versata');
+    if (lblInps) lblInps.textContent = '🏛️ CONTRIBUTI PREVIDENZIALI — LM34/LM35 (€)';
+    const lblImp = g('ai-lbl-imposta');
+    if (lblImp) lblImp.textContent = '💰 IMPOSTA SOSTITUTIVA — LM38/LM39 (€)';
+    ['ai-f-fatturato','ai-f-inps-versata','ai-f-imposta'].forEach(id => {
+      const el = g(id); if (el) el.style.display = 'block';
+    });
+  }
+
+  // Reset valori
   ['ai-v-fatturato','ai-v-inps-versata','ai-v-imposta'].forEach(id => {
     const el = g(id); if (el) el.textContent = '—';
   });
@@ -5773,11 +5800,22 @@ async function confermaAiResult() {
 
   const updates = { updated_at: new Date().toISOString() };
 
-  // Aggiorna solo i campi presenti
-  // FIX-BANNER: inps_versata_anno_solare solo da F24, non da Dichiarazione
+  // Aggiorna solo i campi presenti — path differenziato per tipo documento
   const _tipoDoc = _aiResult ? _aiResult.tipo : null;
-  if (inpsVers > 0 && _tipoDoc === 'f24') updates.inps_versata_anno_solare = inpsVers;
-  if (imposta  > 0) updates.imposta_sost = imposta;
+  if (_tipoDoc === 'f24') {
+    // F24: campo INPS → inps_versata_anno_solare (contributi cassa)
+    //      campo Imposta → NON sovrascrivere imposta_sost calcolata
+    //      L'imposta sostitutiva dell'F24 è già pagata: non modifica il calcolo forfettario
+    if (inpsVers > 0) updates.inps_versata_anno_solare = inpsVers;
+    // Non toccare imposta_sost per F24 — è un dato del forfettario, non del pagamento
+  } else {
+    // RPF/Dichiarazione: aggiorna imposta sostitutiva calcolata
+    if (inpsVers > 0) {
+      // inps da dichiarazione = INPS dedotta (LM34), non versata anno solare
+      // Non scrivere su inps_versata_anno_solare (è riservata ai pagamenti F24)
+    }
+    if (imposta > 0) updates.imposta_sost = imposta;
+  }
 
   // Se arriva il fatturato, ricalcola tutti i valori derivati
   if (fatt > 0 && fatt !== d.fatturato) {
