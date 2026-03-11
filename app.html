@@ -3844,12 +3844,197 @@ async function parseTaxPDF(file) {
     throw new Error(msg);
   }
 
-  // Toast con risultato Gemini
+  // Toast con risultato Gemini L1
   const gTipo = json?.tipo || json?.document_type || '?';
   const gFatt = json?.fatturato || json?.fatturato_lm2 || 0;
-  toast(`🤖 AI risposta: tipo=${gTipo} fatturato=${gFatt}`, 'info', 6000);
+  toast(`🤖 AI L1: tipo=${gTipo} fatturato=${gFatt}`, 'info', 4000);
+
+  // ── GEMINI FALLBACK LIVELLO 2 ───────────────────────────────
+  // Attivato se L1 ha restituito qualità insufficiente:
+  //   · affidabilita = 'low'
+  //   · congruente = false E almeno un campo chiave mancante
+  //   · fatturato assente (estrazione completamente fallita)
+  if (!isLikelyF24 && needsGeminiL2(json)) {
+    console.log('[parseTaxPDF] L1 insufficiente → avvio Gemini L2 mirato');
+    toast('🔄 AI L1 parziale — secondo tentativo mirato...', 'info', 5000);
+    try {
+      const l2Prompt = buildL2Prompt(json, _aiAnno, getTaxMapping(_aiAnno));
+      let resp2;
+      try {
+        resp2 = await fetch(EDGE_PDF_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': 'Bearer ' + token,
+            'apikey':        SKEY
+          },
+          body: JSON.stringify({
+            pdf_text:      pdf_text_norm,
+            is_f24:        false,
+            page_count:    _numPages || 1,
+            expert_prompt: l2Prompt
+          })
+        });
+      } catch(netErr2) {
+        console.warn('[parseTaxPDF] L2 rete fallita:', netErr2.message);
+        resp2 = null;
+      }
+      if (resp2 && resp2.ok) {
+        let json2 = {};
+        try { json2 = await resp2.json(); } catch(_) {}
+        console.log('[parseTaxPDF] Risposta Gemini L2:', JSON.stringify(json2).slice(0, 300));
+        if (json2 && !json2.errore) {
+          // Merge: L2 vince sui campi che ha trovato, L1 conserva il resto
+          const merged = mergeGeminiResults(json, json2);
+          const gFatt2 = merged?.fatturato || 0;
+          toast(`✅ AI L2: fatturato=${gFatt2} (migliorato)`, 'ok', 5000);
+          return normalizzaRisultato(merged, null);
+        }
+      }
+      console.warn('[parseTaxPDF] L2 fallito o non migliorativo — uso L1');
+    } catch(l2Err) {
+      console.warn('[parseTaxPDF] Errore Gemini L2:', l2Err.message);
+    }
+  }
 
   return normalizzaRisultato(json, null);
+}
+
+/* ============================================================
+   GEMINI FALLBACK LIVELLO 2 — Helpers
+   needsGeminiL2   : decide se il retry è necessario
+   buildL2Prompt   : costruisce un prompt mirato sui campi mancanti
+   mergeGeminiResults : fonde L1 e L2, L2 vince sui campi trovati
+   ============================================================ */
+
+/**
+ * Restituisce true se la risposta Gemini L1 è di qualità insufficiente
+ * e vale la pena fare un secondo tentativo.
+ * Condizioni (qualsiasi):
+ *   1. affidabilita === 'low'
+ *   2. congruente === false  E  almeno un campo chiave è 0/null
+ *   3. fatturato assente (estrazione completamente fallita)
+ */
+function needsGeminiL2(json) {
+  if (!json || json.errore) return false;   // errore strutturale, L2 non aiuterebbe
+  const fatt    = parseFloat(json.fatturato) || parseFloat(json.fatturato_lm2) || 0;
+  const inps    = parseFloat(json.inps_versata) || parseFloat(json.inps_dedotta_lm7) || 0;
+  const imp     = parseFloat(json.imposta_dovuta) || parseFloat(json.imposta_dovuta_lm11) || 0;
+  const aff     = (json.affidabilita || '').toLowerCase();
+  const cong    = json.congruente;          // false = non congruente
+  const missing = (fatt === 0) || (inps === 0) || (imp === 0);
+
+  if (aff === 'low')                           return true;
+  if (cong === false && missing)               return true;
+  if (fatt === 0)                              return true;
+  return false;
+}
+
+/**
+ * Costruisce il prompt mirato per Gemini L2.
+ * Include: i valori già trovati da L1, i campi mancanti/errati,
+ * e istruzioni di ricerca più aggressive (es. cerca nei righi adiacenti).
+ */
+function buildL2Prompt(l1, anno, mapping) {
+  const m   = mapping || getTaxMapping(anno);
+  const rF  = m.rigo_fatturato            || 'LM22';
+  const rI  = m.rigo_contributi           || 'LM34';
+  const rIM = m.rigo_imposta_sostitutiva  || 'LM39';
+  const rE  = m.rigo_eccedenza_precedente || 'LM43';
+
+  const fatt = parseFloat(l1?.fatturato) || parseFloat(l1?.fatturato_lm2) || 0;
+  const inps = parseFloat(l1?.inps_versata) || parseFloat(l1?.inps_dedotta_lm7) || 0;
+  const imp  = parseFloat(l1?.imposta_dovuta) || parseFloat(l1?.imposta_dovuta_lm11) || 0;
+  const atec = l1?.ateco || '?';
+
+  // Calcola imposta attesa se hai fatturato e INPS
+  let impostaAttesa = '';
+  if (fatt > 0 && inps > 0) {
+    const grAteco = GRUPPI.find(gr => {
+      const raw6 = String(atec).replace(/[.\s-]/g, '');
+      const excl  = (gr.ex || []).some(e => raw6.startsWith(e.replace(/\./g,'')));
+      return !excl && gr.pre.some(p => raw6.startsWith(p.replace(/\./g,'')));
+    });
+    if (grAteco) {
+      const base = fatt * grAteco.coeff - inps;
+      impostaAttesa = `≈ €${(base * 0.15).toFixed(0)} (15%) o €${(base * 0.05).toFixed(0)} (5% startup)`;
+    }
+  }
+
+  const mancanti = [];
+  if (fatt === 0) mancanti.push(`fatturato (rigo ${rF} col.3)`);
+  if (inps === 0) mancanti.push(`contributi INPS (rigo ${rI})`);
+  if (imp === 0)  mancanti.push(`imposta sostitutiva (rigo ${rIM})${impostaAttesa ? ' — attesa ' + impostaAttesa : ''}`);
+
+  return `# GEMINI LIVELLO 2 — RICERCA MIRATA QUADRO LM (REGIME FORFETTARIO)
+# Anno: ${anno || 'N/D'} | ATECO rilevato L1: ${atec}
+# Righi attesi: Fatturato→${rF} INPS→${rI} Imposta→${rIM} Eccedenza→${rE}
+
+## COSA HA GIÀ TROVATO IL PRIMO TENTATIVO
+${fatt > 0 ? `- Fatturato (${rF}): €${fatt}` : `- Fatturato (${rF}): NON TROVATO ← CERCA QUESTO`}
+${inps > 0 ? `- INPS (${rI}): €${inps}` : `- INPS (${rI}): NON TROVATO ← CERCA QUESTO`}
+${imp > 0  ? `- Imposta (${rIM}): €${imp}` : `- Imposta (${rIM}): NON TROVATO ← CERCA QUESTO${impostaAttesa ? ' (attesa ' + impostaAttesa + ')' : ''}`}
+
+## CAMPI MANCANTI DA TROVARE
+${mancanti.length ? mancanti.map(m => '- ' + m).join('\n') : '- Verifica congruenza aritmetica: reddito lordo = fatturato × coeff ATECO; imposta = (lordo − INPS) × aliquota'}
+
+## ISTRUZIONI DI RICERCA AMPLIATA
+1. Cerca il blocco "SEZIONE II Regime forfetario" o "SEZIONE III Regime forfetario".
+2. Scorri tutti i righi dal primo LM21 fino a LM50 — non fermarti al primo valore.
+3. Per il fatturato: è in ${rF} col.3 (Componenti positivi). Può essere preceduto da "683200 86" o simile ATECO+coefficiente.
+4. Per INPS: rigo ${rI} (non ${rI === 'LM34' ? 'LM35' : 'LM34'}, che è il reddito netto). Può essere molto alto (>15.000€) nei forfettari con Gestione Separata.
+5. Per imposta: rigo ${rIM}. Se non trovato cerca LM38, LM10, LM11 — prendi il più piccolo tra i candidati con valore plausibile.
+6. Valori incollati: "${rIM}2.021,00" → rigo ${rIM} = 2021. Gestisci spazi interni: "L M 2 2" = LM22.
+7. Se il testo è disordinato: cerca 3 numeri consecutivi dove il terzo ≈ (primo×coeff−secondo)×0.15. Assegna come fatturato/INPS/imposta.
+
+## OUTPUT — SOLO JSON PURO, NIENTE TESTO, NIENTE MARKDOWN
+{"anno":integer,"ateco":"6cifre","fatturato":float,"inps_versata":float,"imposta_dovuta":float,"lm43_eccedenza":float,"tipo":"dichiarazione","sezione_rilevata":"...","affidabilita":"high"|"medium"|"low","congruente":boolean,"convalida":{"status":"verde"|"giallo"|"rosso","messaggio":"..."}}
+
+## REGOLA ASSOLUTA
+Non inventare cifre. Se non trovi un valore, ometti il campo (NON mettere 0 inventato). Dati parziali → congruente:false.`;
+}
+
+/**
+ * Fonde i risultati di Gemini L1 e L2.
+ * Strategia: L2 vince su un campo solo se L1 ce l'aveva a 0/null E L2 lo ha trovato > 0.
+ * Mantiene ateco, anno, sezione_rilevata da L1 se L2 non li migliora.
+ * L'affidabilita finale è quella migliore tra le due.
+ */
+function mergeGeminiResults(l1, l2) {
+  const pf = v => Math.max(0, parseFloat(v) || 0);
+  const l1Fatt = pf(l1?.fatturato) || pf(l1?.fatturato_lm2);
+  const l1Inps = pf(l1?.inps_versata) || pf(l1?.inps_dedotta_lm7);
+  const l1Imp  = pf(l1?.imposta_dovuta) || pf(l1?.imposta_dovuta_lm11);
+  const l2Fatt = pf(l2?.fatturato) || pf(l2?.fatturato_lm2);
+  const l2Inps = pf(l2?.inps_versata) || pf(l2?.inps_dedotta_lm7);
+  const l2Imp  = pf(l2?.imposta_dovuta) || pf(l2?.imposta_dovuta_lm11);
+  const l2Ecc  = pf(l2?.lm43_eccedenza);
+
+  // Ordine priorità affidabilita
+  const affRank = { high: 3, medium: 2, low: 1 };
+  const aff1 = (l1?.affidabilita || 'low').toLowerCase();
+  const aff2 = (l2?.affidabilita || 'low').toLowerCase();
+  const bestAff = (affRank[aff2] || 1) >= (affRank[aff1] || 1) ? aff2 : aff1;
+
+  return {
+    // Anno e ATECO: L1 ha più contesto globale, L2 usa solo il quadro LM
+    anno:              l1?.anno || l2?.anno,
+    ateco:             l1?.ateco || l2?.ateco,
+    tipo:              l1?.tipo  || l2?.tipo || 'dichiarazione',
+    sezione_rilevata:  l1?.sezione_rilevata || l2?.sezione_rilevata,
+    // Campi numerici: L2 vince se L1 era 0 e L2 ha trovato qualcosa di positivo
+    fatturato:         (l1Fatt === 0 && l2Fatt > 0) ? l2Fatt : (l1Fatt || l2Fatt),
+    inps_versata:      (l1Inps === 0 && l2Inps > 0) ? l2Inps : (l1Inps || l2Inps),
+    imposta_dovuta:    (l1Imp  === 0 && l2Imp  > 0) ? l2Imp  : (l1Imp  || l2Imp),
+    lm43_eccedenza:    pf(l1?.lm43_eccedenza) || l2Ecc,
+    // Congruenza: AND logico (entrambi devono concordare)
+    congruente:        (l1?.congruente !== false) && (l2?.congruente !== false),
+    affidabilita:      bestAff,
+    convalida:         (affRank[aff2] || 1) >= (affRank[aff1] || 1) ? l2?.convalida : l1?.convalida,
+    note:              [l1?.note, l2?.note].filter(Boolean).join(' | ') || null,
+    // _gemini_l2: flag diagnostico (accessibile da console)
+    _gemini_l2:        true
+  };
 }
 
 /* ============================================================
