@@ -47,13 +47,6 @@
       ]
     }
   ],
-  "redirects": [
-    {
-      "source": "/",
-      "destination": "/index.html",
-      "permanent": false
-    }
-  ],
   "cleanUrls": true,
   "trailingSlash": false
 }
