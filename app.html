@@ -2870,22 +2870,68 @@ function parseSingleF24Segment(nt, annoTarget) {
    *   NON il minimo del contesto allargato (che potrebbe includere anni errati).
   ────────────────────────────────────────────────────────────────────── */
 
-  // Separa SEZIONE ERARIO e SEZIONE INPS — cerca SOLO nel testo reale
-  const idxErario = testoRealeUp.indexOf('SEZIONE ERARIO');
-  const idxInps   = Math.max(testoRealeUp.indexOf('SEZIONE INPS'), testoRealeUp.indexOf('SEZIONE I.N.P.S'));
-  const idxTerzi  = testoRealeUp.indexOf('SEZIONE ALTRI ENTI');
+  /* ── FIX LAYOUT: ricerca sezioni su testo COMPLETO (nt) ─────────────────
+     PROBLEMA RILEVATO: il PDF AdE standard ha layout [boilerplate → dati]:
+       "1a COPIA PER LA BANCA"  ← idxBoilerplate trovato QUI
+       SEZIONE ERARIO           ← ma i dati reali sono QUI (dopo)
+       1792 0101 2024 2.369 00  ← i dati da parsare
+
+     testoReale = nt.slice(0, idxBoilerplate) tagliava VIA i dati reali.
+     FIX: cerchiamo SEZIONE ERARIO/INPS in nt_up (testo completo) e
+     usiamo nt per slicing. Prendiamo la PRIMA occorrenza con causali reali.
+  ────────────────────────────────────────────────────────────────────── */
+
+  // Cerca sezioni prima in testoReale (layout classico: dati→boilerplate)
+  // poi in nt completo (layout AdE: boilerplate→dati)
+  const CAUSALI_CHECK = /\b(179[012]|PXX|DPPI|CF\d{2})\b/i;
+
+  function trovaBloccoSezione(testoUp, testo, label1, label2, fineLabel) {
+    // Prova PRIMA in testoReale (classico), poi fallback su nt completo
+    let idx = testoRealeUp.indexOf(label1);
+    let usaTestoCompleto = false;
+    if (idx < 0) idx = testoRealeUp.indexOf(label2 || '');
+    if (idx < 0) {
+      // Fallback: cerca nel testo completo
+      idx = nt_up.indexOf(label1);
+      if (idx < 0 && label2) idx = nt_up.indexOf(label2);
+      usaTestoCompleto = true;
+    }
+    if (idx < 0) return { idx: -1, bloco: '' };
+
+    // Calcola fine blocco usando lo stesso testo
+    const srcUp  = usaTestoCompleto ? nt_up  : testoRealeUp;
+    const srcTxt = usaTestoCompleto ? nt     : testoReale;
+    const idxFine = fineLabel ? srcUp.indexOf(fineLabel, idx + 1) : -1;
+    const bloco = srcTxt.slice(idx, idxFine > idx ? idxFine : srcTxt.length);
+    return { idx, bloco, usaTestoCompleto };
+  }
+
+  // Trova prima tutti gli indici per calcolare i confini corretti
+  // Priorità: cerca in testoReale, poi in nt completo
+  let _srcUp  = testoRealeUp;
+  let _srcTxt = testoReale;
+  let idxErario = _srcUp.indexOf('SEZIONE ERARIO');
+  let idxInps   = Math.max(_srcUp.indexOf('SEZIONE INPS'), _srcUp.indexOf('SEZIONE I.N.P.S'));
+  let idxTerzi  = _srcUp.indexOf('SEZIONE ALTRI ENTI');
+
+  // Se non trovati in testoReale, prova su nt completo
+  if (idxErario < 0 && idxInps < 0) {
+    _srcUp  = nt_up;
+    _srcTxt = nt;
+    idxErario = _srcUp.indexOf('SEZIONE ERARIO');
+    idxInps   = Math.max(_srcUp.indexOf('SEZIONE INPS'), _srcUp.indexOf('SEZIONE I.N.P.S'));
+    idxTerzi  = _srcUp.indexOf('SEZIONE ALTRI ENTI');
+    console.log('[F24] Layout AdE: sezioni trovate in testo completo (boilerplate→dati)');
+  }
 
   const blocoErario = idxErario >= 0
-    ? testoReale.slice(idxErario, idxInps > idxErario ? idxInps : testoReale.length)
+    ? _srcTxt.slice(idxErario, idxInps > idxErario ? idxInps : _srcTxt.length)
     : '';
   const blocoInps = idxInps >= 0
-    ? testoReale.slice(idxInps, idxTerzi > idxInps ? idxTerzi : testoReale.length)
+    ? _srcTxt.slice(idxInps, idxTerzi > idxInps ? idxTerzi : _srcTxt.length)
     : '';
 
   // ── FIX B: Valida che i blocchi contengano causali reali ────────────────
-  // Se le sezioni trovate non contengono causali (cioè sono nel boilerplate),
-  // forza sezioniTrovate=0 così da usare il fallback sul testoReale completo.
-  const CAUSALI_CHECK = /\b(179[012]|PXX|DPPI|CF\d{2})\b/i;
   const erarioHaDati  = CAUSALI_CHECK.test(blocoErario);
   const inpsHaDati    = CAUSALI_CHECK.test(blocoInps);
   const sezioniTrovate = (erarioHaDati ? 1 : 0) + (inpsHaDati ? 1 : 0);
@@ -3068,9 +3114,11 @@ function parseSingleF24Segment(nt, annoTarget) {
     if (erarioHaDati) scanBloco(blocoErario, 'ERARIO');
     if (inpsHaDati)   scanBloco(blocoInps,   'INPS');
   } else {
-    // Fallback: nessuna sezione con dati trovata → scansione su testoReale
-    // (evita di catturare valori spurii dal boilerplate del template)
-    scanBloco(testoReale, 'TUTTO');
+    // Fallback: nessuna sezione con dati trovata → scansione su testo completo
+    // Usa nt (non testoReale) perché nel layout AdE i dati sono DOPO il boilerplate
+    const _testoFallback = CAUSALI_CHECK.test(nt) ? nt : testoReale;
+    console.log('[F24] Fallback scanBloco su:', CAUSALI_CHECK.test(nt) ? 'nt (completo)' : 'testoReale');
+    scanBloco(_testoFallback, 'TUTTO');
   }
 
   /* ── STEP 7: Fallback char-by-char per F24 semplificato / CAF ──────────
@@ -3079,13 +3127,14 @@ function parseSingleF24Segment(nt, annoTarget) {
   ────────────────────────────────────────────────────────────────────── */
   if (!righeRilevate.length) {
     console.log('[F24] Fallback globale char-by-char su testoReale...');
-    const allM = [...testoReale.matchAll(/\b(179[012]|PXX|DPPI|CF\d{2})\b/gi)];
+    const _src7 = CAUSALI_CHECK.test(testoReale) ? testoReale : nt;
+    const allM = [..._src7.matchAll(/\b(179[012]|PXX|DPPI|CF\d{2})\b/gi)];
     for (const m of allM) {
       const causale = m[1].toUpperCase();
       const tipo    = classificaCausale(causale);
       if (tipo === 'altro') continue;
       // Cerca il primo importo nei 300 char successivi
-      const fin  = testoReale.slice(m.index + causale.length, m.index + causale.length + 300);
+      const fin  = _src7.slice(m.index + causale.length, m.index + causale.length + 300);
       const imps = estraiImporti(fin);
       if (!imps.length) continue;
       righeRilevate.push({
@@ -3103,33 +3152,53 @@ function parseSingleF24Segment(nt, annoTarget) {
   }
 
   /* ── STEP 8: Filtro principio di cassa ─────────────────────────────────
-     Escludi pagamenti con anno-scadenza diverso da targetAnno.
-     Se la riga non ha data di scadenza, includila (non possiamo escluderla).
+     FIX v6: matching duale annoScad / annoFisc
+     
+     CASO CLASSICO: F24 pagato nell'anno target (annoScad === targetAnno)
+       Es. F24 luglio 2025 per la card 2025 → annoScad=2025=targetAnno ✓
+     
+     CASO CROSS-YEAR: F24 pagato nell'anno successivo (annoScad = targetAnno+1)
+       Es. F24 luglio 2025 per la card 2024 → annoScad=2025 ≠ targetAnno=2024
+       In questo caso usiamo annoFisc === targetAnno come criterio:
+       1792 ref 2024 pagato nel 2025 → annoFisc=2024=targetAnno ✓
+       1790 ref 2025 pagato nel 2025 → annoFisc=2025≠targetAnno ✗
   ────────────────────────────────────────────────────────────────────── */
+
+  // Determina strategia di matching:
+  // Se nessuna riga ha annoScad === targetAnno → usa annoFisc come riferimento
+  const _haMatchScad = targetAnno && righeRilevate.some(r => r.annoScad === targetAnno);
+  const _haMatchFisc = targetAnno && righeRilevate.some(r => r.annoFisc === targetAnno);
+  const _usaAnnoFisc = targetAnno && !_haMatchScad && _haMatchFisc;
+  if (_usaAnnoFisc) {
+    console.log('[F24] STEP8: nessun annoScad=' + targetAnno + ' → matching su annoFisc (F24 cross-year)');
+  }
+
   const righeFiltrate = righeRilevate.filter(r => {
-    if (!targetAnno || !r.annoScad) return true;
+    if (!targetAnno) return true;
+
+    if (_usaAnnoFisc) {
+      // ── Modalità cross-year: includi solo righe per annoFisc === targetAnno ──
+      // Esclude righe di anni diversi (es. acconti anno successivo)
+      if (r.annoFisc == null || r.annoFisc !== targetAnno) {
+        console.log('[F24] ESCLUSA (cross-year): ' + r.causale + ' annoFisc=' + r.annoFisc + ' target=' + targetAnno);
+        return false;
+      }
+      // In cross-year NON applicare Fix C (annoFisc < annoScad è la norma)
+      return true;
+    }
+
+    // ── Modalità classica: matching su annoScad ──────────────────────────
+    if (!r.annoScad) return true;
     if (r.annoScad === targetAnno) {
-      // ── FIX C (v2): Esclude versamenti di anni precedenti compensati ────
-      // Regola: se annoFisc < annoScad il versamento riguarda un debito già
-      // liquidato in un anno solare precedente → non va aggregato all'anno target.
-      // Esempi reali:
-      //   PXX  annoFisc=2024, annoScad=2025 → credito INPS compensato (non uscita)
-      //   1792 annoFisc=2024, annoScad=2025 → saldo imp.sost. 2024, pagato nel 2025
-      //      ma compensato a credito → l'unico versamento reale è 1790 annoFisc=2025
-      // La condizione si applica a TUTTI i tipi (inps, imposta) per simmetria.
+      // FIX C (v2): Esclude versamenti di anni precedenti compensati
+      // Regola: annoFisc < annoScad = debito già liquidato in anno precedente
       if (r.annoFisc != null && r.annoFisc < r.annoScad) {
         console.log('[F24] ESCLUSO versamento anno precedente: ' + r.causale +
           ' (' + r.tipo + ') annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' €' + r.importo);
         return false;
       }
-      // ── FIX C V5 (rev.2): Esclude SOLO acconti imposta sostitutiva (179x) ──────
-      // Regola: 179x con annoFisc === annoScad = acconto anno corrente non ancora
-      // saldato → non va conteggiato come imposta "pagata" per quell'anno.
-      // Esempio: 1791 annoFisc=2025, annoScad=2025 → II acconto pagato nel 2025
-      //
-      // PXX / DPPI / CFxx NON sono inclusi: i contributi INPS hanno SEMPRE
-      // annoFisc === annoScad (paghi il 2025 nel 2025) — escluderli era il BUG
-      // che causava inps_versata_f24=0 e il fallback Gemini con prompt sbagliato.
+      // FIX C V5 (rev.2): Esclude SOLO acconti imposta sostitutiva (179x) stesso anno
+      // PXX / DPPI / CFxx NON esclusi: INPS ha sempre annoFisc === annoScad
       const ACCONTI_V5 = /^(179[012])$/;
       if (r.annoFisc != null && r.annoFisc === r.annoScad && ACCONTI_V5.test(r.causale)) {
         console.log('[F24] FIX C V5: Escluso acconto imposta anno corrente: ' + r.causale +
