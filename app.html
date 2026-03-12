@@ -972,7 +972,7 @@ code{font-family:monospace;background:var(--s2);padding:1px 5px;border-radius:4p
             <div class="fg" style="margin-bottom:6px">
               <label class="cbg">
                 <input type="checkbox" id="f-scad-luglio">
-                <span>Pagamento con scadenza <strong>Luglio</strong> (+0,40% interessi su Saldo 1790 e I Acconto 1791 — art.17 c.2 DPR 435/2001)</span>
+                <span>Pagamento con scadenza <strong>Luglio</strong> (+0,40% su Saldo 1792 e I Acconto 1790 — art.17 c.2 DPR 435/2001 — esclusi INPS e cod. 1791)</span>
               </label>
             </div>
             <div class="btn-row">
@@ -4993,11 +4993,15 @@ function renderScadenzarioF24(d) {
 
   // Scadenze
   const maggiorazione = d.applica_maggiorazione_luglio;
-  const scadSaldo = `Entro 30 giu ${annoSaldo} (con Mod. Redditi)`;
+  // 1792 (saldo) e 1790 (I acconto) condividono la stessa scadenza — entrambi prorogabili a luglio
+  // 1791 (II acconto novembre) NON è soggetto alla proroga luglio — art.17 c.2 DPR 435/2001
+  const scadSaldo = maggiorazione
+    ? `Entro 21 lug ${annoSaldo} · maggiorazione +0,40% (cod. 1792)`
+    : `Entro 30 giu ${annoSaldo} (con Mod. Redditi)`;
   const scadAcc1  = maggiorazione
-    ? `Entro 21 lug ${annoSaldo} · maggiorazione +0,40%`
+    ? `Entro 21 lug ${annoSaldo} · maggiorazione +0,40% (cod. 1790)`
     : `Entro 30 giu ${annoSaldo}`;
-  const scadAcc2  = `Entro 30 nov ${annoSaldo} · non rateizzabile`;
+  const scadAcc2  = `Entro 30 nov ${annoSaldo} · non rateizzabile (non prorogabile a luglio)`;
 
   // Riga saldo 1792
   let rigaSaldo = '';
@@ -5065,7 +5069,7 @@ function renderScadenzarioF24(d) {
   if (credito > 0 && !isCreditoResiduo)
     note.push(`✅ Credito anno prec. (LM43) <strong>${fmt(credito)}</strong> già sottratto dal saldo`);
   if (maggiorazione)
-    note.push(`⚠️ Versamento in luglio: +0,40% su cod. 1790/1791 (art. 17 c.2 DPR 435/2001) — escluso INPS`);
+    note.push(`⚠️ Versamento in luglio: +0,40% su cod. 1792 (saldo) e 1790 (I acconto) — art. 17 c.2 DPR 435/2001 · cod. 1791 (novembre) escluso`);
   note.push(`📌 Il 2° anticipo di novembre (cod. 1791) non può essere rateizzato`);
 
   // Accantonamento mensile consigliato
@@ -6774,9 +6778,9 @@ function generaF24Facsimile(annoArg) {
   const scadSaldoAcc1 = usaLuglio ? `31/07/${anno+1}` : `30/06/${anno+1}`;
   // Righi da versare (filtrati se importo > 0)
   const righi = [
-    { codice:'1790', desc:'Saldo imposta sostitutiva',         annoRif: anno,   importo: saldo, scad: scadSaldoAcc1 },
-    { codice:'1791', desc:'I Acconto (40%) imp. sostitutiva',  annoRif: anno+1, importo: acc1,  scad: scadSaldoAcc1 },
-    { codice:'1792', desc:'II Acconto (60%) imp. sostitutiva', annoRif: anno+1, importo: acc2,  scad:`30/11/${anno+1}` },
+    { codice:'1792', desc:'Saldo imposta sostitutiva',         annoRif: anno,   importo: saldo, scad: scadSaldoAcc1 },
+    { codice:'1790', desc:'I Acconto (40%) imp. sostitutiva',  annoRif: anno+1, importo: acc1,  scad: scadSaldoAcc1 },
+    { codice:'1791', desc:'II Acconto (60%) imp. sostitutiva', annoRif: anno+1, importo: acc2,  scad:`30/11/${anno+1}` },
   ].filter(r => r.importo > 0);
 
   // ── 2. Base64 immagine F24 ufficiale ─────────────────────
