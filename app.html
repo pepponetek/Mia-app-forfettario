@@ -2659,16 +2659,19 @@ function splitF24Segments(nt) {
      che produce 2+ segmenti validi.
   */
 
-  const MIN_LEN = 120; // caratteri minimi perché un segmento sia considerato valido
+  const MIN_LEN = 120; // caratteri minimi per segmento senza causali (boilerplate puro → scarta)
+  // Segmenti con causali valide vengono sempre inclusi anche se corti
+  // (es. ultima pagina F24 che ha solo i dati senza intestazione)
+  const CAUSALI_SEG = /\b(179[012]|PXX|PXXR|DPPI|CF\d{2}|P10)\b/i;
 
   // ── Strategia 1: split su "Scadenza del / Eseguito il DD-MM-YYYY" ───────
   const RE1 = /(?=[Ss]cadenza\s+del\s+\d{2}[-/.]\d{2}[-/.]\d{4}|[Ee]seguito\s+il\s+\d{2}[-/.]\d{2}[-/.]\d{4})/g;
-  const s1 = nt.split(RE1).filter(s => s.trim().length > MIN_LEN);
+  const s1 = nt.split(RE1).filter(s => s.trim().length > MIN_LEN || CAUSALI_SEG.test(s));
   if (s1.length > 1) { console.log('[F24] split S1 (scadenza-data):', s1.length, 'segmenti'); return s1; }
 
   // ── Strategia 2: split su "MODELLO DI PAGAMENTO UNIFICATO" o "MODELLO F24" ─
   const RE2 = /(?=MODELLO\s+(?:DI\s+PAGAMENTO\s+UNIFICATO|F\s*24))/gi;
-  const s2 = nt.split(RE2).filter(s => s.trim().length > MIN_LEN);
+  const s2 = nt.split(RE2).filter(s => s.trim().length > MIN_LEN || CAUSALI_SEG.test(s));
   if (s2.length > 1) { console.log('[F24] split S2 (modello-header):', s2.length, 'segmenti'); return s2; }
 
   // ── Strategia 3: conta quante volte "SEZIONE ERARIO" appare nel testo ────
@@ -2685,14 +2688,14 @@ function splitF24Segments(nt) {
       const start = Math.max(0, idx - 500);
       const end   = i + 1 < idxErariList.length ? Math.max(0, idxErariList[i + 1] - 500) : nt.length;
       return nt.slice(start, end);
-    }).filter(s => s.trim().length > MIN_LEN);
+    }).filter(s => s.trim().length > MIN_LEN || CAUSALI_SEG.test(s));
     if (s3.length > 1) { console.log('[F24] split S3 (sezione-erario):', s3.length, 'segmenti'); return s3; }
   }
 
   // ── Strategia 4: split su "Scadenza" seguito da qualsiasi data compatta ──
   // Copre i casi dove i separatori sono stati rimossi: "Scadenza30072025"
   const RE4 = /(?=[Ss]cadenza\s*\d{8})/g;
-  const s4 = nt.split(RE4).filter(s => s.trim().length > MIN_LEN);
+  const s4 = nt.split(RE4).filter(s => s.trim().length > MIN_LEN || CAUSALI_SEG.test(s));
   if (s4.length > 1) { console.log('[F24] split S4 (scadenza-compatta):', s4.length, 'segmenti'); return s4; }
 
   // Nessuna strategia ha trovato più segmenti → documento singolo
@@ -2755,7 +2758,20 @@ function parseSingleF24Segment(nt, annoTarget) {
       const v = parseImporto(m[1] + ' ' + m[2]);
       if (v >= 10 && v < 200000) res.push({ v, pos: m.index });
     }
-    // Ordina per posizione di apparizione (left-to-right nel testo)
+    // FIX DPPI: importi piccoli senza separatore migliaia: "11 04" -> 11.04
+    // Lookbehind negativo (?<![.\\d]): impedisce match di cifre precedute da "." o digit.
+    // Evita falsi positivi: "904" da "3.904 00" non matchato (preceduto da ".").
+    // Il \\b sul 2° gruppo impedisce "01 20" da "01 2025" (20 non ha boundary verso 25).
+    for (const m of s.matchAll(/(?<![.\\d])(\\d{1,3})\\s+(\\d{2})\\b/g)) {
+      const candidate = parseFloat(m[1] + '.' + m[2]);
+      if (candidate >= 1 && candidate < 1000) {
+        const posM = m.index;
+        if (!res.some(r => Math.abs(r.pos - posM) < 5 && Math.abs(r.v - candidate) < 0.5)) {
+          res.push({ v: candidate, pos: posM });
+        }
+      }
+    }
+        // Ordina per posizione di apparizione (left-to-right nel testo)
     res.sort((a, b) => a.pos - b.pos);
     // Dedup per valore (float identity)
     const seen = new Set();
@@ -2954,12 +2970,58 @@ function parseSingleF24Segment(nt, annoTarget) {
      
      Verifica matematica: se C - D ≈ secondo valore, conferma la lettura.
   ────────────────────────────────────────────────────────────────────── */
-  function estraiSaldoNetto(bloco) {
+  /* estraiSaldoNetto(bloco, causaliSez)
+     causaliSez (opzionale): regex delle causali della sezione cercata.
+     Quando presente, accetta solo la riga +/- che è preceduta da quelle causali.
+     Questo permette di distinguere il totale INPS (preceduto da PXX) da quello
+     ERARIO (preceduto da 179x) anche quando i due blocchi sono mescolati. */
+  function estraiSaldoNetto(bloco, causaliSez) {
     const righe = bloco.split('\n').map(r => r.trim()).filter(r => r.length > 0);
+
+    // Helper: verifica che nelle ultime N righe ci sia la causale attesa
+    function hasCausaleNelle(idx, n, pat) {
+      if (!pat) return true; // nessun filtro → accetta tutto
+      for (let j = Math.max(0, idx - n); j < idx; j++) {
+        if (pat.test(righe[j])) return true;
+      }
+      return false;
+    }
+
+    /* ── CASE A: "TOTALE_C  TOTALE_D  SALDO  +/-" sulla stessa riga ──────
+       Formato reale AdE: " 4.915 04 2.144 00 2.771 04 +"
+       Tutti i totali di sezione su una singola riga.
+       Il saldo netto è il SECONDO valore per ordine decrescente.
+       FIX sezione: accetta solo se nelle 10 righe precedenti c'è una causale
+       della sezione attesa (es. PXX per INPS, 179x per ERARIO).
+    ─────────────────────────────────────────────────────────────────── */
+    for (let i = 0; i < righe.length; i++) {
+      const r = righe[i];
+      if (!/[+\-]\s*$/.test(r)) continue;
+      if (!hasCausaleNelle(i, 10, causaliSez)) continue; // filtra sezione sbagliata
+      const isPositivo = /\+\s*$/.test(r);
+      const rNoSegno = r.replace(/[+\-]\s*$/, '').trim();
+      const imps = estraiImporti(rNoSegno);
+      if (imps.length < 2) continue;
+      const sorted = imps.map(x => x.v).sort((a, b) => b - a);
+      const saldo = sorted[Math.min(1, sorted.length - 1)];
+      if (saldo < 1) continue;
+      // FIX saldo-zero: saldo = 0 SOLO se c'è "0 00" o "0,00" esplicito nella riga.
+      // Es. ERARIO: " 2.369 00 2.369 00 0 00 +" → "0 00" presente → saldo=0 ✓
+      // NON usare "valori uguali" come segnale: es. INPS pag2 " 3.904 00 3.904 00 +"
+      // ha valori uguali ma saldo = 3904 (nessun credito compensato, secondo valore = saldo)
+      const _haZeroEsplicito = /\b0\s+00\b|\b0,00\b/.test(rNoSegno);
+      if (_haZeroEsplicito) {
+        console.log('[F24] estraiSaldoNetto (same-line): SALDO=0 (zero esplicito in riga):', sorted);
+        return 0;
+      }
+      console.log('[F24] estraiSaldoNetto (same-line):', sorted, '→ saldo:', saldo, isPositivo ? '+' : '-');
+      return isPositivo ? saldo : -saldo;
+    }
 
     for (let i = 1; i < righe.length; i++) {
       const segno = righe[i];
       if (!/^\s*[+\-]\s*$/.test(segno)) continue;
+      if (!hasCausaleNelle(i, 10, causaliSez)) continue;
       const isPositivo = segno.includes('+');
 
       // Raccoglie importi nelle 6 righe prima del segno
@@ -3010,8 +3072,24 @@ function parseSingleF24Segment(nt, annoTarget) {
 
     return null;
   }
-  const saldoNettoInps   = inpsHaDati   ? estraiSaldoNetto(blocoInps)   : null;
-  const saldoNettoErario = erarioHaDati ? estraiSaldoNetto(blocoErario) : null;
+  // Passa regex sezione: filtra solo riga di totali della sezione corretta
+  // (necessario perché blocoInps include anche i dati ERARIO nel layout AdE)
+  const _INPS_PAT   = /\b(PXX|PXXR|DPPI|P10|CF\d{2})\b/i;
+  const _ERARIO_PAT = /\b179[012]\b/;
+  // PATCH 7 — fallback saldoNetto sul testo intero quando il segmento non ha sezioni.
+  // Accade quando splitF24Segments taglia sul "Scadenza del": i tag SEZIONE restano nel
+  // segmento boilerplate (Seg1). Seg2 e Seg3 non hanno SEZIONE INPS nel proprio testo.
+  // Soluzione sicura: se iHD=false ma il testo contiene causali INPS, chiama
+  // estraiSaldoNetto sull'intero segmento con _INPS_PAT come filtro — la funzione
+  // ignora la riga totale ERARIO perché non ha PXX/DPPI nelle righe precedenti.
+  const _segHasInps   = _INPS_PAT.test(nt);
+  const _segHasErario = _ERARIO_PAT.test(nt);
+  const saldoNettoInps = inpsHaDati
+    ? estraiSaldoNetto(blocoInps, _INPS_PAT)
+    : (_segHasInps ? estraiSaldoNetto(nt, _INPS_PAT) : null);
+  const saldoNettoErario = erarioHaDati
+    ? estraiSaldoNetto(blocoErario, _ERARIO_PAT)
+    : (_segHasErario && !_segHasInps ? estraiSaldoNetto(nt, _ERARIO_PAT) : null);
   console.log('[F24] SALDO netto INPS:', saldoNettoInps, '| ERARIO:', saldoNettoErario);
 
   console.log('[F24] v4 sezioni: ERARIO=' + idxErario + '(dati:' + erarioHaDati + ') INPS=' + idxInps + '(dati:' + inpsHaDati + ') boilerplate@' + idxBoilerplate);
@@ -3178,12 +3256,23 @@ function parseSingleF24Segment(nt, annoTarget) {
 
     if (_usaAnnoFisc) {
       // ── Modalità cross-year: includi solo righe per annoFisc === targetAnno ──
-      // Esclude righe di anni diversi (es. acconti anno successivo)
       if (r.annoFisc == null || r.annoFisc !== targetAnno) {
         console.log('[F24] ESCLUSA (cross-year): ' + r.causale + ' annoFisc=' + r.annoFisc + ' target=' + targetAnno);
         return false;
       }
-      // In cross-year NON applicare Fix C (annoFisc < annoScad è la norma)
+      // FIX CREDITI COMPENSATI: in cross-year, PXX/DPPI con annoFisc < annoScad
+      // sono crediti dell'anno precedente usati in COMPENSAZIONE ORIZZONTALE
+      // (colonna "importi a credito compensati" del modello F24), NON versamenti cash.
+      // Regola fiscale: il versamento INPS per l'anno 2024 avviene con F24 del 2024,
+      // non con F24 del 2025. L'apparizione di PXX ref 2024 in un F24 del 2025
+      // indica sempre un credito compensato, mai un versamento.
+      // I codici 179x invece sono SEMPRE versamenti (saldo imposta dell'anno) → includi.
+      const _isInpsCausale = /^(PXX|PXXR|DPPI|P10|CF\d{2}|AF|CF|AP|CP)$/i.test(r.causale);
+      if (_isInpsCausale && r.annoScad != null && r.annoFisc < r.annoScad) {
+        console.log('[F24] Cross-year: INPS credito compensato ESCLUSO: ' + r.causale +
+          ' annoFisc=' + r.annoFisc + ' annoScad=' + r.annoScad + ' (non è versamento cash)');
+        return false;
+      }
       return true;
     }
 
@@ -3246,15 +3335,16 @@ function parseSingleF24Segment(nt, annoTarget) {
      La somma delle singole righe viene usata solo come fallback.
   ────────────────────────────────────────────────────────────────────── */
   const totInpsRighe = righeDef.filter(r => r.tipo === 'inps').reduce((s, r) => s + r.importo, 0);
-  // Se il saldo di sezione è disponibile e positivo (netto debito), usalo
-  // come valore definitivo dell'INPS versata.
-  const totInps = (saldoNettoInps !== null && saldoNettoInps > 0)
+  // Usa il saldo di sezione SOLO se ci sono righe INPS filtrate per questo anno (totInpsRighe>0).
+  // Senza questo guard, saldoNettoInps calcolato per Seg2 verrebbe applicato anche a
+  // card di anni diversi (es. card 2023) dove rd=[] ma sNI è comunque valorizzato.
+  const totInps = (saldoNettoInps !== null && saldoNettoInps > 0 && totInpsRighe > 0)
     ? saldoNettoInps
     : totInpsRighe;
   if (saldoNettoInps !== null) {
     console.log('[F24] INPS: saldo-sezione=' + saldoNettoInps.toFixed(2)
       + ' | somma-righe=' + totInpsRighe.toFixed(2)
-      + (saldoNettoInps !== totInpsRighe ? ' ← SALDO vince (crediti compensati rimossi)' : ' ✔ coerenti'));
+      + (totInpsRighe > 0 && saldoNettoInps !== totInpsRighe ? ' ← SALDO vince (crediti compensati rimossi)' : totInpsRighe === 0 ? ' ← ignorato (no righe anno)' : ' ✔ coerenti'));
   }
   const totImposta = righeDef.filter(r => r.tipo === 'imposta').reduce((s, r) => s + r.importo, 0);
   const totAll     = totInps + totImposta;
