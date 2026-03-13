@@ -2387,7 +2387,20 @@ function normalizePdfText(text) {
   //   [ \t]*$     = fine riga (non spezzato da altro testo)
   t = t.replace(/\b(\d{1,3})\s+(\d{2})[ \t]*$/gm, '$1,$2');
 
-  /* 1c) PRE-PROTEZIONE date di periodo INPS/ERARIO (MM AAAA)
+  /* 1c-FIX) PROTEZIONE SPAZIO TRA IMPORTI CONSECUTIVI (Pattern C)
+     Bug: digit-collapse "(\d) (\d)" trasforma " 3.904,00 3.904,00 +" in
+     " 3.904,003.904,00 +" perché collassa "0 3" (centesimi + primo digit
+     dell'importo successivo). Conseguenze:
+       • estraiImporti trova "904,00" = €904 invece di "3.904,00" = €3904
+       • estraiSaldoNetto non trova 2 valori distinti → salta la riga
+     Root cause verificato sul F24 pagina 2 (acconto dicembre: PXX €3.904).
+     Fix: marcatore U+00B6 (¶) — non è cifra né spazio → collapse non lo tocca.
+     Inserito PRIMA di ogni importo con separatore migliaia già convertito;
+     ripristinato a spazio DOPO il collapse (step 2b).
+  ─────────────────────────────────────────────────────────────────── */
+  t = t.replace(/\s+(\d{1,3}(?:\.\d{3})+,\d{2})\b/g, '\u00B6$1'); // " 3.904,00" → "¶3.904,00"
+
+  /* 1d) PRE-PROTEZIONE date di periodo INPS/ERARIO (MM AAAA)
      Nel testo F24, le colonne "periodo da" e "periodo a" appaiono come
      "01 2025 12 2025". Il digit-collapse "(\d) (\d)" le trasforma in
      "012025122025", rendendo \b(20\d{2})\b inutilizzabile → il filtro
@@ -2403,10 +2416,9 @@ function normalizePdfText(text) {
   let prev; let n = 0;
   do { prev = t; t = t.replace(/(\d) (\d)/g, '$1$2'); n++; } while (t !== prev && n < 50);
 
-  // 2b) Ripristina i periodi INPS: "01§2025" → "01 2025"
-  //     Ora i digit attorno a § NON sono stati collassati → \b(20\d{2})\b
-  //     troverà "2025" come token isolato e il filtro crediti funzionerà.
+  // 2b) Ripristina spazi: date "01§2025"→"01 2025" e importi "¶3.904,00"→" 3.904,00"
   t = t.replace(/(\d{2})\u00A7(20\d{2})/g, '$1 $2');
+  t = t.replace(/\u00B6/g, ' '); // ripristina boundary importi (Pattern C)
 
   // 3) Separa i separatori rimasti
   t = t
@@ -4089,21 +4101,21 @@ async function parseTaxPDF(file) {
     throw new Error(msg);
   }
 
-  // Toast con risultato Gemini L1
-  const gTipo = json?.tipo || json?.document_type || '?';
-  const gFatt = json?.fatturato || json?.fatturato_lm2 || 0;
-  toast(`🤖 AI L1: tipo=${gTipo} fatturato=${gFatt}`, 'info', 4000);
+  // Toast con risultato Gemini — mostra il livello usato dal server
+  const gTipo  = json?.tipo || json?.document_type || '?';
+  const gFatt  = json?.fatturato || json?.fatturato_lm2 || 0;
+  const gLevel = json?._level || 1;
+  toast(`🤖 AI L${gLevel}: tipo=${gTipo} fatturato=${gFatt}`, 'info', 4000);
 
   // ── GEMINI FALLBACK LIVELLO 2 ───────────────────────────────
-  // Attivato se L1 ha restituito qualità insufficiente:
-  //   · affidabilita = 'low'
-  //   · congruente = false E almeno un campo chiave mancante
-  //   · fatturato assente (estrazione completamente fallita)
-  if (!isLikelyF24 && needsGeminiL2(json)) {
-    console.log('[parseTaxPDF] L1 insufficiente → avvio Gemini L2 mirato');
-    toast('🔄 AI L1 parziale — secondo tentativo mirato...', 'info', 5000);
+  // Il server ora gestisce L2 internamente (modello più capace).
+  // Il client triggera L2 esplicito solo se il server ha già restituito
+  // _level:1 con qualità insufficiente (cioè: il server L1 non si è auto-escalato).
+  // Questo caso è raro — succede solo se il server non ha rilevato la necessità di L2.
+  if (!isLikelyF24 && gLevel === 1 && needsGeminiL2(json)) {
+    console.log('[parseTaxPDF] Server L1 insufficiente → richiesta esplicita L2 server-side');
+    toast('🔄 AI L1 parziale — secondo tentativo con modello avanzato...', 'info', 5000);
     try {
-      const l2Prompt = buildL2Prompt(json, _aiAnno, getTaxMapping(_aiAnno));
       let resp2;
       try {
         resp2 = await fetch(EDGE_PDF_URL, {
@@ -4114,10 +4126,10 @@ async function parseTaxPDF(file) {
             'apikey':        SKEY
           },
           body: JSON.stringify({
-            pdf_text:      pdf_text_norm,
-            is_f24:        false,
-            page_count:    _numPages || 1,
-            expert_prompt: l2Prompt
+            pdf_text:   pdf_text_norm,
+            is_f24:     false,
+            page_count: _numPages || 1,
+            force_level: 2    // chiede esplicitamente il modello avanzato
           })
         });
       } catch(netErr2) {
@@ -4129,10 +4141,9 @@ async function parseTaxPDF(file) {
         try { json2 = await resp2.json(); } catch(_) {}
         console.log('[parseTaxPDF] Risposta Gemini L2:', JSON.stringify(json2).slice(0, 300));
         if (json2 && !json2.errore) {
-          // Merge: L2 vince sui campi che ha trovato, L1 conserva il resto
           const merged = mergeGeminiResults(json, json2);
           const gFatt2 = merged?.fatturato || 0;
-          toast(`✅ AI L2: fatturato=${gFatt2} (migliorato)`, 'ok', 5000);
+          toast(`✅ AI L2: fatturato=${gFatt2} (modello avanzato)`, 'ok', 5000);
           return normalizzaRisultato(merged, null);
         }
       }
@@ -4295,8 +4306,7 @@ async function calcola() {
   if (!isFinite(fatt)) { toast('⚠️ Fatturato: valore non valido', 'err'); return; }
 
   const gr       = GRUPPI[gi];
-  const coeff    = gr.coeff;
-  const aliq     = parseFloat(g('f-aliq').value) || 0.15; // fallback ordinario se select vuoto
+  const aliq     = parseFloat(g('f-aliq').value) || 0.15;
   const tipo     = g('f-inps').value;
   const deduci   = g('f-deduci').checked;
   const noAoc    = g('f-noaoc').checked;
@@ -4306,184 +4316,127 @@ async function calcola() {
   const prevAnno = _anni[anno - 1];
 
   // PRINCIPIO DI CASSA (anticipato) — carica i pagamenti PRIMA del calcolo
-  // così inpsPerDeduzione può usare i dati reali dal DB
   await loadPagamenti(anno);
 
-  const proiez   = mese < 12 ? (fatt / mese) * 12 : fatt;
-  const r_forf   = fatt * coeff;
-
-  // INPS
-  let c_inps = 0, inps_desc = '', inps_form = '';
-  if (tipo === 'gs' || tipo === 'gs-pen') {
-    const a = INPS_INFO[tipo].a;
-    c_inps    = r_forf * a;
-    inps_desc = INPS_INFO[tipo].desc;
-    inps_form = `${fmt(r_forf)} × ${(a*100).toFixed(2)}%`;
-  } else if (tipo === 'art' || tipo === 'com') {
-    const info = INPS_INFO[tipo];
-    inps_desc  = info.desc;
-    if (r_forf <= info.min) {
-      c_inps    = info.fisso;
-      inps_form = 'Contributi minimi fissi su minimale';
-    } else {
-      const ecc = r_forf - info.min;
-      c_inps    = info.fisso + ecc * info.ae;
-      inps_form = `${fmt(info.fisso)} + (${fmt(ecc)} × ${(info.ae*100).toFixed(2)}%)`;
-    }
-  } else if (tipo === 'cassa') {
-    const pct = (parseFloat(g('f-cassa').value) || 14.5) / 100;
-    c_inps    = r_forf * pct;
-    inps_desc = `Cassa Professionale — ${(pct*100).toFixed(1)}%`;
-    inps_form = `${fmt(r_forf)} × ${(pct*100).toFixed(1)}%`;
-  } else {
-    inps_desc = 'Nessun contributo'; inps_form = '—';
-  }
-
-  // PRINCIPIO DI CASSA — sorgenti deduzione INPS in ordine di priorità (§ LM35):
-  // 1) Input manuale utente (f-inps-versata)
-  // 2) Auto da DB: pagamenti_effettuati tipo='inps' con anno_pagamento == anno
-  // 3) Record anno corrente già salvato con inps_versata_anno_solare (da F24 caricato)
-  // 4) Contributi reali anno precedente da RPF caricato (pagati nell'anno solare corrente)
-  // 5) Fallback: INPS stimata teorica
-  const inpsVersataInput    = parseFloat(g('f-inps-versata')?.value) || 0;
-  const inpsAutoCassa       = (_pagamenti[anno] || [])
-    .filter(p => p.anno_pagamento === anno && p.tipo === 'inps')
-    .reduce((s, p) => s + (p.importo_debito || 0), 0);
-  const inpsDaRecordSalvato = (_anni[anno]   && _anni[anno].inps_versata_anno_solare)   || 0;
-  const inpsDaRPFPrecedente = (_anni[anno-1] && _anni[anno-1].contributi_inps)          || 0;
-  const inpsPerDeduzione = deduci
-    ? (inpsVersataInput    > 0 ? inpsVersataInput
-     : inpsAutoCassa       > 0 ? inpsAutoCassa
-     : inpsDaRecordSalvato > 0 ? inpsDaRecordSalvato
-     : inpsDaRPFPrecedente > 0 ? inpsDaRPFPrecedente
-     : c_inps)
-    : c_inps;
-  // Log sorgente usata per debug trasparente
-  if      (inpsVersataInput    > 0) { /* input manuale — già evidente in UI */ }
-  else if (inpsAutoCassa       > 0) { console.log('[calcola] INPS cassa AUTO pagamenti DB anno=' + anno + ' → €' + inpsAutoCassa.toFixed(2)); }
-  else if (inpsDaRecordSalvato > 0) { console.log('[calcola] INPS cassa da record salvato anno=' + anno + ' → €' + inpsDaRecordSalvato.toFixed(2)); }
-  else if (inpsDaRPFPrecedente > 0) { console.log('[calcola] INPS cassa da RPF anno prec.' + (anno-1) + ' → €' + inpsDaRPFPrecedente.toFixed(2)); }
-
-  const r_imp          = deduci ? Math.max(0, r_forf - inpsPerDeduzione) : r_forf;
-  // LM43 – Crediti anno precedente: priorità a input manuale, poi dato DB estratto da PDF
-  const creditiManuali = parseFloat(g('f-crediti-prec')?.value) || 0;
-  const eccedenzaDB    = (_anni[anno] && _anni[anno].eccedenza_precedente) || 0;
-  const eccedenzaPrec  = creditiManuali > 0 ? creditiManuali : eccedenzaDB;
-  // Popola campo manuale se vuoto e DB ha un valore (da PDF caricato)
-  if (eccedenzaDB > 0 && creditiManuali === 0 && g('f-crediti-prec')) {
-    g('f-crediti-prec').placeholder = `${eccedenzaDB.toFixed(2)} (da PDF — clicca per sovrascrivere)`;
-  }
-  const imp_sost_lordo = r_imp * aliq;
-  const imp_sost       = Math.max(0, imp_sost_lordo - eccedenzaPrec);
-  const tot_oneri      = imp_sost + c_inps;
-
-  // STORICO — obbligo 3 anni per previsione F24 affidabile
+  // Valori display-only calcolati client-side (non fiscali)
+  const proiez      = mese < 12 ? (fatt / mese) * 12 : fatt;
   const anniSalvati = Object.keys(_anni).length;
   const storicoOk   = anniSalvati >= 3;
 
-  // ACCONTI — Metodo Storico Granitico (art.17 TUIR)
-  // Base acconti = imposta dovuta anno precedente (LM11 prev) se disponibile
-  // altrimenti usa imposta corrente (stima)
-  let acc1 = 0, acc2 = 0, acc_tot = 0, acc_note = '';
-  const usaPrevisionale = g('f-usa-previsionale')?.checked || false;
-  const fattStimato     = parseFloat(g('f-fatt-stimato')?.value) || 0;
-  let baseAcconti = prevAnno ? prevAnno.imposta_sost : imp_sost;
+  // LM43 — eccedenza precedente: priorità input manuale, poi DB
+  const creditiManuali = parseFloat(g('f-crediti-prec')?.value) || 0;
+  const eccedenzaDB    = (_anni[anno] && _anni[anno].eccedenza_precedente) || 0;
+  const eccedenzaPrec  = creditiManuali > 0 ? creditiManuali : eccedenzaDB;
+  if (eccedenzaDB > 0 && creditiManuali === 0 && g('f-crediti-prec')) {
+    g('f-crediti-prec').placeholder = `${eccedenzaDB.toFixed(2)} (da PDF — clicca per sovrascrivere)`;
+  }
 
-  if (usaPrevisionale && fattStimato > 0) {
-    // Metodo Previsionale (art.17 TUIR): ricalcola l'imposta attesa sul fatturato stimato
-    // Usa INPS stimata corrente come approssimazione (LM35 non ancora noto per anno successivo)
-    const r_forf_stim = fattStimato * coeff;
-    const c_inps_stim = c_inps; // approssimazione: stessa struttura INPS anno corrente
-    const r_imp_stim  = deduci ? Math.max(0, r_forf_stim - c_inps_stim) : r_forf_stim;
-    baseAcconti = Math.max(0, r_imp_stim * aliq);
-    acc_note = `📉 Metodo Previsionale · stima ${fmt(fattStimato)} · imp.attesa ${fmt(baseAcconti)}`;
+  const inpsVersataInput = parseFloat(g('f-inps-versata')?.value) || 0;
+  const cassaPct         = parseFloat(g('f-cassa')?.value) || 14.5;
+  const usaPrevisionale  = g('f-usa-previsionale')?.checked || false;
+  const fattStimato      = parseFloat(g('f-fatt-stimato')?.value) || 0;
+
+  // ── CALCOLO SERVER-SIDE tramite Edge Function calculate-tax ──────────────────
+  // L'AI estrae i dati grezzi; la Edge Function li certifica lato server.
+  // Nessuna matematica fiscale qui: tutta la logica è nella Edge Function.
+  let calc;
+  try {
+    const { data, error: calcErr } = await sb.functions.invoke('calculate-tax', {
+      body: {
+        anno,
+        fatturato:                    fatt,
+        codice_ateco:                 ateco || '00',
+        inps_tipo:                    tipo,
+        inps_versata_manuale:         inpsVersataInput > 0 ? inpsVersataInput : undefined,
+        cassa_pct:                    cassaPct,
+        deduci_inps:                  deduci,
+        aliquota:                     aliq,
+        credito_precedente:           eccedenzaPrec,
+        is_primo_anno:                noAoc,
+        imposta_prev_anno:            prevAnno?.imposta_sost,
+        inps_prev_anno:               prevAnno?.contributi_inps,
+        usa_metodo_previsionale:      usaPrevisionale && fattStimato > 0,
+        fatturato_stimato_succ:       fattStimato > 0 ? fattStimato : undefined,
+        applica_maggiorazione_luglio: g('f-scad-luglio')?.checked || false,
+      }
+    });
+    if (calcErr) throw calcErr;
+    calc = data;
+  } catch (e) {
+    toast('❌ Calcolo server non disponibile: ' + (e?.message || e), 'err');
+    console.error('[calcola] Edge Function error:', e);
+    return;
+  }
+
+  console.log('[calcola] ✅ EF OK | ATECO:', calc.ateco_match,
+    '| coeff:', calc.coefficiente, '| INPS fonte:', calc.inps_fonte,
+    '| r_forf:', calc.reddito_forf, '| r_imp:', calc.reddito_imp,
+    '| imp_sost:', calc.imposta_sost);
+
+  // ── Formula INPS display (ricostruita client-side — solo UI, non fiscale) ────
+  let inps_form = '';
+  const rForf = calc.reddito_forf;
+  if (tipo === 'gs' || tipo === 'gs-pen') {
+    const a = INPS_INFO[tipo].a;
+    inps_form = `${fmt(rForf)} × ${(a*100).toFixed(2)}%`;
+  } else if (tipo === 'art' || tipo === 'com') {
+    const info = INPS_INFO[tipo];
+    inps_form = rForf <= info.min
+      ? 'Contributi minimi fissi su minimale'
+      : `${fmt(info.fisso)} + (${fmt(rForf - info.min)} × ${(info.ae*100).toFixed(2)}%)`;
+  } else if (tipo === 'cassa') {
+    inps_form = `${fmt(rForf)} × ${cassaPct.toFixed(1)}%`;
   } else {
-    acc_note = prevAnno
-      ? `Base storica LM11 anno ${anno-1}: ${fmt(prevAnno.imposta_sost)}`
-      : `Base: stima anno ${anno} (nessun storico)`;
+    inps_form = '—';
   }
 
-  const doAcc = !noAoc && baseAcconti > S_ACC;
-  if (doAcc) {
-    acc_tot  = baseAcconti;
-    // Preserva la nota previsionale se attiva, altrimenti usa nota storica
-    if (!usaPrevisionale) {
-      acc_note = prevAnno
-        ? `Base storica LM11 anno ${anno-1}: ${fmt(prevAnno.imposta_sost)}`
-        : `Base: stima anno ${anno} (nessun storico)`;
-    }
-    if (acc_tot > S_DUE) { acc1 = acc_tot * .40; acc2 = acc_tot * .60; }
-    else { acc2 = acc_tot; }
-  } else {
-    acc_note = noAoc
-      ? 'Primo anno attività — nessun acconto'
-      : `Imposta base ≤ €${S_ACC.toFixed(2)}: esonero da acconti`;
-  }
-
-  // Salva per il form di salvataggio (nomi = colonne DB)
-  // — Acconti INPS P10 (Gestione Separata) — 80% del saldo anno precedente
-  // FIX v2: la normativa calcola l'acconto sul DEBITO INPS DELL'ANNO PRECEDENTE
-  // (non su quello corrente). Se prevAnno.contributi_inps è disponibile, usarlo.
-  // Se non c'è storico (primo anno), si usa c_inps corrente come stima.
-  let acc_inps_1 = 0, acc_inps_2 = 0, acc_inps_tot = 0;
-  if ((tipo === 'gs' || tipo === 'gs-pen') && c_inps > 0) {
-    const baseInps   = (prevAnno && prevAnno.contributi_inps > 0) ? prevAnno.contributi_inps : c_inps;
-    acc_inps_tot = Math.round(baseInps * 0.80);
-    acc_inps_1   = Math.round(acc_inps_tot / 2); // 40% — giugno anno+1
-    acc_inps_2   = acc_inps_tot - acc_inps_1;     // 40% — novembre anno+1
-  }
-
+  // ── _last dai valori certificati dalla Edge Function ─────────────────────────
   _last = {
     anno, ateco,
     gruppo_idx:      gi,
     gruppo_nome:     gr.name,
-    coefficiente:    coeff,
-    aliquota:        aliq,
+    coefficiente:    calc.coefficiente,
+    aliquota:        calc.aliquota,
     inps_tipo:       tipo,
-    inps_desc,
-    deduci_inps:     deduci,
+    inps_desc:       calc.inps_desc,
+    deduci_inps:     calc.deduci_inps,
     mese_rif:        mese,
-    is_primo_anno:   noAoc,
+    is_primo_anno:   calc.is_primo_anno,
     inps_versata_anno_solare: inpsVersataInput > 0 ? inpsVersataInput : null,
-    // valori calcolati
-    fatturato:       fatt,
-    reddito_forf:    r_forf,
-    contributi_inps: c_inps,
-    reddito_imp:     r_imp,
-    imposta_sost:    imp_sost,
-    totale_oneri:    tot_oneri,
-    acconto_1:       acc1,
-    acconto_2:       acc2,
-    acconto_tot:     acc_tot,
-    acconto_note:    acc_note,
-    acconto_inps_1:  acc_inps_1,
-    acconto_inps_2:  acc_inps_2,
-    acconto_inps_tot:acc_inps_tot,
-    // Metodo Previsionale (Motore3.md §C)
+    fatturato:       calc.fatturato,
+    reddito_forf:    calc.reddito_forf,
+    contributi_inps: calc.contributi_inps,
+    reddito_imp:     calc.reddito_imp,
+    imposta_sost:    calc.imposta_sost,
+    totale_oneri:    calc.totale_oneri,
+    acconto_1:       calc.acconto_1,
+    acconto_2:       calc.acconto_2,
+    acconto_tot:     calc.acconto_tot,
+    acconto_note:    calc.acconto_note,
+    acconto_inps_1:  calc.acconto_inps_1,
+    acconto_inps_2:  calc.acconto_inps_2,
+    acconto_inps_tot:calc.acconto_inps_tot,
     usa_metodo_previsionale: usaPrevisionale && fattStimato > 0,
     fatturato_stimato_succ:  usaPrevisionale ? fattStimato : 0,
-    // Audit di Conformità Fiscale
-    credito_precedente:           eccedenzaPrec,
-    applica_maggiorazione_luglio: g('f-scad-luglio')?.checked || false,
-    // solo display (non in DB)
+    credito_precedente:           calc.credito_precedente,
+    applica_maggiorazione_luglio: calc.applica_maggiorazione_luglio,
     _proiez:      proiez,
     _form:        inps_form,
     _prev:        prevAnno,
-    _doAcc:       doAcc,
+    _doAcc:       calc.acconto_tot > S_ACC,
     _storicoOk:   storicoOk,
-    _anniSalvati: anniSalvati
+    _anniSalvati: anniSalvati,
+    _efFonte:     calc.inps_fonte,
+    _efAteco:     calc.ateco_match,
   };
 
-  // _pagamenti[anno] già caricato all'inizio di calcola()
-
   // ── GAP #3 CloudeV5 FASE 3 — Audit Banner da calcola() ──────────────────
-  // Se esiste un dato storico validato da PDF per l'anno, confronta
-  // l'imposta sostitutiva teorica con quella registrata (soglia 1%).
-  // Il banner si aggiorna anche visivamente con il badge stato form.
+  // Confronta l'imposta certificata server-side con quella salvata da PDF.
+  // imp_sost ora proviene dalla Edge Function (_last.imposta_sost).
   aggiornaStatoForm(anno);
   const recAnno = _anni[anno];
   if (recAnno && recAnno.imposta_sost > 0 && recAnno.stato === 'definitivo') {
-    const impTeor  = imp_sost;
+    const impTeor  = _last.imposta_sost;
     const impPDF   = recAnno.imposta_sost;
     const diffPct  = Math.abs(impTeor - impPDF) / impPDF * 100;
     const mapping  = getTaxMapping(anno);
@@ -4498,11 +4451,9 @@ async function calcola() {
           `Verifica con il tuo commercialista.`
       });
     } else {
-      // Nessuna incongruenza: nascondi banner residuo
       aggiornaAuditBanner({ stato: 'verde', messaggio: '' });
     }
   } else {
-    // Nessun PDF registrato: nascondi banner
     aggiornaAuditBanner({ stato: 'verde', messaggio: '' });
   }
 
@@ -7218,6 +7169,9 @@ async function loadAdmin() {
   }
   g('adm-tbl').innerHTML = '<div class="loading"><div class="spinner"></div><span>Caricamento...</span></div>';
 
+  // Controlla alert Sentinel AdE in background (badge rosso se ci sono pending)
+  checkSentinelAlerts();
+
   // ⚠️  Admin vede SOLO dati anagrafici — nessun dato fiscale
   const { data: profiles, error: pe } = await sb
     .from('profiles')
@@ -7448,6 +7402,42 @@ function confirmSentinelUpdate() {
   if (badge) badge.style.display = 'none';
   switchAdmTab('fiscal');
   toast('✅ Sezione Parametri Fiscali aperta per la revisione manuale.', 'ok', 5000);
+}
+
+// ── SENTINEL: polling automatico su admin_ai_alerts ──────────────────────────
+// Eseguito all'apertura della Dashboard Admin.
+// Cerca alert con risolto=false → mostra badge rosso con il messaggio Gemini.
+// L'admin può cliccare il badge → confirmSentinelUpdate() → apre la sezione
+// Parametri Fiscali per applicare manualmente le modifiche proposte.
+async function checkSentinelAlerts() {
+  if (_profile?.ruolo !== 'admin') return;
+  try {
+    const { data: alerts, error } = await sb
+      .from('admin_ai_alerts')
+      .select('id, tipo_modifica, rigo_cercato, valore_proposto, creato_il')
+      .eq('risolto', false)
+      .order('creato_il', { ascending: false })
+      .limit(5);
+
+    if (error || !alerts || alerts.length === 0) {
+      const badge = g('sentinel-badge');
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+
+    // Costruisce il messaggio dal primo alert (il più recente)
+    const latest = alerts[0];
+    const tipoLabel = latest.tipo_modifica || 'Modifica parametri';
+    const rigoPart  = latest.rigo_cercato  ? ` su ${latest.rigo_cercato}`  : '';
+    const valPart   = latest.valore_proposto ? `: ${latest.valore_proposto.substring(0, 40)}` : '';
+    const msg = `${tipoLabel}${rigoPart}${valPart}`;
+    showSentinelBadge(`${msg} (${alerts.length} alert${alerts.length > 1 ? 's' : ''})`);
+
+    console.log('[Sentinel] Alert non risolti:', alerts.length, '| tipo:', tipoLabel,
+      '| creato:', new Date(latest.creato_il).toLocaleDateString('it-IT'));
+  } catch (e) {
+    console.warn('[Sentinel] Errore polling:', e);
+  }
 }
 
 // Pannello admin: carica lista utenti e anni
