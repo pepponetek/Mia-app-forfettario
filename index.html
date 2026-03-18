@@ -1202,20 +1202,27 @@ try {
 
 // Se l'utente è già loggato → manda direttamente all'app
 if(sb) {
+  // GUARD: garantisce un unico replace('/app.html') anche se getSession e
+  // onAuthStateChange scattano entrambi (es. utente già loggato che torna
+  // sulla landing, o doppio trigger dopo signInWithPassword).
+  let _navigating = false;
+  function goToApp() {
+    if (_navigating) return;
+    _navigating = true;
+    window.location.replace('/app.html');
+  }
+
+  // Utente già loggato che torna sulla landing → redirect immediato
   sb.auth.getSession().then(({ data: { session } }) => {
-    if (session?.user) window.location.replace('/app');
+    if (session?.user) goToApp();
   });
 
-  // CRITICO: getSession() sopra gira UNA VOLTA all'avvio, PRIMA che la SDK
-  // abbia elaborato il #access_token nell'URL (es. link di conferma email).
-  // onAuthStateChange invece ascolta in tempo reale:
-  // - INITIAL_SESSION: scatta quando la SDK processa il token dall'URL
-  // - SIGNED_IN: scatta dopo un login esplicito
-  // Senza questo, l'utente che clicca il link di conferma rimane bloccato
-  // sulla landing page anche se è correttamente loggato.
+  // onAuthStateChange gestisce TUTTI i casi:
+  // - INITIAL_SESSION: token dall'URL (link conferma email, OAuth callback)
+  // - SIGNED_IN: dopo signInWithPassword/signInWithOAuth completati
   sb.auth.onAuthStateChange((event, session) => {
     if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
-      window.location.replace('/app');
+      goToApp();
     }
   });
 }
@@ -1245,8 +1252,8 @@ async function doLogin(){
       showMsg('login', msg, 'err'); 
       return; 
     }
-    // Successo: il redirect è gestito da onAuthStateChange o qui sotto per sicurezza
-    if(data?.session) window.location.replace('/app');
+    // Successo: la navigazione è gestita da onAuthStateChange → goToApp()
+    // NON fare replace qui: causerebbe doppia navigazione e loop.
   } catch(e) {
     console.error('Login exception:', e);
     showMsg('login','Errore di connessione. Riprova.','err');
@@ -1267,17 +1274,16 @@ async function doRegister(){
       email,
       password: pw,
       options: {
-        // CRITICO: il link di conferma deve puntare ad /app (cleanUrls Vercel), non a index.html
-        // Senza questo, l'utente atterra sulla landing page dopo la conferma
-        // e la SDK processa il token ma nessuno lo gestisce → utente bloccato
-        emailRedirectTo: window.location.origin + '/app'
+        // CRITICO: il link di conferma punta ad app.html (NON index.html).
+        // Senza questo, l'utente atterra sulla landing e il token non viene gestito.
+        emailRedirectTo: window.location.origin + '/app.html'
       }
     });
     if(error){ showMsg('register', error.message, 'err'); return; }
     if(data.user && !data.session){
       showMsg('register','✅ Controlla la tua email per confermare l\'account.','ok');
     } else {
-      window.location.replace('/app');
+      goToApp();
     }
   } catch(e) {
     showMsg('register','Errore di connessione. Riprova.','err');
@@ -1290,7 +1296,7 @@ async function doGoogle(){
     const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://tax-forfettario.vercel.app/app',
+        redirectTo: 'https://tax-forfettario.vercel.app/app.html', // ← .html obbligatorio (no cleanUrls)
         queryParams: { access_type: 'offline', prompt: 'select_account' }
       }
     });
