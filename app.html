@@ -8573,6 +8573,60 @@ async function radarConfermaModifiche(proposta) {
 }
 
 
+// ── Espone le funzioni globalmente (chiamate via onclick nell'HTML) ──
+// Con DOMContentLoaded wrapper le funzioni sono nello scope locale.
+// Le esponiamo su window affinche gli onclick inline le trovino.
+if (typeof annullaApplicaDatiPDF !== 'undefined') window.annullaApplicaDatiPDF = annullaApplicaDatiPDF;
+if (typeof calcola !== 'undefined') window.calcola = calcola;
+if (typeof closeModal !== 'undefined') window.closeModal = closeModal;
+if (typeof closeModalMappingAdE !== 'undefined') window.closeModalMappingAdE = closeModalMappingAdE;
+if (typeof confAggiornaBozza !== 'undefined') window.confAggiornaBozza = confAggiornaBozza;
+if (typeof confCambiaStato !== 'undefined') window.confCambiaStato = confCambiaStato;
+if (typeof confDel !== 'undefined') window.confDel = confDel;
+if (typeof confDelDoc !== 'undefined') window.confDelDoc = confDelDoc;
+if (typeof confermaAiResult !== 'undefined') window.confermaAiResult = confermaAiResult;
+if (typeof confermaApplicaDatiPDF !== 'undefined') window.confermaApplicaDatiPDF = confermaApplicaDatiPDF;
+if (typeof confirmSentinelUpdate !== 'undefined') window.confirmSentinelUpdate = confirmSentinelUpdate;
+if (typeof doForgotPw !== 'undefined') window.doForgotPw = doForgotPw;
+if (typeof doGoogleLogin !== 'undefined') window.doGoogleLogin = doGoogleLogin;
+if (typeof doLogin !== 'undefined') window.doLogin = doLogin;
+if (typeof doLogout !== 'undefined') window.doLogout = doLogout;
+if (typeof doRegister !== 'undefined') window.doRegister = doRegister;
+if (typeof doResetPassword !== 'undefined') window.doResetPassword = doResetPassword;
+if (typeof exportCSV !== 'undefined') window.exportCSV = exportCSV;
+if (typeof exportJSON !== 'undefined') window.exportJSON = exportJSON;
+if (typeof exportPDF !== 'undefined') window.exportPDF = exportPDF;
+if (typeof filterAdmin !== 'undefined') window.filterAdmin = filterAdmin;
+if (typeof filterDocumentiView !== 'undefined') window.filterDocumentiView = filterDocumentiView;
+if (typeof g !== 'undefined') window.g = g;
+if (typeof generaF24Facsimile !== 'undefined') window.generaF24Facsimile = generaF24Facsimile;
+if (typeof importJSON !== 'undefined') window.importJSON = importJSON;
+if (typeof loadRadarAlerts !== 'undefined') window.loadRadarAlerts = loadRadarAlerts;
+if (typeof loadTaxRules !== 'undefined') window.loadTaxRules = loadTaxRules;
+if (typeof lookupAteco !== 'undefined') window.lookupAteco = lookupAteco;
+if (typeof onAnnoChange !== 'undefined') window.onAnnoChange = onAnnoChange;
+if (typeof onArchPdfSelected !== 'undefined') window.onArchPdfSelected = onArchPdfSelected;
+if (typeof onGruppoChange !== 'undefined') window.onGruppoChange = onGruppoChange;
+if (typeof onInpsTipoChange !== 'undefined') window.onInpsTipoChange = onInpsTipoChange;
+if (typeof openModal !== 'undefined') window.openModal = openModal;
+if (typeof openModalMappingAdE !== 'undefined') window.openModalMappingAdE = openModalMappingAdE;
+if (typeof printAnno !== 'undefined') window.printAnno = printAnno;
+if (typeof radarAnalizzaCircolare !== 'undefined') window.radarAnalizzaCircolare = radarAnalizzaCircolare;
+if (typeof renderConfronto !== 'undefined') window.renderConfronto = renderConfronto;
+if (typeof salvaAnno !== 'undefined') window.salvaAnno = salvaAnno;
+if (typeof saveMappingAdE !== 'undefined') window.saveMappingAdE = saveMappingAdE;
+if (typeof saveTaxRules !== 'undefined') window.saveTaxRules = saveTaxRules;
+if (typeof showView !== 'undefined') window.showView = showView;
+if (typeof switchAdmTab !== 'undefined') window.switchAdmTab = switchAdmTab;
+if (typeof switchTab !== 'undefined') window.switchTab = switchTab;
+if (typeof togglePrevisionale !== 'undefined') window.togglePrevisionale = togglePrevisionale;
+if (typeof togglePw !== 'undefined') window.togglePw = togglePw;
+if (typeof wizAbort !== 'undefined') window.wizAbort = wizAbort;
+if (typeof wizNext !== 'undefined') window.wizNext = wizNext;
+if (typeof wizParsePDF !== 'undefined') window.wizParsePDF = wizParsePDF;
+if (typeof wizPreview !== 'undefined') window.wizPreview = wizPreview;
+if (typeof wizSkipStep !== 'undefined') window.wizSkipStep = wizSkipStep;
+
 }); // DOMContentLoaded
 </script>
 </body>
